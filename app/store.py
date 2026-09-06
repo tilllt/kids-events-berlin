@@ -279,12 +279,21 @@ class Store:
             where.append("(" + " OR ".join(band_or) + ")")
             args.extend(band_args)
 
-        if filters.get("von"):
-            where.append("date(start_local) >= date(?)")
-            args.append(filters["von"])
-        if filters.get("bis"):
-            where.append("date(start_local) <= date(?)")
-            args.append(filters["bis"])
+        if filters.get("von") or filters.get("bis"):
+            # Fenster-Überlappung statt Starttag: Ein Event liegt im Zeitraum,
+            # wenn es nicht erst nach dessen Ende beginnt und nicht schon vor
+            # dessen Anfang vorbei ist. Ohne Ende-Feld gilt der Starttag als
+            # Ende (eintägig) — sonst blieben eintägige Events nach ihrem Tag
+            # fälschlich „laufend“. Mehrtägige Events (Start 05.09., Ende
+            # 09.09.) bleiben so bei „diese Woche“ (06.–12.09.) sichtbar.
+            if filters.get("bis"):
+                where.append("date(start_local) <= date(?)")
+                args.append(filters["bis"])
+            if filters.get("von"):
+                where.append(
+                    "COALESCE(date(ende_local), date(start_local)) >= date(?)"
+                )
+                args.append(filters["von"])
 
         if filters.get("kostenlos") is True:
             where.append("kostenlos = 1")

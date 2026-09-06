@@ -6,15 +6,18 @@ from app.store import Store
 
 
 def _ev(store, *, titel="Test-Event", start=None, ort="Ort X", bezirk=None,
-        band=None, ganztags=False, quelle="jup-berlin"):
+        band=None, ganztags=False, quelle="jup-berlin", ende: datetime | None = None):
     start = start or datetime.now(TZ_BERLIN).replace(hour=10, minute=0, second=0, microsecond=0)
-    ende = start + timedelta(hours=2)
+    if ende is None:
+        ende = start + timedelta(hours=2)
     local = start.strftime("%Y-%m-%dT%H:%M:%S")
     sid = f"{titel}#{local}"
     ev = {
         "id": make_event_id(quelle, sid), "titel": titel, "beschreibung_kurz": "kurz",
-        "start_iso": iso_utc(start), "ende_iso": iso_utc(ende), "start_local": local,
-        "ende_local": ende.strftime("%Y-%m-%dT%H:%M:%S"), "ganztags": ganztags,
+        "start_iso": iso_utc(start), "ende_iso": iso_utc(ende) if ende else None,
+        "start_local": local,
+        "ende_local": ende.strftime("%Y-%m-%dT%H:%M:%S") if ende else None,
+        "ganztags": ganztags,
         "ort": ort, "adresse": None, "bezirk": bezirk, "lat": 52.5, "lon": 13.4,
         "altersband_min": band[0] if band else None,
         "altersband_max": band[1] if band else None, "alters_familie": 0,
@@ -104,6 +107,26 @@ def test_filter_datum_von_bis(tmp_path):
     _ev(s, titel="Spaeter", start=alt)
     r = s.query_events({"von": alt.strftime("%Y-%m-%d"), "bis": alt.strftime("%Y-%m-%d")})
     assert [e["titel"] for e in r] == ["Spaeter"]
+
+
+def test_filter_zeitraum_ueberlappung_mehrtägig(tmp_path):
+    """Mehrtägiges Event (05.–09.09.) muss bei „diese Woche“ (06.–12.09.)
+    sichtbar bleiben; eintägige Events gestern und nach dem Fenster nicht."""
+    s = Store(tmp_path / "t.db")
+    _ev(s, titel="Sportfest-mehrtägig",
+        start=datetime(2026, 9, 5, 10, 0, tzinfo=TZ_BERLIN),
+        ende=datetime(2026, 9, 9, 16, 0, tzinfo=TZ_BERLIN))
+    _ev(s, titel="Gestern-eintägig",
+        start=datetime(2026, 9, 5, 10, 0, tzinfo=TZ_BERLIN))
+    _ev(s, titel="Sonntag",
+        start=datetime(2026, 9, 6, 14, 0, tzinfo=TZ_BERLIN))
+    _ev(s, titel="Naechste-Woche",
+        start=datetime(2026, 9, 13, 10, 0, tzinfo=TZ_BERLIN))
+    r = s.query_events({"von": "2026-09-06", "bis": "2026-09-12"})
+    assert {e["titel"] for e in r} == {"Sportfest-mehrtägig", "Sonntag"}
+    # „Heute“ (06.09.): laufendes mehrtägiges Event + heutiges, nicht gestern
+    r = s.query_events({"von": "2026-09-06", "bis": "2026-09-06"})
+    assert {e["titel"] for e in r} == {"Sportfest-mehrtägig", "Sonntag"}
 
 
 def test_prune_stale(tmp_path):
