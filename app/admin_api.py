@@ -176,7 +176,7 @@ def settings_get(request: Request):
 @router.put("/settings")
 def settings_put(body: dict, request: Request):
     store = _store(request)
-    erlaubt = {"scrape_interval_h", "admin_hinweis"}
+    erlaubt = {"scrape_interval_h", "admin_hinweis", "scrape_at"}
     unbekannt = set(body) - erlaubt
     fehler = []
     for k in sorted(unbekannt):
@@ -188,6 +188,15 @@ def settings_put(body: dict, request: Request):
                 raise ValueError
         except ValueError:
             fehler.append("scrape_interval_h muss eine Zahl zwischen 0.5 und 168 sein.")
+    if "scrape_at" in body:
+        at = (body["scrape_at"] or "").strip()
+        if at:
+            try:
+                h, m = (int(x) for x in at.split(":"))
+                if not (0 <= h <= 23 and 0 <= m <= 59):
+                    raise ValueError
+            except ValueError:
+                fehler.append("scrape_at muss 'HH:MM' sein (z. B. 05:30) oder leer für Intervall-Modus.")
     if fehler:
         raise HTTPException(422, {"message": "Einstellungen ungültig.", "fehler": fehler})
     for k, v in body.items():

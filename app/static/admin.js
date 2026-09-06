@@ -304,6 +304,9 @@ async function loadFehler() {
 /* ---------- Einstellungen ---------- */
 async function loadSettings() {
   const s = await api("/api/admin/settings");
+  // Geltende Konfiguration anzeigen: gesetzte Uhrzeit, sonst Intervall-Modus
+  // (Feld leer), sonst der Code-Standard 05:30.
+  $("#setAt").value = s.scrape_at || (s.scrape_interval_h ? "" : "05:30");
   $("#setInterval").value = s.scrape_interval_h || "24";
 }
 $("#settingsBtn").onclick = async () => {
@@ -311,7 +314,10 @@ $("#settingsBtn").onclick = async () => {
   try {
     await api("/api/admin/settings", {
       method: "PUT",
-      body: JSON.stringify({ scrape_interval_h: $("#setInterval").value }),
+      body: JSON.stringify({
+        scrape_at: $("#setAt").value.trim(),
+        scrape_interval_h: $("#setInterval").value,
+      }),
     });
     meldung(msg, "Gespeichert — gilt ab dem nächsten Scheduler-Zyklus.");
   } catch (e) { meldung(msg, e.message, false); }

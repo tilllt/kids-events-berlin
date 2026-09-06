@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import threading
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -19,11 +20,29 @@ from fastapi.staticfiles import StaticFiles
 
 from .admin_api import router as admin_router
 from .api import router as api_router
+from .model import TZ_BERLIN
 from .store import Store
 
 DATA_DIR = Path(os.environ.get("DATA_DIR", "data"))
 DB_PATH = DATA_DIR / "events.db"
 STATIC_DIR = Path(__file__).parent / "static"
+
+# Standard: täglich 05:30 Europe/Berlin — morgens stehen die neu gelisteten
+# Termine der Quellen bereit. Intervall-Modus nur, wenn bewusst gesetzt
+# (DB-Einstellung scrape_interval_h bei leerer scrape_at).
+SCRAPE_AT_DEFAULT = "05:30"
+
+
+def _naechster_zeitpunkt(jetzt_utc: datetime, uhrzeit: str) -> datetime:
+    """Nächster Tageszeitpunkt (HH:MM) in Europe/Berlin nach jetzt_utc (UTC)."""
+    h, m = (int(x) for x in uhrzeit.split(":"))
+    if not (0 <= h <= 23 and 0 <= m <= 59):
+        raise ValueError(f"Ungültige Uhrzeit: {uhrzeit}")
+    local = jetzt_utc.astimezone(TZ_BERLIN)
+    termin = local.replace(hour=h, minute=m, second=0, microsecond=0)
+    if termin <= local:
+        termin += timedelta(days=1)
+    return termin.astimezone(timezone.utc)
 
 
 @asynccontextmanager
@@ -51,6 +70,27 @@ async def lifespan(app: FastAPI):
                 print(f"[scheduler] {s['quelle']} fehlgeschlagen: {e}", flush=True)
                 store.log_error(s["quelle"], f"Scheduler-Lauf fehlgeschlagen: {e}")
 
+    def _warte_bis_naechster_lauf() -> float:
+        """Sekunden bis zum nächsten Scrape: feste Uhrzeit (scrape_at,
+        HH:MM Europe/Berlin), sonst Intervall (scrape_interval_h), sonst
+        Standard-Uhrzeit SCRAPE_AT_DEFAULT (05:30)."""
+        at = ((store.get_setting("scrape_at") or "").strip()
+              or os.environ.get("SCRAPE_AT", "").strip())
+        if at:
+            try:
+                n = _naechster_zeitpunkt(datetime.now(timezone.utc), at)
+                return max(0.0, (n - datetime.now(timezone.utc)).total_seconds())
+            except ValueError:
+                print(f"[scheduler] Ungültige scrape_at '{at}' — "
+                      "Standard 05:30.", flush=True)
+        db_iv = store.get_setting("scrape_interval_h")
+        if db_iv or os.environ.get("SCRAPE_INTERVAL_H"):
+            h = float(db_iv) if db_iv else float(
+                os.environ["SCRAPE_INTERVAL_H"])
+            return h * 3600
+        n = _naechster_zeitpunkt(datetime.now(timezone.utc), SCRAPE_AT_DEFAULT)
+        return max(0.0, (n - datetime.now(timezone.utc)).total_seconds())
+
     def worker():
         from .pipeline import scrape
         if boot and store.count_events() == 0:
@@ -60,15 +100,12 @@ async def lifespan(app: FastAPI):
                 print("[scheduler] Erstlauf fertig.", flush=True)
             except Exception as e:  # pragma: no cover
                 print(f"[scheduler] Erstlauf fehlgeschlagen: {e}", flush=True)
-        interval_env = float(os.environ.get("SCRAPE_INTERVAL_H", "24"))
         while True:
-            aus_db = store.get_setting("scrape_interval_h")
-            h = float(aus_db) if aus_db else interval_env
-            if stop.wait(h * 3600):
+            if stop.wait(_warte_bis_naechster_lauf()):
                 break
             try:
                 _scrape_aktive()
-                print(f"[scheduler] Läufe ok (Intervall {h}h).", flush=True)
+                print("[scheduler] Läufe ok.", flush=True)
             except Exception as e:  # pragma: no cover
                 print(f"[scheduler] Lauf fehlgeschlagen: {e}", flush=True)
 
