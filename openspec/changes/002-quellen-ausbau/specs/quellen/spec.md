@@ -4,15 +4,26 @@
 
 ### Requirement: Deklarative Adapter-Konfiguration
 
-- Jede Quelle wird durch eine YAML-Regeldatei `configs/<quelle>.yaml` beschrieben — **Regeln sind Daten, kein Quell-Parser-Code**. Eine generische Engine (`app/adapters/config_adapter.py`) führt die Regeln aus; sie nutzt die existierenden Bibliotheken `parsel` (CSS/XPath) und `extruct` (JSON-LD/Microformats/Microdata/RDFa).
-- Die Regeldatei definiert: Listing-URL(s), Pagination (query-param oder next-Selektor), Item-/Feld-Selektoren (CSS inkl. `attr`, Datums-`format`) oder JSON-LD-Pfade (JSONPath), Detail-Extraktion, Rate-Limit, robots-Policy (dokumentiert), erwarteten Event-Mengenbereich, Sicht-Horizont.
-- robots/ToS-Befund je Quelle steht im Regeldatei-Kommentar und in `docs/quellen.md`.
+- Quellen werden in **einer kommentierten YAML-Liste** `configs/quellen.yaml` geführt (quelle, name, typ: `feed`|`regeln`, url, menge, rate_limit, horizont) — plus optionaler Regeldatei `configs/regeln/<quelle>.yaml` nur für Stufe 2. **Regeln sind Daten, kein Quell-Parser-Code.**
+- Stufe 1 (`feed`): generischer Feed-Adapter (`feedparser` RSS/Atom, `icalendar` iCal) — Anbinden = Listeneintrag.
+- Stufe 2 (`regeln`): generische Engine (`parsel` CSS/XPath, `extruct` JSON-LD/Microformats) mit Item-/Feld-Selektoren oder JSON-LD-Pfaden, Datums-`format`, Pagination; nur wenn kein Feed existiert.
+- robots/ToS-Befund je Quelle in der Config und in `docs/quellen.md`.
 - Abweichungen (Quelle braucht echte Sonderlogik) sind dokumentierte Ausnahmen mit Begründung — nicht der Standard.
 
 #### Scenario: Neuen Adapter registrieren
 - **Akteure:** Entwickler, Admin.
-- **Eingaben:** Neue Quelle → Regeldatei `configs/<quelle>.yaml` + Fixture.
+- **Eingaben:** Neue Quelle mit Feed → Listeneintrag in `configs/quellen.yaml`; ohne Feed → zusätzlich Regeldatei. Fixture je Quelle.
 - **Ergebnis:** Adapter in Registry; `--quelle=alle` führt ihn mit; Audit-Eintrag in `docs/quellen.md`. Kein Python-Code nötig.
+
+### Requirement: Feed-first (Stufe 1 vor Stufe 2)
+
+- Bei jeder Quelle wird zuerst nach einem maschinenlesbaren Feed gesucht (RSS/Atom via `<link rel="alternate">`, `/feed/`, `rss.xml`, iCal-Export); existiert einer, MUSS die Quelle über den Feed-Adapter laufen.
+- Layout-Umbauten brechen Feeds nicht; Selektor-Pflege entfällt. Die Entscheidung je Quelle wird in `docs/quellen.md` belegt.
+
+#### Scenario: TYPO3-Website bietet RSS an
+- **Akteure:** Entwickler.
+- **Eingaben:** Quelle ohne dokumentierten Feed, `<link rel="alternate" type="application/rss+xml">` im HTML.
+- **Ergebnis:** Quelle läuft über feed_adapter; keine CSS-Selektoren; Fixture = Feed-Antwort.
 
 ### Requirement: Extraktions-Priorität JSON-LD → hEvent → CSS
 

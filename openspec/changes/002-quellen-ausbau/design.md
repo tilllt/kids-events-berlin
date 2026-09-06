@@ -1,67 +1,46 @@
-# Design — Change 002 Quellen-Ausbau (konfigurationsgetrieben)
+# Design — Change 002 Quellen-Ausbau
 
-## Leitprinzip (User-Vorgabe 2026-09-06)
+## Leitprinzipien (User-Vorgaben 2026-09-06)
 
-Keine pro-Quelle handgeschriebenen Parser als Standard. Stattdessen:
-- **Existierende Bibliotheken:** `parsel` (CSS/XPath, bereits Dependency) + `extruct` (JSON-LD/Microformats/Microdata/RDFa) — kein eigener Extraktions-Code-Standard.
-- **Regeln sind Daten, nicht Code:** Eine generische Engine führt je Quelle eine YAML-Regeldatei aus. Selektoren (CSS/XPath), JSON-LD-Pfade, Datumsformate, Filter sind editierbar — angelehnt an changedetection.io (dort: XPath/CSS/JSONPath/jq als User-Regeln pro Watch, „Extract text“, „Remove by selector“).
-- **User-korrigierbar im Betrieb:** Configs liegen versioniert unter `configs/` (Fixture-Tests laden sie) **und** werden zur Laufzeit aus `$DATA_DIR/configs/` überlesen (Volume-Overlay) → ein Admin korrigiert Selektoren per Datei-Edit, kein Rebuild/Code.
-- **changedetection.io als Frühwarnung:** Je produktiver Quelle ein Watch auf die Listing-URL (Element-existiert/Text-Änderung) → Alarm bei Site-Umbau, bevor Fixture-Tests/Anomalie-Erkennung greifen (Betriebs-Task, Instanz + API vorhanden).
+1. **Benutzerfreundlichkeit ist Priorität** — für Betreiber UND Endnutzer. Quelle anbinden soll so einfach wie ein Abo sein; Regeln pflegen muss ohne Code/ohne Expertenwissen gehen; die Kinder-Events-UI bleibt einfach.
+2. **Feed-first statt Selektor-Pflege:** RSS/Atom/iCal/JSON-Endpunkte konsumieren, bevor HTML geparst wird. Feeds (WordPress `/feed/`, Drupal `rss.xml`, TYPO3-RSS) brechen nicht bei Layout-Umbauten → deutlich weniger Wartung, kein Regeln-Basteln. changedetection.io war nur Referenz für das Konzept „Regeln als User-Daten“ — kein Dogma.
+3. **Existierende, gepflegte Bibliotheken statt Eigenbau:** `feedparser` (RSS/Atom), `icalendar` (iCal), `parsel` (CSS/XPath), `extruct` (JSON-LD/Microformats). Kein Custom-Scraping-Code-Standard.
+4. **Regeln sind Daten, user-korrigierbar:** Wenn doch Selektoren nötig sind (kein Feed), als einfache YAML-Regeldatei — versioniert + als Volume-Overlay editierbar, ohne Rebuild.
+
+## Stufenmodell je Quelle
+
+| Stufe | Mechanik | Aufwand Betreiber | Bibliothek |
+|---|---|---|---|
+| 1 (bevorzugt) | Feed-Abo: RSS/Atom/iCal/JSON-Endpunkt | URL + Typ angeben | feedparser, icalendar |
+| 2 (Fallback) | Regeldatei: Item-/Feld-Selektoren oder JSON-LD-Pfade | YAML editieren (dokumentiert, Fixture-Selbsttest) | parsel, extruct |
+| 3 (Ergänzung) | changedetection.io-Watch auf Listing-URL | Watch anlegen | changedetection-API |
+
+Entscheidung je Quelle fällt bei der Live-Erkundung: **erst nach Feed suchen** (`/feed/`, `rss.xml`, `<link rel="alternate" type="application/rss+xml">`, iCal-Export). Quellen mit Feed landen auf Stufe 1, ohne Feed auf Stufe 2.
 
 ## Architektur
 
 ```
-configs/<quelle>.yaml   (Regeln: listing, felder, jsonld-mapping, filter, menge)
-        │  (Volume-Overlay: $DATA_DIR/configs/ gewinnt)
-        ▼
-app/adapters/config_adapter.py   (eine generische Engine, keine Quell-Parser)
-   ├─ fetch: HTTP mit Rate-Limit/robots (bestehende Pipeline-Helfer)
-   ├─ liste: item_css + Feld-Selektoren via parsel; Pagination (query-param oder next-css)
-   ├─ detail/jsonld: extruct → @type:Event/@type:ItemList; Feld-Mapping per JSONPath (jsonpath-ng)
-   └─ normalisieren → app.model.Event (Validierung/Enrichment unverändert)
+configs/quellen.yaml  (einfache Liste: quelle, name, typ: feed|regeln, url, menge, rate_limit)
+   └─ Overlay: $DATA_DIR/configs/quellen.yaml gewinnt (Edit ohne Rebuild, Log mit Hash)
+
+app/adapters/feed_adapter.py     generisch: feedparser/icalendar → Event-Modell
+app/adapters/selector_adapter.py generisch: YAML-Regeln (parsel/extruct) → Event-Modell
+   (jeweils: Fetch mit Rate-Limit/robots, Normalisierung, kein Quell-Parser-Code)
 ```
 
-- Die bestehende Req-2-Extraktionskette (JSON-LD → hEvent → CSS) wird durch `extruct` (json-ld, microformat, microdata) + `parsel`-Fallback abgebildet — Konfig wählt je Quelle den Pfad.
-- `jup_berlin.py` bleibt vorerst (funktioniert, Sonderfälle Drupal-Pagination); Ziel: später ebenfalls auf Config umstellen → dann existiert genau EIN Adapter-Code.
-
-## YAML-Schema (Entwurf)
-
-```yaml
-quelle: berlinmitkind          # Registry-Schlüssel
-name: "berlinmitkind.de (HIMBEER)"
-robots: "erlaubt; AI-Crawler geblockt (2026-09-06)"
-rate_limit_s: 2
-menge: {min: 5, max: 60}        # Anomalie-Schwellen
-horizont_tage: 60
-listing:
-  url: "https://berlinmitkind.de/termine/"
-  pagination: {param: "pg"}     # oder: next_css: "a.next"
-  item_css: "article, .em-event-item"
-felder:                          # parsel-CSS je Feld (attr optional)
-  titel:  {css: ".event-title, h2 a"}
-  url:    {css: "h2 a", attr: "href"}
-  start:  {css: ".event-date", format: "%d.%m.%Y"}
-  ort:    {css: ".event-location"}
-  # statt css möglich: jsonld: "$.name"  (extruct-Pfad)
-detail:
-  jsonld: true                   # Detailseite: extruct @type:Event
-  url_css: "h2 a"                # Listing-URLs → Details
-  felder:
-    beschreibung: {jsonld: "$.description"}
-    adresse:      {jsonld: "$.location.address.streetAddress"}
-filter_kinder: {regex: ["kind", "familie", "kinder", "eltern"]}   # Relevanz-Hinweis (Enrichment bleibt Hauptfilter)
-```
+- Konfig-Datei bleibt **eine einfache, kommentierte YAML** (kein tiefes Regelwerk für Feed-Quellen).
+- Validierung/Enrichment/Dedupe/Store unverändert (Change-001-Pipeline).
+- `jup_berlin.py` bleibt bis zur Feed-Prüfung; falls jup.berlin einen RSS/JSON-Feed hat, wird der MVP-Adapter auf Stufe 1 umgestellt (ein Code-Pfad weniger).
 
 ## Ablauf je Quelle
 
-1. Live-Erkundung (robots, Struktur, URL-Muster, JSON-LD) → Befunde in `docs/quellen.md`.
-2. `configs/<quelle>.yaml` schreiben (Regeln als Daten).
-3. Fixtures (Listing + 1–2 Details) unter `tests/fixtures/<quelle>/`.
-4. Engine offline gegen Fixtures testen (kein Netz); Registry-Eintrag mit menge.
-5. Online-Gegenprobe (`--quelle=alle`), idempotent; changedetection-Watch als Betriebs-Task.
+1. Live-Erkundung: robots → **Feed suchen** → sonst Struktur/JSON-LD → Befund in `docs/quellen.md`.
+2. Quelle in `configs/quellen.yaml` (Stufe 1) bzw. `configs/regeln/<quelle>.yaml` (Stufe 2) eintragen.
+3. Fixtures (Feed-Antwort bzw. HTML) unter `tests/fixtures/<quelle>/`; Engine offline grün.
+4. Online-Gegenprobe idempotent; changedetection-Watch nur als optionale Frühwarnung.
 
 ## Risiken
 
-- Zu fragile generische Engine → Regeln wachsen; Gegenmittel: Fixture-Tests je Quelle bleiben Pflicht (Spec Req 3).
-- Config-Schema zu starr für Sonderfälle (AJAX, Auth) → Schema um `fetch:`-Hinweise (headers, json_endpoint) erweiterbar; wenn eine Quelle echte Sonderlogik braucht, wird sie als dokumentierte Ausnahme mit Begründung geführt — nicht der Standard.
-- Volume-Overlay divergiert vom Repo → Overlay-Eintrag wird bei jedem Lauf geloggt (quelle + hash), `docs/quellen.md`-Hinweis.
+- Feed unvollständig (nur Titel/Link, kein Datum/Ort) → Stufe 2 Detail-Regeln oder Quelle zurückstellen; nie stiller Datenmangel (Validierungs-Queue).
+- iCal-Zeitzonen (Europe/Berlin) → icalendar-Parsing normalisiert auf *_local wie bisher.
+- Overlay divergiert → Lauf loggt Quelle + Hash; docs-Hinweis.

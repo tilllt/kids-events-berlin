@@ -9,11 +9,11 @@ Der MVP aggregiert nur jup.berlin (12 Events, ein Scrape). Für einen brauchbare
 
 ## What Changes
 
-- **Adapter berlinmitkind.de:** WordPress + Events-Manager; Detailseiten mit JSON-LD `@type: Event`. Listing via AJAX-Endpunkt oder Server-HTML (je nach Live-Befund). Nutzt den JSON-LD-Extraktionspfad des Frameworks (Spec-Req 2).
-- **Adapter ZLB (zlb.de):** TYPO3-Veranstaltungsliste; Selektoren/URL-Muster werden live bestimmt (Audit offen). Kinder-/Familienfilterung regelbasiert beim Enrichment (kein Volltext-Kopieren).
-- **Adapter familienportal.berlin.de:** offizielle Landes-Quelle; Struktur/Technik wird live verifiziert (Audit: Fetch schlug fehl, robots offen).
-- **Duplikat-Politik kinderkulturkalender:** Einträge laufen über die jup!-Datenbasis → wird **nicht** als eigene Quelle aufgenommen; Befund und Entscheidung werden in `docs/quellen.md` festgehalten. Dedupe-Regel (jup vs. andere Quellen) nutzt vorhandenen Merge (Titel + Datum ± 1 + Venue).
-- **Registry/CLI:** `--quelle=alle` führt alle produktiven Adapter aus; jeder Adapter mit Fixture-Snapshot und Mengenbereich.
+- **Feed-first-Adapter (Stufe 1):** Generischer Feed-Adapter (RSS/Atom via `feedparser`, iCal via `icalendar`) — eine Quelle anbinden heißt: URL + Typ in `configs/quellen.yaml` eintragen. Kein Selektor-Wissen nötig.
+- **Regel-Adapter (Stufe 2, nur Fallback ohne Feed):** Generische Engine mit YAML-Regeln (`parsel` CSS/XPath, `extruct` JSON-LD/Microformats); Regeln als editierbare Daten (Repo + Volume-Overlay), keine pro-Quelle-Parser.
+- **Benutzerfreundlichkeit:** Quellen-Konfiguration als eine kommentierte YAML-Liste; Anleitung in Alltagssprache; Fixture-Selbsttest bei Regel-Änderung. changedetection.io nur optionale Frühwarnung, kein Dogma.
+- **Adapter berlinmitkind.de, zlb.de, familienportal.berlin.de** über das Stufenmodell (Entscheidung je Quelle nach Live-Feed-Suche); jup.berlin wird auf Feed geprüft (falls vorhanden: MVP-Parser entfällt).
+- **Duplikat-Politik kinderkulturkalender:** läuft über die jup!-Datenbasis → nicht als eigene Quelle; Befund in `docs/quellen.md`.
 
 ## Specs-Delta
 
