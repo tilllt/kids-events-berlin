@@ -10,6 +10,7 @@
 | zlb.de/veranstaltungen | ZLB, TYPO3 | **aufnehmen (Stufe 2)** | saubere Teaser-Klassen: `article.eventTeaser`, `h3.eventTeaser__title`, Datum im Teaser — kein Feed (geprüft) |
 | berlinmitkind.de (HIMBEER) | WordPress + Events Manager | **aufnehmen (Stufe 2)** | Event-Liste AJAX (`em-events-search`); Detailseiten JSON-LD `@type:Event`; `/termine/rss` = Blog-Feed, kein Event-Feed (geprüft) |
 | familienportal.berlin.de/veranstaltungen | offiziell (Land) | **aufnehmen (Stufe 2)** | erreichbar (200, 103 KB); Datumsangaben + h3-Artikelstruktur; Feed: keiner gefunden |
+| tip-berlin.de/veranstaltungen | Stadtmagazin (kommerziell-redaktionell), WordPress | **aufnehmen (Stufe 2, mit Kinder-Filter-Pflicht)** | serverseitige Event-Teaser `.card-teaser` (Kategorie/Titel/Venue/Datum/Link `/event/<slug>/`), robots offen; Familien-Rubrik `/stadt/familie/` ist redaktionell (28 Artikel, 3 Events) → nicht als Listing |
 | kinderkulturkalender-berlin.de | LKJ Berlin, Drupal | **nicht aufnehmen** | Einträge laufen über die jup!-Datenbasis → Duplikat; kein Doppel-Scrape |
 | FEZ Berlin | TYPO3 | offen | Programm-URL noch zu klären |
 | Museumsportal Berlin | Angular-SPA | beobachten | API-Reverse nötig (Folgeaufwand) |
@@ -47,6 +48,12 @@
 - **Feed-Check (2026-09-06):** `/feed/`, `/termine/feed/`, `/termine/rss` → alle Blog-/Kategorie-Feeds (10 Items, redaktionelle Titel, `pubDate` = Veröffentlichung, keine Event-Zeiten); `/events/feed/` → 404. → kein EM-Event-Feed aktiv → Stufe 2 (AJAX-Endpunkt + JSON-LD-Details).
 - robots: `User-agent: *` ohne Disallow; nur AI-Crawler geblockt.
 
+### tip-berlin.de — Stufe 2, aufnehmen (mit Kinder-Filter)
+- WordPress (Yoast-robots: **kein Disallow**, Crawling erlaubt), `/veranstaltungen/` → 200 (137 KB), **serverseitig gerenderte Event-Teaser** `.card-teaser` mit `.card-teaser__title`, Textzeile „Kategorie Titel — Venue, 06.09.2026“, Link `/event/<slug>/` — kein JS-Kalender (Fingerprint 2026-09-06).
+- Feed: `/feed/` = Blog-Beiträge (Podcast/Club-Tipps), `/veranstaltungen/feed/` → 404 — kein Event-Feed → Stufe 2.
+- **Kinder-Relevanz:** tip ist allgemeines Stadtmagazin (IFA, Food, Club …) → kinderrelevante Events sind Teilmenge. Aufnahme nur mit Kinder-Filter (Enrichment-Marker Kategorie/Titel/Text bzw. geklärte Event-Kategorie-URL beim Adapter-Bau). Familien-Rubrik `/stadt/familie/` ist redaktionell (28 Teaser, davon 3 `/event/`-Links) → nicht als Event-Listing geeignet.
+- Einordnung: kommerziell-redaktionell wie berlinmitkind — Aggregation mit eigenem Abstract + Link (kein Volltext).
+
 ### FEZ Berlin — offen
 - TYPO3; Programm-URL (früher `/programm` → 404) noch zu klären; robots offen.
 
@@ -63,7 +70,8 @@
 1. FEZ: aktuelle Programm-/Kalender-URL finden.
 2. berlinmitkind: konkreten AJAX-Endpunkt (admin-ajax `action=…`) + Parameter aus der Listenseite extrahieren.
 3. familienportal: exakte Teaser-Selektoren beim Adapter-Bau bestimmen (Fixture).
-4. daten.berlin.de: offene Datensätze (Familienzentren-Standorte) als Venue-Stammdaten prüfen (später).
+4. tip-berlin.de: Kinder-Filter-URL der Event-DB klären (Event-Kategorien-Archiv/Parameter); Kinder-Filter-Pflicht beim Adapter-Bau.
+5. daten.berlin.de: offene Datensätze (Familienzentren-Standorte) als Venue-Stammdaten prüfen (später).
 
 ## Methodik & Wartungsregel
 - Proben/Feeds: Live-Abrufe (UA `kids-events-berlin/0.2 (research)`) — Fixtures versioniert unter `tests/fixtures/<quelle>/`.
