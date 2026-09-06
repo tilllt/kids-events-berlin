@@ -186,7 +186,7 @@ function popupHtml(e) {
     <span>${fmtZeit(e)}</span><br/>
     <span>${escapeHtml(e.ort || "")}${e.bezirk_label && e.bezirk_label !== "Ohne Angabe" ? " · " + e.bezirk_label : ""}</span><br/>
     ${badges.join("")}<br/>
-    <button type="button" class="mapbtn popup-detail-btn" id="popup-detail">Details anzeigen</button>
+    <button type="button" class="mapbtn popup-detail-btn" id="popup-detail" data-ev-id="${escapeHtml(e.id)}">Details anzeigen</button>
     <br/><a href="${escapeHtml(e.source_url)}" target="_blank" rel="noopener noreferrer">Zur Quelle ↗</a>`;
 }
 
@@ -205,10 +205,6 @@ function renderGeo(gj) {
     const m = L.marker([f.geometry.coordinates[1], f.geometry.coordinates[0]]);
     m.bindPopup(popupHtml(p));
     m._ev = p;
-    m.on("popupopen", () => {
-      const b = document.getElementById("popup-detail");
-      if (b) b.addEventListener("click", () => { map.closePopup(); openDetail(p); });
-    });
     if (cluster) cluster.addLayer(m); else m.addTo(map);
     markers.push(m);
   });
@@ -331,6 +327,14 @@ function apply() { load(); }
 $("#detail-close").addEventListener("click", closeDetail);
 $("#detail").addEventListener("click", (ev) => { if (ev.target === ev.currentTarget) closeDetail(); });
 document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") closeDetail(); });
+// Popup-„Details anzeigen“: Delegation (Popup-Elemente sind flüchtig)
+document.addEventListener("click", (ev) => {
+  const btn = ev.target && ev.target.closest ? ev.target.closest("#popup-detail") : null;
+  if (!btn) return;
+  const id = btn.dataset.evId;
+  const ziel = markers.find((m) => m._ev && m._ev.id === id);
+  if (ziel) { map.closePopup(); openDetail(ziel._ev); }
+});
 readUrl();
 loadMeta()
   .then(() => {
