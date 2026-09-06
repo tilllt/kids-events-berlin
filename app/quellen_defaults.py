@@ -38,7 +38,7 @@ detail:
   felder:
     beschreibung_kurz: {jsonld: "$.description"}
     ort: {jsonld: "$.location.name"}
-    adresse: {jsonld: "$.location.address.streetAddress"}
+    adresse: {jsonld: "$.location.address"}
 """
 
 DEFAULT_REGELN: dict[str, str] = {

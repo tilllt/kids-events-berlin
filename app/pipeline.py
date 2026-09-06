@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 
 from .adapters import aktive_quellen, build_adapter
 from .enrich import classify_alter, classify_kategorien, classify_kostenlos
-from .geo import bezirk_from_latlon, ort_koordinaten
+from .geo import adresse_amtlich, bezirk_from_latlon, ort_koordinaten
 from .model import TZ_BERLIN
 from .store import Store
 from .validate import validate_event
@@ -137,13 +137,17 @@ def _scrape_mit_adapter(store, adapter, quelle, *, online, geo,
             bz = bezirk_from_latlon(store, ev["lat"], ev["lon"], geo_client)
             if bz:
                 ev["bezirk"] = bz
-        # Ort ohne Koordinaten → Forward-Geokodierung (gecacht, z. B.
-        # „Neue Nationalgalerie“); erst wenn der Ort keinen Bezirk hat,
-        # sonst wertloser Lookup für reine Bezirksnamen.
+        # Ort ohne Koordinaten → erst amtliche Adress-Geokodierung (Straße +
+        # Hausnummer + PLZ, WFS Adressen Berlin), dann Venue-Name über
+        # Nominatim („Neue Nationalgalerie“). Bezirk aus der Quelle schützt
+        # vor wertlosem Lookup reiner Bezirksnamen.
         if (geo_client and (ev.get("lat") is None or ev.get("lon") is None)
-                and (ev.get("ort") or "").strip() and ev["ort"] != "Ohne Angabe"
                 and not ev.get("bezirk")):
-            treffer = ort_koordinaten(store, ev["ort"], geo_client)
+            treffer = None
+            if (ev.get("adresse") or "").strip():
+                treffer = adresse_amtlich(store, ev["adresse"], geo_client)
+            if not treffer and (ev.get("ort") or "").strip() and ev["ort"] != "Ohne Angabe":
+                treffer = ort_koordinaten(store, ev["ort"], geo_client)
             if treffer:
                 ev["lat"] = treffer["lat"]
                 ev["lon"] = treffer["lon"]

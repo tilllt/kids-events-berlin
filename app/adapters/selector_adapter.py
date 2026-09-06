@@ -298,7 +298,14 @@ class SelectorAdapter:
             if treffer:
                 v = treffer[0]
                 if isinstance(v, dict):
-                    v = v.get("name") or v.get("streetAddress") or ""
+                    if "streetAddress" in v or "postalCode" in v:
+                        # Postadresse → „Straße Nr, PLZ Ort“ (für amtliche
+                        # Geokodierung brauchen wir die PLZ)
+                        teile = [v.get("streetAddress") or "", v.get("postalCode") or "",
+                                 v.get("addressLocality") or ""]
+                        v = ", ".join(t for t in teile if t)
+                    else:
+                        v = v.get("name") or v.get("streetAddress") or ""
                 out[feldname] = v if isinstance(v, str) else str(v)
         return out
 

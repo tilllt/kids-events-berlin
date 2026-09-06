@@ -1,5 +1,7 @@
 """Tests: Forward-Geokodierung (Nominatim-Search) — Cache, Negativ-Cache,
 Normalisierung. Netz wird mit httpx.MockTransport ersetzt (offline-deterministisch)."""
+import urllib.parse
+
 import httpx
 import pytest
 
@@ -71,3 +73,70 @@ def test_ort_key_ohne_treffer_wird_negativ_gespeichert(tmp_path):
     ort_koordinaten(store, "Unbekannter Ort XYZ", None)
     # kein Client → kein Cache-Eintrag (offline darf nichts speichern)
     assert store.get_ort_geo(ort_key("Unbekannter Ort XYZ")) is None
+
+
+# --- Amtliche Geokodierung (WFS Adressen Berlin) ---------------------------
+def test_utm33n_zu_wgs84():
+    """Rostocker Straße 32 (RBS-Punkt) → Koordinaten nahe Nominatim-Wert."""
+    from app.geo import _utm33n_zu_wgs84
+    lat, lon = _utm33n_zu_wgs84(386477.656, 5821519.552)
+    assert abs(lat - 52.5318) < 0.001
+    assert abs(lon - 13.3262) < 0.001
+
+
+def test_adresse_teile():
+    from app.geo import _adresse_teile
+    t = _adresse_teile("Königin-Luise-Straße 6-8, 14195 Berlin")
+    assert t == {"str": "Königin-Luise-Straße", "hnr": "8",
+                 "zus": None, "plz": "14195"}
+    t2 = _adresse_teile("Rostocker Straße 32 B, 10553 Berlin")
+    assert t2["str"] == "Rostocker Straße" and t2["hnr"] == "32"
+    assert t2["zus"] == "B" and t2["plz"] == "10553"
+    assert _adresse_teile("Neue Nationalgalerie") is None  # keine Hausnr
+
+
+def test_adresse_amtlich_treffer_und_cache(tmp_path):
+    from app.geo import adresse_amtlich
+    from app.store import Store
+    store = Store(tmp_path / "geo.db")
+    feats = [{
+        "type": "Feature", "id": "adressen_berlin.1",
+        "geometry": {"type": "Point",
+                     "coordinates": [386477.656, 5821519.552]},
+        "properties": {"str_name": "Rostocker Straße", "hnr": "32",
+                       "hnr_zusatz": None, "plz": "10553",
+                       "bez_name": "Mitte", "ort_name": "Moabit"},
+    }]
+    calls = []
+    def handler(request):
+        calls.append(str(request.url))
+        u = urllib.parse.unquote(str(request.url))
+        assert "str_name='Rostocker Straße'" in u
+        assert "plz='10553'" in u
+        return httpx.Response(200, json={"type": "FeatureCollection",
+                                         "features": feats})
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    r1 = adresse_amtlich(store, "Rostocker Straße 32, 10553 Berlin", client, sleep_s=0)
+    assert r1 is not None
+    assert abs(r1["lat"] - 52.5318) < 0.001
+    assert r1["bezirk"] == "mitte"
+    assert len(calls) == 1
+    r2 = adresse_amtlich(store, "Rostocker Straße 32, 10553 Berlin", client, sleep_s=0)
+    assert r2 == r1 and len(calls) == 1  # Cache
+    client.close()
+
+
+def test_adresse_amtlich_negativ_cache(tmp_path):
+    from app.geo import adresse_amtlich
+    from app.store import Store
+    store = Store(tmp_path / "geo.db")
+    calls = []
+    def handler(request):
+        calls.append(1)
+        return httpx.Response(200, json={"type": "FeatureCollection",
+                                         "features": []})
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    assert adresse_amtlich(store, "Rostocker Straße 32, 10553 Berlin", client, sleep_s=0) is None
+    assert adresse_amtlich(store, "Rostocker Straße 32, 10553 Berlin", client, sleep_s=0) is None
+    assert len(calls) == 1
+    client.close()
