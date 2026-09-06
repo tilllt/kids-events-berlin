@@ -141,6 +141,9 @@ class SelectorAdapter:
         self._pag = listing.get("pagination") or {}
         self._horizont_tage = int(listing.get("horizont_tage") or 0)
         self.horizont_tage = self._horizont_tage  # für die Pipeline (Fenster-Filter)
+        # Detail-URLs mit diesem Substring überspringen (Quelle liefert tote
+        # calendarize/cHash-Links, die auf die Startseite umleiten).
+        self._detail_url_skip = str(listing.get("detail_url_skip") or "")
         self._detail_cfg = self._regeln.get("detail") or {}
         # Detailseiten nur laden, wenn die Regeln sie auswerten (JSON-LD/CSS).
         self.braucht_detail = bool(self._detail_cfg.get("jsonld")

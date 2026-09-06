@@ -63,13 +63,16 @@ listing:
     start: {css: ".teaser__meta .text--meta", regex: "([0-9]{2}[.][0-9]{2}[.][0-9]{4})", format: "%d.%m.%Y"}
     zeit: {css: '.teaser__meta .text--meta', regex: '([0-9]{1,2}:[0-9]{2})\\s*Uhr', format: '%H:%M'}
     bezirk: {css: '.teaser__meta .text--meta', regex: '\\|\\s*([^|]+)$'}
-    beschreibung_kurz: {css: '.inner .text', regex: '(.*?)\\s*Mehr\\s*$'}
+  detail_url_skip: calendarize
 detail:
   # Venue + Adresse stehen erst auf der Termin-Detailseite (kein JSON-LD):
   # „#contact li.name“ = Einrichtung, „li.address.loc“ = Straße, PLZ Berlin.
+  # Beschreibung ebenso aus dem Detail — die Listing-Vorschau ist vermüllt
+  # (Titel-Dreifach, „Veranstaltungen dummyOption(wichtig!) …“-Template-Reste).
   felder:
     ort: {css: '#contact li.name'}
     adresse: {css: '#contact li.address.loc'}
+    beschreibung_kurz: {css: '.modul-text_bild .text'}
 """
 
 DEFAULT_REGELN: dict[str, str] = {

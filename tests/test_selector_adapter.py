@@ -261,3 +261,21 @@ def test_familienportal_zu_events_mit_detail(fixture_dir_familienportal):
     assert "13055 Berlin" in (ev.get("adresse") or "")
     assert validate_event(ev, jetzt) == [], validate_event(ev, jetzt)
     adapter.close()
+
+
+def test_familienportal_detail_beschreibung_sauber(fixture_dir_familienportal):
+    """Beschreibung kommt aus dem Detail (.modul-text_bild .text) — die
+    Listing-Vorschau ist vermüllt (dummyOption-Artefakte)."""
+    from app.quellen_defaults import FAMILIENPORTAL_REGELN
+    adapter = SelectorAdapter("familienportal", regel_yaml=FAMILIENPORTAL_REGELN)
+    dhtml = (fixture_dir_familienportal / "detail.html").read_text(encoding="utf-8")
+    d = adapter.parse_detail(dhtml)
+    b = d.get("beschreibung_kurz") or ""
+    assert "Landessportbund" in b, b[:120]
+    assert "dummyOption" not in b and "Mehr" not in b, b[:120]
+    # Listing liefert keine beschreibung_kurz mehr (kommt nur aus dem Detail)
+    lhtml = (fixture_dir_familienportal / "listing.html").read_text(encoding="utf-8")
+    rows = adapter.parse_listing(lhtml)
+    for r in rows:
+        assert not r.get("beschreibung_kurz"), "Listing-Beschreibung entfernt (vermüllt)"
+    adapter.close()

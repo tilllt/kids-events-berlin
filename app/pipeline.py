@@ -129,19 +129,41 @@ def _scrape_mit_adapter(store, adapter, quelle, *, online, geo,
         unique_slugs = unique_slugs[:max_details]
     for i, slug in enumerate(unique_slugs):
         if online and getattr(adapter, "braucht_detail", True):
-            try:
-                html = adapter.fetch_detail(slug_url.get(slug) or slug)
-                details[slug] = adapter.parse_detail(html)
-            except Exception as e:
-                store.log_error(quelle, f"Detail {slug}: {e}")
+            url = slug_url.get(slug) or slug
+            if not (url or "").startswith("http"):
                 details[slug] = {}
+                continue
+            # Tote Detail-Links überspringen (Quelle leitet auf die Startseite
+            # um → kein Ort, und der Startseiten-Text würde die Beschreibung
+            # verfälschen).
+            skip_m = getattr(adapter, "_detail_url_skip", "") or ""
+            if skip_m and skip_m in url:
+                store.log_error(quelle, f"Detail übersprungen (defekter {skip_m}-Link): {slug}")
+                details[slug] = {}
+                continue
+            # Detail-HTML-Cache: Termin-Detailseiten sind über das 21-Tage-
+            # Fenster stabil — der Tageslauf fetcht nur noch neue Termine
+            # (statt täglich ~780 Seiten: Laufzeit + Quellen-Last).
+            html = store.detail_cache_get(quelle, url)
+            if html is None:
+                try:
+                    html = adapter.fetch_detail(url)
+                    store.detail_cache_put(quelle, url, html)
+                except Exception as e:
+                    store.log_error(quelle, f"Detail {slug}: {e}")
+                    details[slug] = {}
+                    if sleep_s:
+                        import time as _t
+                        _t.sleep(sleep_s)
+                    continue
+                if sleep_s:
+                    import time as _t
+                    _t.sleep(sleep_s)
+            details[slug] = adapter.parse_detail(html)
         else:
             details[slug] = adapter.parse_detail(
                 (detail_html or {}).get(slug, "") if not online
                 else "")
-        if sleep_s and online:
-            import time as _t
-            _t.sleep(sleep_s)
 
     n_neu = n_geaendert = n_fehler = 0
     # Ein HTTP-Client für alle Geokodierungs-Anfragen des Laufs (1 req/s).

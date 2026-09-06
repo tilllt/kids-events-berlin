@@ -13,7 +13,7 @@ import json
 import sqlite3
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from .model import BEZIRK_BERLINWEIT, BEZIRK_UNBEKANNT, TZ_BERLIN, iso_utc
@@ -105,6 +105,13 @@ CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     wert TEXT NOT NULL,
     geaendert TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS detail_cache (
+    quelle TEXT NOT NULL,
+    url TEXT NOT NULL,
+    html TEXT NOT NULL,
+    geholt_am TEXT NOT NULL,
+    PRIMARY KEY (quelle, url)
 );
 """
 
@@ -364,6 +371,35 @@ class Store:
                  json.dumps(roh, ensure_ascii=False) if roh else None),
             )
             self._conn.commit()
+
+    def detail_cache_get(self, quelle: str, url: str, ttl_tage: int = 14) -> str | None:
+        """Gecachtes Detail-HTML, wenn jünger als ttl_tage (ISO-String-Vergleich)."""
+        cutoff = (datetime.now(TZ_BERLIN) - timedelta(days=ttl_tage)).isoformat()
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT html FROM detail_cache WHERE quelle=? AND url=? AND geholt_am>=?",
+                (quelle, url, cutoff),
+            ).fetchone()
+        return row["html"] if row else None
+
+    def detail_cache_put(self, quelle: str, url: str, html: str) -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO detail_cache(quelle, url, html, geholt_am) VALUES (?,?,?,?) "
+                "ON CONFLICT(quelle, url) DO UPDATE SET html=excluded.html, "
+                "geholt_am=excluded.geholt_am",
+                (quelle, url, html, datetime.now(TZ_BERLIN).isoformat()),
+            )
+            self._conn.commit()
+
+    def detail_cache_prune(self, alter_tage: int = 14) -> int:
+        """Entfernt Einträge, deren Quelle sie nicht mehr braucht (Seiten, die
+        aus dem Zeitfenster gefallen sind)."""
+        cutoff = (datetime.now(TZ_BERLIN) - timedelta(days=alter_tage)).isoformat()
+        with self._lock:
+            cur = self._conn.execute("DELETE FROM detail_cache WHERE geholt_am<?", (cutoff,))
+            self._conn.commit()
+        return cur.rowcount
 
     def recent_runs(self, quelle: str, limit: int = 20) -> list[dict]:
         with self._lock:
