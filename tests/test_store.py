@@ -61,11 +61,13 @@ def test_upsert_zwilling_nur_bei_gleichem_ort(tmp_path):
     from app.model import make_event_id
     s = Store(tmp_path / "t.db")
     ev1 = _ev(s, titel="Familiensportfest", ort="Ort A")
-    ev2 = _ev(s, titel="Familiensportfest", ort="Ort B")
-    # _ev leitet die ID aus Titel ab → zweite ID explizit unterscheiden
-    ev2["id"] = make_event_id("jup-berlin", ev2["source_event_id"] + "-b")
-    ev2["source_event_id"] = ev2["source_event_id"] + "-b"
-    s.upsert_event(ev2)
+    # zweites Event: gleicher Titel/Start, anderer Ort → andere ID
+    ev2 = dict(ev1)
+    ev2["ort"] = "Ort B"
+    ev2["source_event_id"] = "familiensportfest-b"
+    ev2["id"] = make_event_id("jup-berlin", "familiensportfest-b")
+    neu, geaendert = s.upsert_event(ev2)
+    assert neu is True and geaendert is False
     assert s.count_events() == 2
 
 
