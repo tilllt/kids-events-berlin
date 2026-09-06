@@ -24,6 +24,11 @@ def fixture_dir_museumsportal() -> Path:
 
 
 @pytest.fixture()
+def fixture_dir_familienportal() -> Path:
+    return Path(__file__).parent / "fixtures" / "familienportal"
+
+
+@pytest.fixture()
 def listing_p0() -> str:
     return (FIXTURES / "listing_p0.html").read_text(encoding="utf-8")
 

@@ -41,7 +41,26 @@ detail:
     adresse: {jsonld: "$.location.address"}
 """
 
+FAMILIENPORTAL_REGELN = """quelle: familienportal
+robots: "erlaubt; nur /suche/ disallowed; www-Host blockt — ohne www (2026-09-06)"
+listing:
+  # Zeitraum über kesearch-Timestamps (filter_22_start/end, Unix-Sekunden);
+  # nur Kategorie „Kinder & Jugendliche“ (filter_19). {seite} ab Seite 2.
+  url: "https://familienportal.berlin.de/veranstaltungen/s?tx_kesearch_pi1%5Bfilter_19%5D%5B%5D=KinderJugendliche&tx_kesearch_pi1%5Bfilter_22_start%5D={start_ts}&tx_kesearch_pi1%5Bfilter_22_end%5D={ende_ts}"
+  horizont_tage: 21
+  pagination: {param: "currentPage", offset: 1}
+  item_css: "article.modul-teaser"
+  felder:
+    titel: {css: "h3.title"}
+    url: {css: "a.more", attr: "href"}
+    start: {css: ".teaser__meta .text--meta", regex: "([0-9]{2}[.][0-9]{2}[.][0-9]{4})", format: "%d.%m.%Y"}
+    zeit: {css: '.teaser__meta .text--meta', regex: '([0-9]{1,2}:[0-9]{2})\\s*Uhr', format: '%H:%M'}
+    bezirk: {css: '.teaser__meta .text--meta', regex: '\\|\\s*([^|]+)$'}
+    beschreibung_kurz: {css: '.inner .text', regex: '(.*?)\\s*Mehr\\s*$'}
+"""
+
 DEFAULT_REGELN: dict[str, str] = {
     "zlb": ZLB_REGELN,
     "museumsportal": MUSEUMS_REGELN,
+    "familienportal": FAMILIENPORTAL_REGELN,
 }

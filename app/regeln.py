@@ -35,6 +35,7 @@ _LISTING_FELDER = {
     "ende": "optional",
     "zeit": "optional",       # Uhrzeit separat (format "%H:%M")
     "ort": "optional",
+    "bezirk": "optional",     # Quelle nennt den Bezirk direkt (Label)
     "beschreibung_kurz": "optional",
     "adresse": "optional",
 }
@@ -43,8 +44,8 @@ _DETAIL_FELDER = {
 }
 
 _TOP_KEYS = {"listing", "detail", "filter_kinder", "name", "robots", "quelle"}
-_LISTING_KEYS = {"url", "pagination", "item_css", "felder"}
-_PAGINATION_KEYS = {"param", "next_css"}
+_LISTING_KEYS = {"url", "pagination", "item_css", "felder", "horizont_tage"}
+_PAGINATION_KEYS = {"param", "next_css", "offset"}
 _FILTER_KEYS = {"regex"}
 
 

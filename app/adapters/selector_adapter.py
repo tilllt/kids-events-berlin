@@ -12,17 +12,21 @@ from __future__ import annotations
 
 import hashlib
 import re
-from datetime import datetime, time as dtime
+from datetime import datetime, timedelta, time as dtime
 from typing import Any
 from urllib.parse import urljoin
 
 import httpx
 import parsel
 
-from ..model import TZ_BERLIN, make_event_id
+from ..model import BEZIRK_LABELS, TZ_BERLIN, make_event_id
 from ..regeln import validate_regeln_yaml
 
 UA = "kids-events-berlin/0.2 (+https://github.com/tilllt/kids-events-berlin)"
+
+# Quell-Bezirksnamen (BEZIRK_LABELS-Werte) → kanonische Slugs. Wird genutzt,
+# wenn eine Quelle den Bezirk direkt im Listing nennt (z. B. familienportal).
+_LABEL_ZU_SLUG = {v.lower(): k for k, v in BEZIRK_LABELS.items()}
 
 
 def _lade_regeln(regel_yaml: str | None, quelle: str) -> dict:
@@ -113,6 +117,7 @@ class SelectorAdapter:
         self._item_css = listing.get("item_css", "")
         self._felder: dict = listing.get("felder") or {}
         self._pag = listing.get("pagination") or {}
+        self._horizont_tage = int(listing.get("horizont_tage") or 0)
         self._detail_cfg = self._regeln.get("detail") or {}
         # Detailseiten nur laden, wenn die Regeln sie auswerten (JSON-LD/CSS).
         self.braucht_detail = bool(self._detail_cfg.get("jsonld")
@@ -132,11 +137,35 @@ class SelectorAdapter:
         return out
 
     # --- Fetch --------------------------------------------------------------
-    def fetch_listing_page(self, page: int = 0) -> str:
-        params = None
+    def _listing_url_mit_zeitraum(self, page: int) -> tuple[str, dict | None]:
+        """URL mit Zeitraum-/Seiten-Platzhaltern auflösen.
+
+        Platzhalter (nur wenn horizont_tage gesetzt bzw. in der URL):
+          {start_ts}/{ende_ts}  Unix-Timestamps heute .. heute+horizont
+          {start_de}/{ende_de}  als TT.MM.JJJJ (z. B. kesearch-Datepicker)
+          {seite}               currentPage-artige Seitennummer (ab 1)
+        Rückgabe: (url, pagination_params_oder_None)
+        """
+        url = self._listing_url
+        if "{" in url:
+            jetzt = datetime.now(TZ_BERLIN)
+            von = jetzt.replace(hour=0, minute=0, second=0, microsecond=0)
+            bis = (von + timedelta(days=self._horizont_tage)
+                   ).replace(hour=23, minute=59, second=59)
+            url = (url.replace("{start_ts}", str(int(von.timestamp())))
+                      .replace("{ende_ts}", str(int(bis.timestamp())))
+                      .replace("{start_de}", von.strftime("%d.%m.%Y"))
+                      .replace("{ende_de}", bis.strftime("%d.%m.%Y")))
+            if "{seite}" in url:
+                return url.replace("{seite}", str(page + 1)), None
         if page and self._pag.get("param"):
-            params = {self._pag["param"]: str(page)}
-        r = self._client.get(self._listing_url, params=params)
+            offset = int(self._pag.get("offset") or 0)
+            return url, {self._pag["param"]: str(page + offset)}
+        return url, None
+
+    def fetch_listing_page(self, page: int = 0) -> str:
+        url, params = self._listing_url_mit_zeitraum(page)
+        r = self._client.get(url, params=params)
         r.raise_for_status()
         return r.text
 
@@ -181,7 +210,7 @@ class SelectorAdapter:
         f = {}
         for feldname, regel in self._felder.items():
             if feldname in ("titel", "start", "ende", "zeit", "ort", "url",
-                            "beschreibung_kurz", "adresse"):
+                            "beschreibung_kurz", "adresse", "bezirk"):
                 f[feldname] = _feld_wert(item, regel)
         titel = f.get("titel")
         if not titel:
@@ -240,6 +269,11 @@ class SelectorAdapter:
             ende = start.replace(hour=23, minute=59)
             ganztags = True
 
+        # Bezirk aus der Quelle (Label wie „Mitte“): regex-Nachbehandlung
+        bezirk_regel = self._felder.get("bezirk")
+        if bezirk_regel:
+            f["bezirk"] = _regex_ziehen(f.get("bezirk"), bezirk_regel.get("regex"))
+
         ort = f.get("ort")
         return {
             "slug": self._url_to_slug(url) if url else hashlib.sha1(
@@ -252,6 +286,7 @@ class SelectorAdapter:
             "ort": ort or None,
             "beschreibung_kurz": f.get("beschreibung_kurz"),
             "adresse": f.get("adresse"),
+            "bezirk": f.get("bezirk"),
         }
 
     # --- Detail-Parsing (JSON-LD via extruct) -------------------------------
@@ -319,6 +354,10 @@ class SelectorAdapter:
         ort = (row.get("ort") or detail.get("ort")
                or (detail.get("adresse") and "Berlin")
                or "Ohne Angabe")
+        # Quelle nennt den Bezirk direkt (Label wie „Pankow“, „Berlinweit“)
+        # → kanonischer Slug; schützt die Pipeline vor Geo-Lookup von
+        # reinen Bezirksnamen („Bezirk aus der Quelle“-Prinzip).
+        bezirk = _LABEL_ZU_SLUG.get((row.get("bezirk") or "").strip().lower())
         return {
             "id": make_event_id(self.name, source_event_id),
             "titel": row["titel"],
@@ -332,7 +371,7 @@ class SelectorAdapter:
             "ganztags": row.get("ganztags", False),
             "ort": ort,
             "adresse": row.get("adresse") or detail.get("adresse"),
-            "bezirk": None,
+            "bezirk": bezirk,
             "lat": None,
             "lon": None,
             "kostenlos": None,

@@ -123,3 +123,62 @@ listing:
     assert r["start"].hour == 0
     assert r["ende"].hour == 23 and r["ende"].minute == 59
     adapter.close()
+
+
+def test_familienportal_regeln_validieren():
+    from app.quellen_defaults import FAMILIENPORTAL_REGELN
+    assert validate_regeln_yaml(FAMILIENPORTAL_REGELN, "familienportal") == []
+
+
+def test_familienportal_listing_offline(fixture_dir_familienportal):
+    from app.quellen_defaults import FAMILIENPORTAL_REGELN
+    adapter = SelectorAdapter("familienportal", regel_yaml=FAMILIENPORTAL_REGELN)
+    assert adapter.braucht_detail is False
+    html = (fixture_dir_familienportal / "listing.html").read_text(encoding="utf-8")
+    rows = adapter.parse_listing(html)
+    warn = adapter.drain_warnungen()
+    assert len(rows) >= 8, f"nur {len(rows)} Events; warnungen: {warn}"
+    r0 = rows[0]
+    assert r0["titel"]
+    assert r0["start"].year == 2026 and r0["start"].tzinfo is not None
+    assert r0["start"].hour == 9  # 09:00 Uhr im Teaser
+    assert r0["bezirk"] in ("Mitte", "Pankow", "Tempelhof-Schöneberg")
+    # Events ohne Uhrzeit → ganztags
+    ganztags = [r for r in rows if r.get("ganztags")]
+    for r in ganztags:
+        assert r["ende"].hour == 23
+    adapter.close()
+
+
+def test_familienportal_zu_event_bezirk(fixture_dir_familienportal):
+    from app.quellen_defaults import FAMILIENPORTAL_REGELN
+    adapter = SelectorAdapter("familienportal", regel_yaml=FAMILIENPORTAL_REGELN)
+    html = (fixture_dir_familienportal / "listing.html").read_text(encoding="utf-8")
+    rows = adapter.parse_listing(html)
+    jetzt = datetime.now(TZ_BERLIN)
+    ev = adapter.zu_event(rows[0], {}, jetzt)
+    assert ev["quelle"] == "familienportal"
+    assert ev["bezirk"] == "mitte"  # Label „Mitte“ → kanonischer Slug
+    assert ev["start_local"].startswith("2026-09-07T09:00")
+    # Quelle nennt nur den Bezirk → kein Ort, keine Geokodierung nötig
+    assert ev["ort"] == "Ohne Angabe" and ev["lat"] is None
+    adapter.close()
+
+
+def test_listing_url_zeitraum_platzhalter():
+    from app.quellen_defaults import FAMILIENPORTAL_REGELN
+    adapter = SelectorAdapter("familienportal", regel_yaml=FAMILIENPORTAL_REGELN)
+    # Seite 0: {seite} nicht in URL → pagination-Params None
+    url0, params0 = adapter._listing_url_mit_zeitraum(0)
+    assert "{start_ts}" not in url0 and "{ende_ts}" not in url0
+    assert params0 is None
+    # Seite 1 (zweite Seite): currentPage=2 (offset 1)
+    url1, params1 = adapter._listing_url_mit_zeitraum(1)
+    assert url1 == url0
+    assert params1 == {"currentPage": "2"}
+    # Timestamps: Ende > Start, Ende = heute+21 Tage
+    import re
+    m = re.search(r"filter_22_start%5D=(\d+)", url0)
+    n = re.search(r"filter_22_end%5D=(\d+)", url0)
+    assert m and n and int(n.group(1)) - int(m.group(1)) >= 20 * 86400
+    adapter.close()

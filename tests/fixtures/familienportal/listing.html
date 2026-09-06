@@ -1,0 +1,1126 @@
+<!DOCTYPE html>
+<html  lang="de" prefix="og: http://ogp.me/ns#">
+<head>
+    <meta charset="utf-8">
+
+<!-- 
+	Created by: ressourcenmangel GmbH, https://www.ressourcenmangel.de, Tel.: +49 (0)30 590037 450
+
+	This website is powered by TYPO3 - inspiring people to share!
+	TYPO3 is a free open source Content Management Framework initially created by Kasper Skaarhoj and licensed under GNU/GPL.
+	TYPO3 is copyright 1998-2026 of Kasper Skaarhoj. Extensions are copyright of their respective owners.
+	Information and contribution at https://typo3.org/
+-->
+
+
+<title>Veranstaltungen für Familien | Berliner Familienportal </title>
+<meta name="generator" content="TYPO3 CMS">
+<meta name="description" content="Welche Veranstaltungen gibt es für Kinder, Jugendliche, Eltern &amp; Familien in Berlin? Mit dem Familienportal-Kalender wissen Sie immer Bescheid!">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=0, minimum-scale=1.0, maximum-scale=1.0">
+<meta name="robots" content="index,follow">
+<meta property="og:title" content="Veranstaltungen für Familien | Berliner Familienportal">
+<meta property="og:description" content="Welche Veranstaltungen gibt es für Kinder, Jugendliche, Eltern &amp; Familien in Berlin? Mit dem Familienportal-Kalender wissen Sie immer Bescheid!">
+<meta property="og:image" content="https://familienportal.berlin.de/files/_processed_/e/0/csm_Berlin_Alexanderplatz_Nahverkehr_BVG_Peter_Jesche_AdobeStock_460926177_1920x1080_a9078b0f53.jpg">
+<meta property="og:image:url" content="https://familienportal.berlin.de/files/_processed_/e/0/csm_Berlin_Alexanderplatz_Nahverkehr_BVG_Peter_Jesche_AdobeStock_460926177_1920x1080_a9078b0f53.jpg">
+<meta property="og:image:width" content="1920">
+<meta property="og:image:height" content="1005">
+<meta property="og:image:alt" content="Die Weltzeituhr auf dem Berliner Alexanderplatz mit Blick auf den Fernsehturm. Durch das Bild fährt eine Straßenbahn der BVG.">
+<meta name="twitter:title" content="Veranstaltungen für Familien | Berliner Familienportal">
+<meta name="twitter:description" content="Welche Veranstaltungen gibt es für Kinder, Jugendliche, Eltern &amp; Familien in Berlin? Mit dem Familienportal-Kalender wissen Sie immer Bescheid!">
+<meta name="twitter:image" content="https://familienportal.berlin.de/files/_processed_/e/0/csm_Berlin_Alexanderplatz_Nahverkehr_BVG_Peter_Jesche_AdobeStock_460926177_1920x1080_a9078b0f53.jpg">
+<meta name="twitter:image:alt" content="Die Weltzeituhr auf dem Berliner Alexanderplatz mit Blick auf den Fernsehturm. Durch das Bild fährt eine Straßenbahn der BVG.">
+<meta name="twitter:card" content="summary_large_image">
+
+<link href="/_assets/68cbb6b0b7fd534ab07f3ba684196150/Scripts/unpoly/unpoly.min.css?1787901091" rel="stylesheet" >
+<link href="/_assets/261d86cbd1eb8b5cf0c75e0f12071210/Scripts/MapLibre/maplibre-gl_4.1.0.css?1787901087" rel="stylesheet" >
+<link rel="stylesheet" href="/_assets/261d86cbd1eb8b5cf0c75e0f12071210/Styles/main.min.css?1787901087" media="all">
+<link rel="stylesheet" href="/_assets/bfa2c2186fd7a266438b0b120d5580e7/StyleSheets/app.css?1787901111" media="all">
+<link rel="stylesheet" href="/_assets/e799cca3073eabb617dfebf5f7cabc53/StyleSheets/Frontend/results.css?1787901093" media="all">
+<link rel="stylesheet" href="/_assets/e799cca3073eabb617dfebf5f7cabc53/StyleSheets/Frontend/loader.css?1787901093" media="all">
+
+<style>
+	html {
+	scroll-behavior: smooth;
+	}
+	.maplibregl-popup-close-button {
+	line-height: 0.875!important;
+	font-size: 2em!important;
+	}
+	.maplibregl-marker {
+	cursor: pointer;
+	}
+	.tx_pb_famport_map {
+	position: relative;
+	}
+	.tx_pb_famport_map_loading {
+	height: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	opacity: 0.5;
+	font-size: 1.5rem;
+	font-weight: bold;
+	}
+	@keyframes tx_pb_famport_map_loading {
+	0%, 100% { opacity: 1; transform: scale(1);}
+	50%       { opacity: 0.25; transform: scale(0.8);}
+	}
+	.tx_pb_famport_map_loading div {
+	animation: tx_pb_famport_map_loading 3s ease-in-out infinite;
+	}
+	.tx_pb_famport_map_popup_events {
+	font-family: Arial, sans-serif;
+	font-size: 1rem;
+	line-height: 1.5;
+	width: 400px;
+	max-width: 90%;
+	height: 100%;
+	transform: none !important;
+	}
+
+	.tx_pb_famport_map_popup_events .maplibregl-popup-tip {
+		display: none!important;
+	}
+	.tx_pb_famport_map_popup_events .popup_text {
+	max-height: 530px;
+	overflow-y: auto;
+	padding: 0 10px 0 0;
+	}
+	.tx_pb_famport_map_popup_events .maplibregl-popup-content {
+	height: 100%;
+	}
+
+	.tx_pb_famport_map_popup_events .popup_content_website + .popup_content_email:before {
+	display: inline-block;
+	content:"-";
+	padding: 0 5px;
+	}
+	.tx_pb_famport_map_popup_events .popup_content_accessibility img {
+	display: inline-block;
+	height: 24px;
+	width: auto;
+	padding: 2px 4px 2px 0;
+	}
+</style>
+
+
+<script src="https://www.berlin.de/i9f/r1/bundle/jquery.min.js"></script>
+<script src="https://www.berlin.de/i9f/r1/bundle/berlin_identity.js" async="async"></script>
+<script src="/_assets/cc28db55a4b2340c9a29526841f8cc9e/JavaScript/autocomplete-location.js?1787901091"></script>
+
+
+
+<!-- Google Consent Mode -->
+<script data-cookieconsent="ignore">
+    window.dataLayer = window.dataLayer || [];
+    function gtag() {
+        dataLayer.push(arguments);
+    }
+    gtag("consent", "default", {
+        ad_storage: "denied",
+        analytics_storage: "denied",
+        functionality_storage: "denied",
+        personalization_storage: "denied",
+        security_storage: "granted",
+        wait_for_update: 500,
+    });
+    gtag("set", "ads_data_redaction", true);
+</script>
+<!-- Google Tag Manager -->
+
+<script data-cookieconsent="ignore">(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+
+})(window,document,'script','dataLayer','GTM-TZMFPQ8');</script>
+
+<!-- End Google Tag Manager -->
+<script id="Cookiebot" src="https://consent.cookiebot.com/uc.js" data-cbid="d69faf18-1414-49ca-83fb-761c21b578b0" data-blockingmode="auto" type="text/javascript" async></script>
+
+<link rel="icon" href="https://www.berlin.de/i9f/r1/images/favicon/favicon.ico" sizes="any">
+<link rel="icon" href="https://www.berlin.de/i9f/r1/images/favicon/Berlin_de.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" sizes="180x180" href="https://www.berlin.de/i9f/r1/images/favicon/apple-touch-icon.png" type="image/png">
+<link rel="manifest" href="https://www.berlin.de/i9f/r1/images/favicon/manifest.json">
+<link rel="mask-icon" href="https://www.berlin.de/i9f/r1/images/favicon/safari-pinned-tab.svg" color="#000000">
+<meta name="msapplication-TileColor" content="#2B5797">
+<meta name="msapplication-config" content="https://www.berlin.de/i9f/r1/images/favicon/browserconfig.xml">
+<meta name="theme-color" content="#FFFFFF">
+
+
+<meta name="google-site-verification" content="O61-rLsv5vigDbuljbyMGVYjZszS5-RNtZnVQ44qgwQ" />
+<style>
+#accordion_feedback-form {display:none !important}
+.tx-kesearch-pi1 .button--clear-input:before,
+.tx-kesearch-pi1 .button--clear-input:after {display: none!important;}
+</style><style>
+.fa-twitter:before {
+  content: '' !important;
+  display: inline-block;
+  width: 30px;
+  height: 30px;
+  margin-right: 0.5em;
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23d53a15"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>');
+  background-size: 20px 20px;
+  background-repeat: no-repeat;
+  background-position: center;
+  vertical-align: middle;
+}
+</style>   
+<link rel="canonical" href="https://familienportal.berlin.de/veranstaltungen">
+
+<script type="application/ld+json" id="ext-schema-jsonld">{"@context":"https://schema.org/","@type":"WebPage","breadcrumb":{"@type":"BreadcrumbList","itemListElement":{"@type":"ListItem","item":{"@type":"WebPage","@id":"https://familienportal.berlin.de/veranstaltungen"},"name":"Veranstaltungen","position":"1"}}}</script>
+</head>
+<body class="pb__page pb__page_id_358 pb__page_doktype_12">
+
+
+
+<!-- Google Tag Manager (noscript) --><noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-TZMFPQ8" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript><!-- End Google Tag Manager (noscript) --><header id="header" class="kiekma" aria-label="Header Berliner Familienportal"><div class="header__row-portalbrand"><div class="logo"><a href="https://www.berlin.de" title="Zur Startseite von Berlin.de"><img class="logo" alt="Berlin.de Logo" src="/_assets/261d86cbd1eb8b5cf0c75e0f12071210/images/logo_berlin_m_srgb.svg" width="64" height="64" /></a></div></div><div class="header__row-pageheader"><div class="pageheader__logo"><div class="logo"><a title="zur Startseite des Familienportals" href="/"><img class="logo" alt="Familienportal Logo" src="/_assets/261d86cbd1eb8b5cf0c75e0f12071210/images/Logo_Familienportal_RGB.svg" width="252" height="64" /></a></div></div><nav class="pageheader__quicklinks" aria-label="Bereichsnavigation"><ul><li><a href="/mein-kind" title="Mein Kind">
+                    Mein Kind
+                </a></li><li><a href="/meine-familie" title="Meine Familie">
+                    Meine Familie
+                </a></li><li><a href="/meine-themen" title="Meine Themen">
+                    Meine Themen
+                </a></li><li><a href="/veranstaltungen" title="Veranstaltungen"><b>Veranstaltungen</b></a></li><li><a href="/artikel/fuer-fachkraefte" title="Für Fachkräfte">
+                    Für Fachkräfte
+                </a></li></ul></nav><div class="pageheader__services"><div id="servicebuttonAccessibility" class="service-button-overlay js-service-button-overlay accessibility"><div class="service-button-overlay__button"><button type="button" class="icon-button js-button-overlay-open"><i class="icon fas fa-universal-access" aria-hidden="true"></i><span class="aural">
+                Öffnen: Barrierefreiheit
+              </span><span class="text">
+                Barrierefrei
+              </span></button></div><div class="service-button-overlay__overlay overlay js-overlay-container"  role="dialog" aria-modal="true" hidden="hidden"><div class="overlay__header"><h2 class="heading"><span>
+                Barrierefreiheit
+              </span></h2><button type="button" class="close-button js-button-overlay-close"><i class="fas fa-times" aria-hidden="true"></i><span class="aural">
+                  Schließen: Barrierefreiheit
+                </span></button></div><div class="overlay__body"><div id="c2" class="frame frame-default frame-type-text frame-layout-0"><p><a href="/barrierefreiheit/das-berliner-familienportal-in-deutscher-gebaerdensprache" class="link-icon-hands ">Deutsche Gebärdensprache (DGS)</a></p><p><a href="/barrierefreiheit/das-berliner-familienportal-in-leichter-sprache" class="link-icon-book">Das Familienportal in Leichter Sprache</a></p><h3>Wie barrierefrei ist diese Webseite?</h3><p><a href="/barrierefreiheit">Erklärung zur digitalen Barrierefreiheit</a></p><h3>Wen können Sie bei Anmerkungen oder Fragen zur digitalen Barrierefreiheit (Feedbackoption) kontaktieren?</h3><p>Kontakt zur Ansprechperson der öffentlichen Stelle:</p><p>Christina Ernst</p><p>E-Mail:&nbsp;<a href="http://online-redaktion@senbjf.berlin.de;" target="_blank" title="Mailadresse Onlineredaktion des Familienportals bei der Senatsverwaltung für Bildung Jugend und Familie Berlin" rel="noreferrer">online-redaktion(at)senbjf.berlin.de</a></p><p>Telefonnummer:&nbsp;<a href="tel:+4930902275000" title="Telefonnummer Infopoint der Senatsverwaltung für Bildung, Jugend und Familie">030 902 275 000</a></p><h3>Zusätzliche Informationen zur Barrierefreiheit im Land Berlin?</h3><p>Zusätliche Informationen zur Barrierefreiheit im Land Berlin finden Sie bei der <a href="https://www.berlin.de/sen/inneres/moderne-verwaltung/digitale-barrierefreiheit/landesbeauftragte/" target="_blank" title="Berliner Landesbeauftragte für digitale Barrierefreiheit" rel="noreferrer">Berliner Landesbeauftragen für digitale Barrierefreiheit</a>.&nbsp;</p></div></div></div></div><div id="servicebuttonSearch" class="service-button-overlay js-service-button-overlay search fullwidth"><div class="service-button-overlay__button"><button type="button" class="icon-button js-button-overlay-open" aria-label="Overlay Öffnen: Suche"><i class="icon fa fa-search 1234" aria-hidden="true"></i><span class="text">
+                Suchen
+              </span></button></div><div class="service-button-overlay__overlay overlay js-overlay-container" role="dialog" aria-modal="true" hidden="hidden"><div class="overlay__header"><h2 class="heading"><span class="aural">
+                Suchen
+              </span></h2><button type="button" class="close-button js-button-overlay-close" aria-label="Overlay Schließen: Suche"><i class="fas fa-times" aria-hidden="true"></i></button></div><div class="overlay__body"><div class="search-container"><form class="search-form" method="get" action="/suchergebnisse"><label for="searchFormInput_q">
+                    Suche im Familienportal
+                  </label><div class="form-group"><input name="tx_solr[q]" class="form-control" id="searchFormInput_q" placeholder="Suchbegriff" type="search"><button type="submit" class="button"><i class="fas fa-search" aria-hidden="true"></i><span>
+                        Suchen
+                      </span></button></div></form></div></div></div></div><div id="servicebuttonMenu" class="service-button-overlay js-service-button-overlay menu"><div class="service-button-overlay__button"><button type="button" class="icon-button js-button-overlay-open"><i class="icon fa fa-bars" aria-hidden="true"></i><span class="aural">
+                    Öffnen: Menü
+                  </span><span class="text">
+                    Menü
+                  </span></button></div><div class="service-button-overlay__overlay overlay js-overlay-container" role="dialog" aria-modal="true"
+              hidden="hidden"><div class="overlay__header"><h2 class="heading"><span>
+                    Menü
+                  </span></h2><button type="button" class="close-button js-button-overlay-close"><i class="fas fa-times" aria-hidden="true"></i><span class="aural">
+                        Schließen: Menü
+                      </span></button></div><div class="overlay__body"><nav id="navigation-primary" class="js-navigation-primary" aria-label="Seitennavigation"><div class="tree-wrapper js-navigation-tree-wrapper"><h3 class="aural">
+                          Seitennavigation
+                        </h3><ul class="navigation-tree"><li><a href="/mein-kind" title="Mein Kind">Mein Kind</a><ul class="navigation-tree"><li><a href="/mein-kind/baby" title="Baby">
+                                          Baby
+                                        </a></li><li><a href="/mein-kind/kleinkind" title="Kleinkind">
+                                          Kleinkind
+                                        </a></li><li><a href="/mein-kind/grundschulkind" title="Grundschulkind">
+                                          Grundschulkind
+                                        </a></li><li><a href="/mein-kind/jugendliche" title="Jugendliche">
+                                          Jugendliche
+                                        </a></li><li><a href="/mein-kind/18" title="18+">
+                                          18+
+                                        </a></li></ul></li><li><a href="/meine-familie" title="Meine Familie">Meine Familie</a><ul class="navigation-tree"><li><a href="/meine-familie/mutter-sein" title="Mutter sein">
+                                          Mutter sein
+                                        </a></li><li><a href="/meine-familie/vater-sein" title="Vater sein">
+                                          Vater sein
+                                        </a></li><li><a href="/meine-familie/alleinerziehend" title="Alleinerziehend">
+                                          Alleinerziehend
+                                        </a></li><li><a href="/meine-familie/patchworkfamilie" title="Patchworkfamilie">
+                                          Patchworkfamilie
+                                        </a></li><li><a href="/meine-familie/queere-familie" title="Queere Familie">
+                                          Queere Familie
+                                        </a></li><li><a href="/meine-familie/pflegeeltern" title="Pflegeeltern">
+                                          Pflegeeltern
+                                        </a></li><li><a href="/meine-familie/adoptiveltern" title="Adoptiveltern">
+                                          Adoptiveltern
+                                        </a></li><li><a href="/meine-familie/mehrkindfamilie" title="Mehrkindfamilie">
+                                          Mehrkindfamilie
+                                        </a></li><li><a href="/meine-familie/mehrgenerationenfamilie" title="Mehrgenerationenfamilie">
+                                          Mehrgenerationenfamilie
+                                        </a></li><li><a href="/meine-familie/grosseltern" title="Großeltern">
+                                          Großeltern
+                                        </a></li></ul></li><li><a href="/meine-themen" title="Meine Themen">Meine Themen</a><ul class="navigation-tree"><li><a href="/meine-themen/kinderwunsch" title="Kinderwunsch">
+                                          Kinderwunsch
+                                        </a></li><li><a href="/meine-themen/schwangerschaft-und-geburt" title="Schwangerschaft &amp; Geburt">
+                                          Schwangerschaft &amp; Geburt
+                                        </a></li><li><a href="/meine-themen/beziehung" title="Beziehung">
+                                          Beziehung
+                                        </a></li><li><a href="/meine-themen/trennung" title="Trennung">
+                                          Trennung
+                                        </a></li><li><a href="/meine-themen/arbeitsleben" title="Arbeitsleben">
+                                          Arbeitsleben
+                                        </a></li><li><a href="/meine-themen/freizeit" title="Freizeit">
+                                          Freizeit
+                                        </a></li><li><a href="/meine-themen/gesund-leben" title="Gesund leben">
+                                          Gesund leben
+                                        </a></li><li><a href="/meine-themen/krankheit-/-sucht" title="Krankheit / Sucht">
+                                          Krankheit / Sucht
+                                        </a></li><li><a href="/meine-themen/erziehung" title="Erziehung">
+                                          Erziehung
+                                        </a></li><li><a href="/meine-themen/kita" title="Kita">
+                                          Kita
+                                        </a></li><li><a href="/meine-themen/schule" title="Schule">
+                                          Schule
+                                        </a></li><li><a href="/meine-themen/leben-mit-behinderung" title="Leben mit Behinderung">
+                                          Leben mit Behinderung
+                                        </a></li><li><a href="/meine-themen/wohnen-und-nachbarschaft" title="Wohnen &amp; Nachbarschaft">
+                                          Wohnen &amp; Nachbarschaft
+                                        </a></li><li><a href="/meine-themen/zuwanderung-und-integration" title="Zuwanderung &amp; Integration">
+                                          Zuwanderung &amp; Integration
+                                        </a></li><li><a href="/meine-themen/finanzen" title="Finanzen">
+                                          Finanzen
+                                        </a></li><li><a href="/meine-themen/gewalt" title="Gewalt">
+                                          Gewalt
+                                        </a></li><li><a href="/meine-themen/rente-und-ruhestand" title="Rente &amp; Ruhestand">
+                                          Rente &amp; Ruhestand
+                                        </a></li><li><a href="/meine-themen/angehoerige-pflegen" title="Angehörige pflegen">
+                                          Angehörige pflegen
+                                        </a></li><li><a href="/meine-themen/rechtliches" title="Rechtliches">
+                                          Rechtliches
+                                        </a></li><li><a href="/meine-themen/tod-und-trauer" title="Tod &amp; Trauer">
+                                          Tod &amp; Trauer
+                                        </a></li></ul></li><li><a href="/veranstaltungen" title="Veranstaltungen" class="current">Veranstaltungen</a><ul class="navigation-tree"><li><a href="/login" title="Login">
+                                          Login
+                                        </a></li><li><a href="/veranstaltungen/registrierung-veranstaltungsanmeldung" title="Registrierung Veranstaltungsanmeldung">
+                                          Registrierung Veranstaltungsanmeldung
+                                        </a></li><li><a href="/veranstaltungen/veranstaltungsliste" title="Veranstaltungsliste">
+                                          Veranstaltungsliste
+                                        </a></li></ul></li><li><a href="/ueber-uns" title="Über uns">Über uns</a><ul class="navigation-tree"><li><a href="https://service.berlin.de/familie-partnerschaft-gleichstellung/" title="Berliner Servicelinks für Familien">
+                                          Berliner Servicelinks für Familien
+                                        </a></li></ul></li><li><a href="/suchergebnisse" title="Suchergebnisse">Suchergebnisse</a></li></ul><div class="navigation-meta"><h3 class="heading">Translations</h3><!-- Meta LanguageList.view --><ul><li><a href="/info/das-familienportal-in-ihrer-sprache" title="Das Berliner Familienportal in Ihrer Sprache">
+                                                  Das Berliner Familienportal in Ihrer Sprache
+                                              </a></li><li><a href="/info/the-berlin-family-portal-in-your-language" title="The Berlin Family Portal in your language">
+                                                  The Berlin Family Portal in your language
+                                              </a></li><li><a href="/le-portail-pour-les-familles-de-berlin-dans-votre-langue" title="Le Portail pour les familles de Berlin dans votre langue">
+                                                  Le Portail pour les familles de Berlin dans votre langue
+                                              </a></li><li><a href="/berlinski-portal-rodzinny-w-twoim-jezyku-1" title="Berliński Portal Rodzinny w Twoim języku">
+                                                  Berliński Portal Rodzinny w Twoim języku
+                                              </a></li><li><a href="/berlin-aile-portali-icerigini-kendi-dilinizde-okuyun" title="Berlin Aile Portalı içeriğini kendi dilinizde okuyun">
+                                                  Berlin Aile Portalı içeriğini kendi dilinizde okuyun
+                                              </a></li><li><a href="/berlinskii-semeinyi-portal-na-vashem-jazyke" title="Берлинский семейный портал на вашем языке">
+                                                  Берлинский семейный портал на вашем языке
+                                              </a></li><li><a href="/berlinskii-simeinii-portal-vashoju-movoju" title="Берлінський сімейний портал вашою мовою">
+                                                  Берлінський сімейний портал вашою мовою
+                                              </a></li><li><a href="/cong-thong-tin-gia-dinh-berlin-bang-ngon-ngu-cua-ban" title="Cổng thông tin gia đình Berlin bằng ngôn ngữ của bạn">
+                                                  Cổng thông tin gia đình Berlin bằng ngôn ngữ của bạn
+                                              </a></li><li><a href="/%D8%A8%D9%88%D8%A7%D8%A8%D8%A9-%D8%A7%D9%84%D8%B9%D8%A7%D8%A6%D9%84%D8%A9-%D9%81%D9%8A-%D8%A8%D8%B1%D9%84%D9%8A%D9%86-%D8%A8%D9%84%D8%BA%D8%AA%D9%83%D9%85" title="بوابة العائلة في برلين بلغتكم">
+                                                  بوابة العائلة في برلين بلغتكم
+                                              </a></li></ul><!-- /Meta LanguageList.view --></div></div></nav></div></div></div></div></div></header><main id="layout-grid" aria-label="Main"><div id="layout-grid__area--contentheader"><div id="content-header"><nav class="breadcrumb" aria-label="Sie befinden sich hier"><ol><li><a href="/">Familienportal</a></li><li><span class="active" aria-current="page">Veranstaltungen</span></li></ol></nav></div></div><div id="layout-grid__area--herounit" class="fullwidth"></div><div id="layout-grid__area--maincontent"><h1>Veranstaltungen für Kinder, Jugendliche, Eltern und Familien in Berlin</h1><p>Was geht in Berlin? Welche spannenden Angebote gibt es gerade für Kinder, Jugendliche, Eltern und Familien? Mit dem Veranstaltungskalender des Berliner Familienportals finden Sie immer was Interessantes, Informatives oder Spannendes. Stöbern Sie in unserem Angebot oder nutzen Sie unsere Suche, um gezielt Veranstaltungen zu finden.</p><p style="margin-bottom:30px;"></p><div id="c892" class="frame frame-default frame-type-ke_search_pi1 frame-layout-0">
+    
+            
+    
+
+
+    
+        <form class="form--base  eventfilter">
+            <button type="button" class="button button--filter js-facetingform-toggler"
+                    data-containerid="eventsearchbox01">Filter
+            </button>
+            <div id="eventsearchbox01" class="js-facetingform isOverlayPalm isHidden">
+                <div class="facetingform__container">
+                <div class="container__head">
+                </div>
+                <div class="container__body">
+
+                <div class="form-group form-group form-group--inline fullspace align-bottom">
+                    
+                        
+                                <div class="form-group">
+                                    <input type="hidden" id="dateRange_start" name="tx_kesearch_pi1[filter_22_start]" value="1788739200" />
+                                    <input type="hidden" id="dateRange_end" name="tx_kesearch_pi1[filter_22_end]" value="1790812799" />
+                                    <input class="form-control datepicker" id="flatpickr-range-event-date" type="text"
+                                           name="range-event-date" placeholder="Datum">
+                                </div>
+                            
+                    
+                        
+                                <div class="multicheckboxselect js-multiselect2checkboxes form-group">
+                                    <select class="form-control" multiple id="filter_19" name="tx_kesearch_pi1[filter_19][]">
+                                        
+                                            <option id="176" value="Ausstellungen" >Ausstellungen</option>
+                                        
+                                            <option id="186" value="BildungSchule" >Bildung &amp; Schule</option>
+                                        
+                                            <option id="174" value="BhneMusik" >Bühne &amp; Musik</option>
+                                        
+                                            <option id="180" value="DiesDas" >Dies &amp; Das</option>
+                                        
+                                            <option id="184" value="Ferienreisen" >Ferienreisen</option>
+                                        
+                                            <option id="181" value="FesteMrkte" >Feste &amp; Märkte</option>
+                                        
+                                            <option id="179" value="FotoVideo" >Foto &amp; Video</option>
+                                        
+                                            <option id="185" value="Frauen" >Frauen</option>
+                                        
+                                            <option id="178" value="FreizeitSport" >Freizeit &amp; Sport</option>
+                                        
+                                            <option id="187" value="GesundheitUmwelt" >Gesundheit &amp; Umwelt</option>
+                                        
+                                            <option id="188" value="Infoveranstaltungen" >Infoveranstaltungen</option>
+                                        
+                                            <option id="189" value="KinderJugendliche" selected="selected">Kinder &amp; Jugendliche</option>
+                                        
+                                            <option id="194" value="KonferenzenMessen" >Konferenzen &amp; Messen</option>
+                                        
+                                            <option id="175" value="KunstKultur" >Kunst &amp; Kultur</option>
+                                        
+                                            <option id="177" value="LesungenVortrge" >Lesungen &amp; Vorträge</option>
+                                        
+                                            <option id="183" value="Mitmischen" >Mitmischen</option>
+                                        
+                                            <option id="190" value="PolitikBrgerservice" >Politik &amp; Bürgerservice</option>
+                                        
+                                            <option id="195" value="Polizei" >Polizei</option>
+                                        
+                                            <option id="191" value="Senioren" >Senioren</option>
+                                        
+                                            <option id="182" value="SocialMediaGames" >Social Media &amp; Games</option>
+                                        
+                                            <option id="192" value="SpaziergngeAusflge" >Spaziergänge &amp; Ausflüge</option>
+                                        
+                                            <option id="193" value="WeihnachtszeitJahreswechsel" >Weihnachtszeit &amp; Jahreswechsel</option>
+                                        
+                                    </select>
+                                </div>
+                            
+                    
+                        
+                                <div class="multicheckboxselect js-multiselect2checkboxes form-group">
+                                    <select class="form-control" multiple id="filter_6" name="tx_kesearch_pi1[filter_6][]">
+                                        
+                                            <option id="48" value="Barnim" >Barnim</option>
+                                        
+                                            <option id="49" value="BerlinerUmland" >Berliner-Umland</option>
+                                        
+                                            <option id="35" value="Berlinweit" >Berlinweit</option>
+                                        
+                                            <option id="42" value="CharlottenburgWilmersdorf" >Charlottenburg-Wilmersdorf</option>
+                                        
+                                            <option id="39" value="FriedrichshainKreuzber" >Friedrichshain-Kreuzberg</option>
+                                        
+                                            <option id="43" value="Lichtenberg" >Lichtenberg</option>
+                                        
+                                            <option id="41" value="MarzahnHellersdorf" >Marzahn-Hellersdorf</option>
+                                        
+                                            <option id="36" value="Mitte" >Mitte</option>
+                                        
+                                            <option id="40" value="Neuklln" >Neukölln</option>
+                                        
+                                            <option id="37" value="Pankow" >Pankow</option>
+                                        
+                                            <option id="46" value="Reinickendorf" >Reinickendorf</option>
+                                        
+                                            <option id="47" value="Spandau" >Spandau</option>
+                                        
+                                            <option id="45" value="SteglitzZehlendorf" >Steglitz-Zehlendorf</option>
+                                        
+                                            <option id="44" value="TempelhofSchneberg" >Tempelhof-Schöneberg</option>
+                                        
+                                            <option id="38" value="TreptowKpenick" >Treptow-Köpenick</option>
+                                        
+                                    </select>
+                                </div>
+                            
+                    
+                        
+                                <div class="multicheckboxselect js-multiselect2checkboxes form-group">
+                                    <select class="form-control" multiple id="filter_7" name="tx_kesearch_pi1[filter_7][]">
+                                        
+                                            <option id="50" value="Vormittags" >Vormittags</option>
+                                        
+                                            <option id="51" value="Nachmittags" >Nachmittags</option>
+                                        
+                                            <option id="52" value="Abends" >Abends</option>
+                                        
+                                            <option id="53" value="Ganztgig" >Ganztägig</option>
+                                        
+                                    </select>
+                                </div>
+                            
+                    
+                        
+                                <div class="multicheckboxselect js-multiselect2checkboxes form-group">
+                                    <select class="form-control" multiple id="filter_20" name="tx_kesearch_pi1[filter_20][]">
+                                        
+                                            <option id="197" value="nonfreeevent" >Eintritt</option>
+                                        
+                                            <option id="196" value="freeevent" >Gratis</option>
+                                        
+                                    </select>
+                                </div>
+                            
+                    
+                </div>
+                <div class="form-group form-group form-group--inline fullspace align-left">
+                    <a href="/veranstaltungsliste" class="button filterdelete">Löschen</a>
+                    <button type="submit" class="button">Filtern</button>
+                </div>
+
+                </div>
+
+                </div>
+
+            </div>
+        </form>
+    
+
+        
+
+
+</div><div id="c893" class="frame frame-default frame-type-list frame-layout-0">
+
+
+
+
+
+
+
+
+<div data-event-uids="7318,9057,9394,7956,7047,7412,8130,8630,8869,8631,8612,6670,7430,7428,5672,7400,5672,7468,7492,4801,4317,7399,7495,8124,9229,8204,8576,8183,8187,8189,9421,8186,7318,9057,7049,7956,7431,7411,8485,8569,8130,7859,7432,8869,7059,8612,6670,7048,7050,5648,4799,4689,4332,7372,7504,7499,8132,9279,4332,5026,9281,5651,9294,9016,8183,8187,8189,8186,7318,7051,9057,8710,7956,7421,8130,7052,8869,8763,7835,9118,7440,8496,8612,9210,9215,6670,7422,8568,8486,7310,7799,5154,8044,5154,4800,7497,9124,4317,9064,8113,7915,9401,5154,8014,6700,7859,9434,7852,9360,9021,8509,8664,8502,8856,8183,8187,8189,8186,7318,9057,7849,7956,7058,7439,7425,7412,7484,8130,7824,8869,7055,9118,8612,9210,6670,7610,8488,7384,8045,5673,4332,7501,7500,8255,7377,7930,7859,8962,4332,9300,9376,8972,7787,8183,8187,8189,8186,7318,8643,9057,9235,7053,7460,7849,7563,7956,8130,8632,8869,7389,7461,9118,9210,8047,9280,8612,6670,7498,6720,7931,9426,9065,9267,8606,7859,8686,7840,7771,7787,8684,9163,8183,8187,8189,8186,9057,9236,9234,7956,7054,9210,7941,9327,7243,8130,9378,9395,8869,8896,7849,9034,8929,9436,9118,9433,7824,7756,9321,8898,7899,7772,6397,7739,8846,8877,6670,8612,9406,9405,8898,9277,7658,9293,7542,8898,9161,9407,7859,7658,8768,9408,9095,7787,8684,8186,8183,8187,8189,9057,7956,9210,8993,7762,9327,8130,9365,9374,9179,7791,9084,8869,9181,8409,7888,9118,9179,9199,9299,9040,7640,6990,6387,9365,9397,9433,7756,9351,7765,8963,9289,9292,9321,8999,8877,9370,9405,8898,8138,9179,8960,7929,7798,9040,8899,7547,6990,6670,9351,9361,8612,8846,9082,8898,9365,7824,9092,9174,7658,7831,7603,8999,9368,8909,9179,8898,9079,7845,7845,9409,9420,7859,7658,9351,9179,8186,8183,8187,8189,7318,9057,7563,7956,7047,7412,8574,8130,9412,8633,8869,6670,8612,7430,7428,5672,5672,7468,7492,8041,4801,4317,7399,7495,8124,9401,8204,8186,8183,8187,8189,9421,7318,9057,7049,7849,8709,7956,7431,7411,8485,8569,8130,7432,8869,7059,9392,6670,8612,7048,9392,7050,5648,4799,4689,4332,7372,7504,7499,8132,7398,9279,4332,5026,9281,8570,5651,9295,8186,8183,8187,8189,7318,7051,9057,8709,7956,7421,8130,7791,7052,7824,8869,8763,9118,7859,7440,8496,9196,6670,8612,7422,8568,8486,7310,9009,7799,5154,8044,5154,4800,7497,4317,9064,8113,5154,9176,8014,6700,8952,8532,8183,8186,8187,8189,7318,7956,7058,7439,7425,7412,7484,8130,8869,9337,5888,5888,7055,9118,7063,5230,9196,8612,6670,8488,7384,8045,5673,4332,7501,7500,8255,9175,9285,7377,7930,7814,4332,9146,8793,7826,7826,7826,8137,7859,7787,8183,8186,8187,8189,7318,8643,9235,7053,7460,7956,8130,8632,8869,7461,9118,9196,8047,8612,6670,9388,7498,6720,7931,8854,9062,9201,8876,7915,9416,9353,9188,9335,8934,9318,7859,7771,7787,8684,8183,8186,8187,8189,9388,9236,9234,7956,7391,9196,9276,8467,7243,8130,8869,9424,9402,9230,9348,9118,6990,9396,9433,9340,7756,8994,7567,6929,7824,8994,8612,8997,6990,7688,6670,9364,9420,8771,8647,8927,8670,7872,9180,8994,7879,7755,7542,7452,9432,8928,7859,7270,9417,9417,7613,7787,8684,7613,8183,8186,8187,8189,9388,7956,9098,9196,8130,8892,8869,8867,8409,9274,7849,7675,9342,9118,9219,7933,7634,6990,6380,9433,7756,7765,8994,89,9145,9204,8552,7798,7692,8612,8994,6990,6670,8546,7658,9189,7749,8994,7839,9363,8928,7859,7658,9112,7270,9417,8187,8183,8186,8189,7318,7956,7047,7412,8130,8630,8869,8612,6670,7430,7428,5672,5672,7468,7492,4801,4317,7399,7495,8124,8204,9004,9359,8187,8183,8186,8189,9421,7318,7049,8709,7956,7431,7411,8485,8569,8130,7270,9417,7432,8869,7059,8612,6670,7048,7050,5648,4799,4689,4332,7372,7504,7499,8132,9279,4332,5026,9281,5651,9356,7925,8187,8186,8183,8189,7051,7318,8709,7956,7421,8130,7270,9417,7052,8869,8763,9118,7440,8496,9186,9225,8612,6670,7422,8568,8486,7310,7799,5154,8044,5154,4800,7497,9185,4317,9056,9056,9064,8113,5154,8014,6700,8604,8187,8186,8183,8189,7318,7956,7058,7439,7425,7412,7484,8232,8130,7270,9417,9104,8869,7055,9118,9225,8612,6670,8571,8488,7384,8045,5673,4332,7501,7500,8255,7377,7930,8690,4332,7719,9191,8187,8186,8183,8189,7318,8643,9235,7053,7460,7824,7563,7956,8130,8632,8869,7461,9118,8047,9225,8612,6670,7459,7498,8683,6720,7931,9231,9093,8605,8876,9416,9203,7722,9355,9425,8290,7787,8684,8187,9237,8186,8183,8189,9234,7956,7054,8946,8946,9225,7243,8130,8879,9240,9241,9244,9245,9246,9247,9248,9253,9256,9261,9263,9264,9265,9266,9239,9242,9243,9249,9250,9251,9252,9254,9255,9257,9258,9259,9260,9262,9268,8869,8377,9386,5247,9118,9271,8908,8377,7824,7772,9114,8612,7563,9015,7772,7688,6670,9275,7658,7542,7859,7658,7915,7840,7787,8684,8187,8186,8183,8189,7956,9225,8130,8879,9101,8869,8409,7849,9118,6990,6387,8908,7765,9024,9218,7929,7798,8612,7649,7629,7546,6990,7688,6670,8546,9092,7472,7658,9218,7859,5921,7732,9423,9366,8766,8565,7658,8187,8186,8183,8189,7318,7956,7047,7412,9423,8766,8130,8633,8869,9269,8612,6670,7430,7428,5672,5672,7468,7492,4801,4317,7399,7495,8124,8204,8187,8186,8183,8189,9421,7318,7049,8709,7956,7431,7411,8485,8569,9423,8130,7432,8869,7859,7059,8612,6670,7048,7050,5648,4799,4689,4332,7372,7504,7499,8132,7398,9279,4332,5026,9281,5651,8543,8187,8186,8183,8189,7051,7318,7800,8709,7956,7421,8130,7052,8869,8763,9118,7440,8496,9222,8612,6670,7422,8486,8568,7310,7799,5154,8044,7723,5154,4800,7497,4317,8491,8491,9064,8113,5154,9085,8014,6700,7876,8187,8186,8183,8189,7318,7956,7058,7439,7425,7412,7484,8130,8869,7055,9118,9223,7063,9222,8612,6670,7397,8488,7384,8045,5673,4332,7501,7500,8255,7377,7930,4332,9022,7859,9323,9380,8187,8186,8183,8189,9422"></div>
+<div data-event-location-uids="1447,0,0,2306,194,7109,372,0,7692,1341,2735,407,6845,6845,395,5291,395,215,84,395,395,2905,6866,372,6077,395,2,385,385,2906,1339,385,1447,0,194,2306,6845,7109,2,2,372,262,6845,7692,194,2735,407,194,194,395,395,395,395,0,5293,6866,395,412,395,395,412,395,336,322,385,385,2906,385,1447,194,0,6774,2306,7077,372,194,7692,2744,6218,264,6845,0,2735,6326,5154,407,7077,2,2,395,6300,395,395,395,395,6866,4755,395,6270,7596,262,0,395,395,395,262,0,278,335,288,6302,327,262,262,385,385,2906,385,1447,0,262,2306,194,6845,0,7109,4198,372,262,7692,194,264,2735,6326,407,262,0,5291,395,395,395,6077,5293,395,2905,6104,262,288,395,5392,6301,322,266,385,385,2906,385,1447,0,0,0,194,0,262,266,2306,372,0,7692,202,0,264,6326,395,412,2735,407,2857,395,6104,96,6270,369,5164,262,271,262,262,266,7579,7030,385,385,2906,385,0,0,0,2306,194,6326,454,272,2849,372,271,0,7692,303,262,297,2179,2901,264,132,262,6291,356,261,264,264,303,6299,0,429,407,2735,429,429,261,412,266,356,318,261,146,429,262,266,429,429,4755,266,7579,385,385,385,2906,0,2306,6326,334,6293,272,372,334,334,34,353,6270,7692,6145,325,6299,264,34,34,345,6943,271,6943,264,334,412,132,6291,334,356,297,356,356,356,264,429,334,429,261,6305,34,288,5208,6304,6943,5392,289,6943,407,334,323,2735,0,6270,261,334,262,299,34,266,0,5522,264,334,261,34,261,6270,5874,5874,6690,96,262,266,334,34,385,385,385,2906,1447,0,266,2306,194,7109,2,372,429,0,7692,407,2735,6845,6845,395,395,215,84,5980,395,395,2905,6866,372,0,395,385,385,385,2906,1339,1447,0,194,262,6774,2306,6845,7109,2,2,372,6845,7692,194,278,407,2735,194,278,194,395,395,395,395,0,5293,6866,395,5029,412,395,395,412,2,395,336,385,385,385,2906,1447,194,0,6774,2306,7077,372,353,194,262,7692,2744,264,262,6845,0,6326,407,2735,7077,2,2,395,288,6300,395,395,395,395,6866,395,6270,7596,395,264,395,395,264,18,385,385,385,2906,1447,2306,194,6845,0,7109,4198,372,7692,345,5392,5392,194,264,194,264,6326,2735,407,0,5291,395,395,395,6077,5293,395,264,6774,2905,6104,271,395,6297,5163,6943,6943,6943,262,262,266,385,385,385,2906,1447,0,0,194,0,2306,372,0,7692,0,264,6326,395,2735,407,323,2857,395,6104,6943,6270,275,429,262,429,323,272,5347,0,5164,262,262,266,7579,385,385,385,2906,323,0,0,2306,202,6326,412,1670,2849,372,7692,1034,1034,5293,40,264,6943,7737,132,0,6291,264,5392,7010,262,264,2735,307,6943,264,407,264,96,96,0,1722,7010,264,34,264,330,290,318,5291,96,0,262,429,429,429,262,266,7579,262,385,385,385,2906,323,2306,296,6326,372,303,7692,6295,325,412,262,5874,1602,264,34,287,271,6943,264,132,6291,356,264,279,305,34,5392,6304,6218,2735,264,6943,407,2502,266,34,286,264,264,6301,0,262,266,7702,429,429,385,385,385,2906,1447,2306,194,7109,372,0,7692,2735,407,6845,6845,395,395,215,84,395,395,2905,6866,372,395,264,6301,385,385,385,2906,1339,1447,194,6774,2306,6845,7109,2,2,372,429,429,6845,7692,194,2735,407,194,194,395,395,395,395,0,5293,6866,395,412,395,395,412,395,336,262,385,385,385,2906,194,1447,6774,2306,7077,372,429,429,194,7692,2744,264,6845,0,278,6326,2735,407,7077,2,2,395,6300,395,395,395,395,6866,278,395,40,40,6270,7596,395,395,395,327,385,385,385,2906,1447,2306,194,6845,0,7109,4198,6,372,429,429,6297,7692,194,264,6326,2735,407,2,0,5291,395,395,395,6077,5293,395,2905,6104,271,395,290,262,385,385,385,2906,1447,0,0,194,0,262,266,2306,372,0,7692,0,264,395,6326,2735,407,2901,2857,0,395,6104,5293,264,5164,429,429,333,4892,7580,96,262,266,7579,385,6610,385,385,2906,0,2306,194,454,454,6326,2849,372,6291,7602,941,7613,7610,7624,7612,7601,7611,7606,7617,7618,7615,7614,7616,7622,7604,7626,7608,7625,7623,7607,7619,7627,7603,7621,7620,7624,7609,7605,7692,315,6301,264,264,412,6291,315,262,264,299,2735,266,307,264,264,407,412,266,318,262,266,262,262,266,7579,385,385,385,2906,2306,6326,372,6291,296,7692,325,262,264,6943,264,6291,356,297,34,5208,6304,2735,318,289,6299,6943,264,407,2502,299,5291,266,34,262,261,364,429,7580,429,146,266,385,385,385,2906,1447,2306,194,7109,429,429,372,0,7692,412,2735,407,6845,6845,395,395,215,84,395,395,2905,6866,372,395,385,385,385,2906,1339,1447,194,6774,2306,6845,7109,2,2,429,372,6845,7692,262,194,2735,407,194,194,395,395,395,395,0,5293,6866,395,5029,412,395,395,412,395,322,385,385,385,2906,194,1447,262,6774,2306,7077,372,194,7692,2744,264,6845,0,6326,2735,407,7077,2,2,395,6300,395,395,290,395,395,6866,395,40,40,6270,7596,395,454,395,395,262,385,385,385,2906,1447,2306,194,6845,0,7109,4198,372,7692,194,264,271,194,6326,2735,407,6707,0,5291,395,395,395,6077,5293,395,2905,6104,395,271,262,336,7580,385,385,385,2906,1425"></div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<h2>1070 Veranstaltungen gefunden.</h2>
+<p>Weil Pläne sich ändern können: Bitte erkundigen Sie sich beim Veranstalter, ob die Veranstaltung wie geplant stattfindet. Alle Angaben ohne Gewähr.</p>
+<div class="modul-geomap" id="geomapId_819">
+	<div class="geomap-main">
+		<div id="geomapId_819_container" class="geomap-container">
+			<div id="geomapId_819_map"
+				 class="geomap-map interactive-map tx_pb_famport_map"
+				 data-map-enable="1"
+				 data-map-type="events"
+				 data-map-popup-class="tx_pb_famport_map_popup_events"
+				 data-map-initial-zoom="10"
+				 data-map-event-detail-page="/veranstaltungen-3"
+				 data-map-data-url="/?type=1750076607"
+				 data-map-locale-windows="Verwenden Sie STRG + Scrollen zum Zoomen der Karte."
+				 data-map-locale-mac="Verwenden Sie ⌘ + Scrollen zum Zoomen der Karte."
+				 data-map-locale-mobile="Verschieben Sie die Karte mit zwei Fingern."
+				 style="height:600px;">
+				<div class="tx_pb_famport_map_loading">
+					<div>Loading Map....</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</div>
+<div id="geomapId_819_skipmap"><p class="aural">Ende der Karte.</p></div>
+
+<div style="position: relative">
+	<div  id="eventresults" style="position: absolute; top: -100px;"></div>
+</div>
+
+
+<div style="margin-top:50px;" class="eventresults">
+	
+		<section class="modul-multiteaser 1234">
+			<ul class="flexgrid grid--1">
+				
+					
+					<li>
+						<article class="modul-teaser" data-add-clickable-area="smart">
+							
+									<div class="image">
+										<div class="image__image">
+											<img src="https://jup.berlin/sites/default/files/styles/api/public/2025-07/instaweb_nur_weil_._._._28.07-01.08.2025_9-16_uhr_fuer_kinder_von_6-12_jahren_tn_betrag_30eu_anmeldung_unter_kontaktpumpeberlin.de_.png?itok=bOQGi5Bv"
+													width="800"
+													alt=""
+													title="" />
+										</div>
+										<p class="image__copyright">
+											
+										</p>
+									</div>
+								
+
+
+							<h3 class="title">TheaterFerienWoche &#039;Nur weil . . . &#039;</h3>
+
+							<div class="teaser__meta">
+								<p class="text--meta">
+									
+											
+													07.09.2026
+													 |
+													09:00
+													Uhr
+												
+										
+									
+										| Mitte
+									
+									
+								</p>
+							</div>
+							<div class="inner">
+								<p class="text">
+									Wir arbeiten in der ersten Ferienwoche zum Buch „Nur weil…“ von Matthew Mc Conaughey. Ein schönes Buch, dass sich mit Widersprüchen beschäftigt.Das Buch eigentlich sich wunderbar mit Kindern über sich selbst und das Leben ins Gespräch zu kommen.Das Buch soll unter anderem bewusst machen,-sich nicht&hellip;
+									
+									<a aria-label="TheaterFerienWoche &#039;Nur weil . . . &#039; öffen" class="more" title="TheaterFerienWoche &#039;Nur weil . . . &#039; öffen" href="/veranstaltungen-3/termin/theaterferienwoche-nur-weil-20260907-6">
+										Mehr
+									</a>
+								</p>
+							</div>
+						</article>
+					</li>
+				
+					
+					<li>
+						<article class="modul-teaser" data-add-clickable-area="smart">
+							
+									<div class="image">
+										<div class="image__image">
+											<img alt="Placholder Image" title="Placeholder Image" src="/_assets/261d86cbd1eb8b5cf0c75e0f12071210/images/240320_Familienportal_Collagestil_Kalender_low.jpg" width="980" height="736" />
+										</div>
+									</div>
+								
+
+
+							<h3 class="title">Workshops rund um den Bewerbungsprozess</h3>
+
+							<div class="teaser__meta">
+								<p class="text--meta">
+									
+											
+													07.09.2026
+													 |
+													09:00
+													Uhr
+												
+										
+									
+										| Tempelhof-Schöneberg
+									
+									
+								</p>
+							</div>
+							<div class="inner">
+								<p class="text">
+									Du möchtest eine Arbeit finden? Wir unterstützen dich dabei.
+
+Für Frauen mit Migrationserfahrung bieten wir im September eine kostenlose Workshop-Reihe rund um die Bewerbung an.
+
+Gemeinsam arbeiten wir an:
+
+deinen Stärken – 07.09.
+deinen beruflichen Zielen – 08.09.
+deinem Lebenslauf –&hellip;
+									
+									<a aria-label="Workshops rund um den Bewerbungsprozess öffen" class="more" title="Workshops rund um den Bewerbungsprozess öffen" href="/veranstaltungen-3/termin/workshops-rund-um-den-bewerbungsprozess-20260907">
+										Mehr
+									</a>
+								</p>
+							</div>
+						</article>
+					</li>
+				
+					
+					<li>
+						<article class="modul-teaser" data-add-clickable-area="smart">
+							
+									<div class="image">
+										<div class="image__image">
+											<img alt="Placholder Image" title="Placeholder Image" src="/_assets/261d86cbd1eb8b5cf0c75e0f12071210/images/240320_Familienportal_Collagestil_Kalender_low.jpg" width="980" height="736" />
+										</div>
+									</div>
+								
+
+
+							<h3 class="title">Workshop: Erkenne deine Stärken und nutze sie für deine Bewerbung!</h3>
+
+							<div class="teaser__meta">
+								<p class="text--meta">
+									
+											
+													07.09.2026
+													 |
+													09:00
+													Uhr
+												
+										
+									
+										| Tempelhof-Schöneberg
+									
+									
+								</p>
+							</div>
+							<div class="inner">
+								<p class="text">
+									Kostenloser Workshop für Frauen mit Migrationserfahrung
+
+Stärken entdecken – Finde heraus, was du besonders gut kannst.
+
+Gemeinsam finden wir in diesem Workshop heraus, was deine Stärken sind und wie du sie wirkungsvoll in deine Bewerbung einbringst. Finde heraus was dich ausmacht und bringe&hellip;
+									
+									<a aria-label="Workshop: Erkenne deine Stärken und nutze sie für deine Bewerbung! öffen" class="more" title="Workshop: Erkenne deine Stärken und nutze sie für deine Bewerbung! öffen" href="/veranstaltungen-3/termin/workshop-erkenne-deine-staerken-und-nutze-sie-fuer-deine-bewerbung">
+										Mehr
+									</a>
+								</p>
+							</div>
+						</article>
+					</li>
+				
+					
+					<li>
+						<article class="modul-teaser" data-add-clickable-area="smart">
+							
+									<div class="image">
+										<div class="image__image">
+											<img alt="Placholder Image" title="Placeholder Image" src="/_assets/261d86cbd1eb8b5cf0c75e0f12071210/images/240320_Familienportal_Collagestil_Kalender_low.jpg" width="980" height="736" />
+										</div>
+									</div>
+								
+
+
+							<h3 class="title">Familiensportfest</h3>
+
+							<div class="teaser__meta">
+								<p class="text--meta">
+									
+											
+													07.09.2026
+													 |
+													10:00
+													Uhr
+												
+										
+									
+										| Lichtenberg
+									
+									
+								</p>
+							</div>
+							<div class="inner">
+								<p class="text">
+									Der Landessportbund Berlin lädt in diesem Jahr zum zentralen Familiensportfest ein – erstmals auf dem Gelände des Sportforums Berlin in Hohenschönhausen. Am 13. und 14. Juni 2026 präsentieren Berliner Vereine und Verbände von 10 bis 17 Uhr kostenlos ihre vielseitigen Angebote und laden Familien zum&hellip;
+									
+									<a aria-label="Familiensportfest öffen" class="more" title="Familiensportfest öffen" href="/veranstaltungen-3/termin/familiensportfest-1-20260907-10">
+										Mehr
+									</a>
+								</p>
+							</div>
+						</article>
+					</li>
+				
+					
+					<li>
+						<article class="modul-teaser" data-add-clickable-area="smart">
+							
+									<div class="image">
+										<div class="image__image">
+											<img alt="Placholder Image" title="Placeholder Image" src="/_assets/261d86cbd1eb8b5cf0c75e0f12071210/images/240320_Familienportal_Collagestil_Kalender_low.jpg" width="980" height="736" />
+										</div>
+									</div>
+								
+
+
+							<h3 class="title">Deutsch sprechen für Frauen</h3>
+
+							<div class="teaser__meta">
+								<p class="text--meta">
+									
+											
+													07.09.2026
+													 |
+													10:00
+													Uhr
+												
+										
+									
+										| Marzahn-Hellersdorf
+									
+									
+								</p>
+							</div>
+							<div class="inner">
+								<p class="text">
+									Zusammen sein und Deutsch üben: Sprechen und Verstehen, Schreiben und Lesen sind wichtige Fähigkeiten um sich im Alltag und Job zurecht zu finden.
+
+In entspannter Atmosphäre sprechen wir über Themen, die in deinem Alltag interessant sind und nähern uns speziellen Herausforderungen der deutschen&hellip;
+									
+									<a aria-label="Deutsch sprechen für Frauen öffen" class="more" title="Deutsch sprechen für Frauen öffen" href="/veranstaltungen-3/termin/deutsch-sprechen-fuer-frauen-20260907-35">
+										Mehr
+									</a>
+								</p>
+							</div>
+						</article>
+					</li>
+				
+					
+					<li>
+						<article class="modul-teaser" data-add-clickable-area="smart">
+							
+									<div class="image">
+										<div class="image__image">
+											<img alt="Placholder Image" title="Placeholder Image" src="/_assets/261d86cbd1eb8b5cf0c75e0f12071210/images/240320_Familienportal_Collagestil_Kalender_low.jpg" width="980" height="736" />
+										</div>
+									</div>
+								
+
+
+							<h3 class="title">Krabbel-Gruppe</h3>
+
+							<div class="teaser__meta">
+								<p class="text--meta">
+									
+											
+													07.09.2026
+													 |
+													10:00
+													Uhr
+												
+										
+									
+										| Mitte
+									
+									
+								</p>
+							</div>
+							<div class="inner">
+								<p class="text">
+									Unsere Spielgruppe für alle Kinder im Krabbel-Alter ist dafür da andere Familien mit gleichaltrigen Kindern kennenzulernen, die Kinder an einen neuen Raum zu gewöhnen und einige Kinder auch schon etwas auf die Atmosphäre in der Kita einzustimmen.
+
+auch für Kinder, die schon etwas laufen können,&hellip;
+									
+									<a aria-label="Krabbel-Gruppe öffen" class="more" title="Krabbel-Gruppe öffen" href="/veranstaltungen-3/termin/krabbel-gruppe-20260907-57">
+										Mehr
+									</a>
+								</p>
+							</div>
+						</article>
+					</li>
+				
+					
+					<li>
+						<article class="modul-teaser" data-add-clickable-area="smart">
+							
+									<div class="image">
+										<div class="image__image">
+											<img alt="Placholder Image" title="Placeholder Image" src="/_assets/261d86cbd1eb8b5cf0c75e0f12071210/images/240320_Familienportal_Collagestil_Kalender_low.jpg" width="980" height="736" />
+										</div>
+									</div>
+								
+
+
+							<h3 class="title">Ferienworkshop im MAXIM, mit THEATER – ENTDECKEN – GESTALTEN</h3>
+
+							<div class="teaser__meta">
+								<p class="text--meta">
+									
+											
+													07.09.2026
+													 |
+													10:00
+													Uhr
+												
+										
+									
+										| Pankow
+									
+									
+								</p>
+							</div>
+							<div class="inner">
+								<p class="text">
+									In der Ferienwoche vom 27. bis zum 31. Oktober 2025 geht es im Theaterworkshop kreativ und forschungsreich weiter.Wie kommt das Milchhäuschen am Weißen See zu seinem Namen? Warum hatte das 1911 in Weißensee eröffnete Kinderkrankenhaus einen eigenen Kuhstall und wie konnte über Jahrzehnte ein großer&hellip;
+									
+									<a aria-label="Ferienworkshop im MAXIM, mit THEATER – ENTDECKEN – GESTALTEN öffen" class="more" title="Ferienworkshop im MAXIM, mit THEATER – ENTDECKEN – GESTALTEN öffen" href="/veranstaltungen-3/termin/ferienworkshop-im-maxim-mit-theater-entdecken-gestalten-20260907-10">
+										Mehr
+									</a>
+								</p>
+							</div>
+						</article>
+					</li>
+				
+					
+					<li>
+						<article class="modul-teaser" data-add-clickable-area="smart">
+							
+									<div class="image">
+										<div class="image__image">
+											<img alt="Placholder Image" title="Placeholder Image" src="/_assets/261d86cbd1eb8b5cf0c75e0f12071210/images/240320_Familienportal_Collagestil_Kalender_low.jpg" width="980" height="736" />
+										</div>
+									</div>
+								
+
+
+							<h3 class="title">Queere Krabbelgruppe in Mahlsdorf</h3>
+
+							<div class="teaser__meta">
+								<p class="text--meta">
+									
+											
+													07.09.2026
+													 |
+													10:00
+													Uhr
+												
+										
+									
+										| Marzahn-Hellersdorf
+									
+									
+								</p>
+							</div>
+							<div class="inner">
+								<p class="text">
+									Anmeldung bitte unter: bere@leslefam.de
+
+Bei der Krabbelgruppe und dem Babytreff sind alle queeren Familien herzlich willkommen, deren Kind gerade geboren, liegend, rollend, robbend, krabbelnd oder bereits laufend ist.
+
+Jeden Montag bieten wir im wöchentlichen Wechsel mal in der BeRe und mal im&hellip;
+									
+									<a aria-label="Queere Krabbelgruppe in Mahlsdorf öffen" class="more" title="Queere Krabbelgruppe in Mahlsdorf öffen" href="/veranstaltungen-3/termin/queere-krabbelgruppe-in-mahlsdorf-20260907-5">
+										Mehr
+									</a>
+								</p>
+							</div>
+						</article>
+					</li>
+				
+					
+					<li>
+						<article class="modul-teaser" data-add-clickable-area="smart">
+							
+									<div class="image">
+										<div class="image__image">
+											<img alt="Placholder Image" title="Placeholder Image" src="/_assets/261d86cbd1eb8b5cf0c75e0f12071210/images/240320_Familienportal_Collagestil_Kalender_low.jpg" width="980" height="736" />
+										</div>
+									</div>
+								
+
+
+							<h3 class="title">Kleine Reise zum Selbst(-vertrauen)</h3>
+
+							<div class="teaser__meta">
+								<p class="text--meta">
+									
+											
+													07.09.2026
+													 |
+													11:00
+													Uhr
+												
+										
+									
+										| Reinickendorf
+									
+									
+								</p>
+							</div>
+							<div class="inner">
+								<p class="text">
+									Stärkende Gruppe für MädchenMit unserem Gruppenangebot wollen wir Mädchen dabei unterstützen, eigene Stärken und Ressourcen zu entdecken und vermeintliche Schwächen zu minimieren. Im Kontakt mit anderen ist es wichtig, eigene Bedürfnisse sozial-kompetent vertreten und individuelle Grenzen setzen zu&hellip;
+									
+									<a aria-label="Kleine Reise zum Selbst(-vertrauen) öffen" class="more" title="Kleine Reise zum Selbst(-vertrauen) öffen" href="/veranstaltungen-3/termin/kleine-reise-zum-selbst-vertrauen-20260907-27">
+										Mehr
+									</a>
+								</p>
+							</div>
+						</article>
+					</li>
+				
+					
+					<li>
+						<article class="modul-teaser" data-add-clickable-area="smart">
+							
+									<div class="image">
+										<div class="image__image">
+											<img alt="Placholder Image" title="Placeholder Image" src="/_assets/261d86cbd1eb8b5cf0c75e0f12071210/images/240320_Familienportal_Collagestil_Kalender_low.jpg" width="980" height="736" />
+										</div>
+									</div>
+								
+
+
+							<h3 class="title">Games on Wheels – Pimp my Radkappe</h3>
+
+							<div class="teaser__meta">
+								<p class="text--meta">
+									
+											
+													07.09.2026
+													 |
+													11:00
+													Uhr
+												
+										
+									
+										| Marzahn-Hellersdorf
+									
+									
+								</p>
+							</div>
+							<div class="inner">
+								<p class="text">
+									Bereit für dein nächstes Kreativ-Level?
+
+Schnapp dir bei uns eine alte Radkappe und verpasse ihr ein echtes Level-Up!
+
+In unserer Werkstatt gestaltest du mit Spraydosen, Moosgummi, Heißkleber &amp; Co. dein persönliches Gaming-Motiv – ob leuchtender Power-Up-Star, Minecraft Pixel-Art, Pokémon-Face&hellip;
+									
+									<a aria-label="Games on Wheels – Pimp my Radkappe öffen" class="more" title="Games on Wheels – Pimp my Radkappe öffen" href="/veranstaltungen-3/termin/games-on-wheels-pimp-my-radkappe">
+										Mehr
+									</a>
+								</p>
+							</div>
+						</article>
+					</li>
+				
+			</ul>
+		</section>
+		<div style="margin-top:30px;" id="kesearch_pagebrowser_bottom">
+			
+
+	<nav class="pagination" aria-label="Seite wechseln">
+		<ul>
+			
+					<li class="pagination-previous disabled">
+						<div><i class="fas fa-chevron-left" aria-hidden="true"></i> <span class="aural">Seite zurück</span></div>
+					</li>
+				
+			
+			
+				<li class="active">
+					<a up-follow="" up-target="#kesearch_pagebrowser_bottom, .eventresults" up-scroll="#eventresults" href="/veranstaltungen/s?currentPage=1&amp;tx_kesearch_pi1%5Bcontroller%5D=EventSearchResult&amp;tx_kesearch_pi1%5Bfilter_19%5D%5B0%5D=KinderJugendliche&amp;tx_kesearch_pi1%5Bfilter_22_end%5D=1790812799&amp;tx_kesearch_pi1%5Bfilter_22_start%5D=1788739200&amp;cHash=0cad982e6a83476bd9695cd220f18cbf">1</a>
+				</li>
+			
+				<li class="">
+					<a up-follow="" up-target="#kesearch_pagebrowser_bottom, .eventresults" up-scroll="#eventresults" href="/veranstaltungen/s?currentPage=2&amp;tx_kesearch_pi1%5Bcontroller%5D=EventSearchResult&amp;tx_kesearch_pi1%5Bfilter_19%5D%5B0%5D=KinderJugendliche&amp;tx_kesearch_pi1%5Bfilter_22_end%5D=1790812799&amp;tx_kesearch_pi1%5Bfilter_22_start%5D=1788739200&amp;cHash=3832ae0e22347947c2abb41e0140261e">2</a>
+				</li>
+			
+				<li class="">
+					<a up-follow="" up-target="#kesearch_pagebrowser_bottom, .eventresults" up-scroll="#eventresults" href="/veranstaltungen/s?currentPage=3&amp;tx_kesearch_pi1%5Bcontroller%5D=EventSearchResult&amp;tx_kesearch_pi1%5Bfilter_19%5D%5B0%5D=KinderJugendliche&amp;tx_kesearch_pi1%5Bfilter_22_end%5D=1790812799&amp;tx_kesearch_pi1%5Bfilter_22_start%5D=1788739200&amp;cHash=86399a50e720d8d8fdfd855268563550">3</a>
+				</li>
+			
+				<li class="">
+					<a up-follow="" up-target="#kesearch_pagebrowser_bottom, .eventresults" up-scroll="#eventresults" href="/veranstaltungen/s?currentPage=4&amp;tx_kesearch_pi1%5Bcontroller%5D=EventSearchResult&amp;tx_kesearch_pi1%5Bfilter_19%5D%5B0%5D=KinderJugendliche&amp;tx_kesearch_pi1%5Bfilter_22_end%5D=1790812799&amp;tx_kesearch_pi1%5Bfilter_22_start%5D=1788739200&amp;cHash=77ec97536b5c4df7196d326fccc6e58c">4</a>
+				</li>
+			
+				<li class="">
+					<a up-follow="" up-target="#kesearch_pagebrowser_bottom, .eventresults" up-scroll="#eventresults" href="/veranstaltungen/s?currentPage=5&amp;tx_kesearch_pi1%5Bcontroller%5D=EventSearchResult&amp;tx_kesearch_pi1%5Bfilter_19%5D%5B0%5D=KinderJugendliche&amp;tx_kesearch_pi1%5Bfilter_22_end%5D=1790812799&amp;tx_kesearch_pi1%5Bfilter_22_start%5D=1788739200&amp;cHash=e7bf6f340aed000f4e2460ce6c8fde6e">5</a>
+				</li>
+			
+				<li class="">
+					<a up-follow="" up-target="#kesearch_pagebrowser_bottom, .eventresults" up-scroll="#eventresults" href="/veranstaltungen/s?currentPage=6&amp;tx_kesearch_pi1%5Bcontroller%5D=EventSearchResult&amp;tx_kesearch_pi1%5Bfilter_19%5D%5B0%5D=KinderJugendliche&amp;tx_kesearch_pi1%5Bfilter_22_end%5D=1790812799&amp;tx_kesearch_pi1%5Bfilter_22_start%5D=1788739200&amp;cHash=21e5ece981d6fe659a8e2df5bb25a6f7">6</a>
+				</li>
+			
+				<li class="">
+					<a up-follow="" up-target="#kesearch_pagebrowser_bottom, .eventresults" up-scroll="#eventresults" href="/veranstaltungen/s?currentPage=7&amp;tx_kesearch_pi1%5Bcontroller%5D=EventSearchResult&amp;tx_kesearch_pi1%5Bfilter_19%5D%5B0%5D=KinderJugendliche&amp;tx_kesearch_pi1%5Bfilter_22_end%5D=1790812799&amp;tx_kesearch_pi1%5Bfilter_22_start%5D=1788739200&amp;cHash=68f85ae12be9cfb19a5a5f0b6cb1fb0c">7</a>
+				</li>
+			
+				<li class="">
+					<a up-follow="" up-target="#kesearch_pagebrowser_bottom, .eventresults" up-scroll="#eventresults" href="/veranstaltungen/s?currentPage=8&amp;tx_kesearch_pi1%5Bcontroller%5D=EventSearchResult&amp;tx_kesearch_pi1%5Bfilter_19%5D%5B0%5D=KinderJugendliche&amp;tx_kesearch_pi1%5Bfilter_22_end%5D=1790812799&amp;tx_kesearch_pi1%5Bfilter_22_start%5D=1788739200&amp;cHash=cba86db23de9dd3b3e3bce958ae88660">8</a>
+				</li>
+			
+				<li class="">
+					<a up-follow="" up-target="#kesearch_pagebrowser_bottom, .eventresults" up-scroll="#eventresults" href="/veranstaltungen/s?currentPage=9&amp;tx_kesearch_pi1%5Bcontroller%5D=EventSearchResult&amp;tx_kesearch_pi1%5Bfilter_19%5D%5B0%5D=KinderJugendliche&amp;tx_kesearch_pi1%5Bfilter_22_end%5D=1790812799&amp;tx_kesearch_pi1%5Bfilter_22_start%5D=1788739200&amp;cHash=f3955172379c3f8b33247579a06dd3ab">9</a>
+				</li>
+			
+				<li class="">
+					<a up-follow="" up-target="#kesearch_pagebrowser_bottom, .eventresults" up-scroll="#eventresults" href="/veranstaltungen/s?currentPage=10&amp;tx_kesearch_pi1%5Bcontroller%5D=EventSearchResult&amp;tx_kesearch_pi1%5Bfilter_19%5D%5B0%5D=KinderJugendliche&amp;tx_kesearch_pi1%5Bfilter_22_end%5D=1790812799&amp;tx_kesearch_pi1%5Bfilter_22_start%5D=1788739200&amp;cHash=1ea8d71cb0cc5a0ca6a60311c4690222">10</a>
+				</li>
+			
+				<li class="">
+					<a up-follow="" up-target="#kesearch_pagebrowser_bottom, .eventresults" up-scroll="#eventresults" href="/veranstaltungen/s?currentPage=11&amp;tx_kesearch_pi1%5Bcontroller%5D=EventSearchResult&amp;tx_kesearch_pi1%5Bfilter_19%5D%5B0%5D=KinderJugendliche&amp;tx_kesearch_pi1%5Bfilter_22_end%5D=1790812799&amp;tx_kesearch_pi1%5Bfilter_22_start%5D=1788739200&amp;cHash=cc4d4feb150b4f7a5cf73408f34831f8">11</a>
+				</li>
+			
+				<li class="">
+					<a up-follow="" up-target="#kesearch_pagebrowser_bottom, .eventresults" up-scroll="#eventresults" href="/veranstaltungen/s?currentPage=12&amp;tx_kesearch_pi1%5Bcontroller%5D=EventSearchResult&amp;tx_kesearch_pi1%5Bfilter_19%5D%5B0%5D=KinderJugendliche&amp;tx_kesearch_pi1%5Bfilter_22_end%5D=1790812799&amp;tx_kesearch_pi1%5Bfilter_22_start%5D=1788739200&amp;cHash=f4708c820127cd14d3ec1040d59e8e41">12</a>
+				</li>
+			
+				<li class="">
+					<a up-follow="" up-target="#kesearch_pagebrowser_bottom, .eventresults" up-scroll="#eventresults" href="/veranstaltungen/s?currentPage=13&amp;tx_kesearch_pi1%5Bcontroller%5D=EventSearchResult&amp;tx_kesearch_pi1%5Bfilter_19%5D%5B0%5D=KinderJugendliche&amp;tx_kesearch_pi1%5Bfilter_22_end%5D=1790812799&amp;tx_kesearch_pi1%5Bfilter_22_start%5D=1788739200&amp;cHash=598fa33e1097fc808381c558981ab989">13</a>
+				</li>
+			
+				<li class="">
+					<a up-follow="" up-target="#kesearch_pagebrowser_bottom, .eventresults" up-scroll="#eventresults" href="/veranstaltungen/s?currentPage=14&amp;tx_kesearch_pi1%5Bcontroller%5D=EventSearchResult&amp;tx_kesearch_pi1%5Bfilter_19%5D%5B0%5D=KinderJugendliche&amp;tx_kesearch_pi1%5Bfilter_22_end%5D=1790812799&amp;tx_kesearch_pi1%5Bfilter_22_start%5D=1788739200&amp;cHash=727c840a72d323ed77601021dcf22fe1">14</a>
+				</li>
+			
+				<li class="">
+					<a up-follow="" up-target="#kesearch_pagebrowser_bottom, .eventresults" up-scroll="#eventresults" href="/veranstaltungen/s?currentPage=15&amp;tx_kesearch_pi1%5Bcontroller%5D=EventSearchResult&amp;tx_kesearch_pi1%5Bfilter_19%5D%5B0%5D=KinderJugendliche&amp;tx_kesearch_pi1%5Bfilter_22_end%5D=1790812799&amp;tx_kesearch_pi1%5Bfilter_22_start%5D=1788739200&amp;cHash=16b62580798147dd02924d100898abf6">15</a>
+				</li>
+			
+			
+				<li>…</li>
+			
+			
+					<li class="pager-item-next">
+						<a up-follow="" up-target="#kesearch_pagebrowser_bottom, .eventresults" up-scroll="#eventresults" href="/veranstaltungen/s?currentPage=2&amp;tx_kesearch_pi1%5Bcontroller%5D=EventSearchResult&amp;tx_kesearch_pi1%5Bfilter_19%5D%5B0%5D=KinderJugendliche&amp;tx_kesearch_pi1%5Bfilter_22_end%5D=1790812799&amp;tx_kesearch_pi1%5Bfilter_22_start%5D=1788739200&amp;cHash=3832ae0e22347947c2abb41e0140261e"><i class="fas fa-chevron-right" aria-hidden="true"></i></a>
+					</li>
+				
+		</ul>
+	</nav>
+
+		</div>
+	
+</div>
+
+</div><!--
+	=====================
+		Partials/Shariff.html
+--><div id="share" class="shariff" data-button-style="icon" data-services='["whatsapp", "facebook", "twitter", "linkedin", "info"]'></div><!-- https://github.com/heiseonline/shariff#options-data-attributes --></div><div id="layout-grid__area--contentfooter"><!-- CONTENT FOOTER --><div id="content-footer" role="contentinfo"><h2 class="aural">Weitere Informationen zu diesem Auftritt</h2><div class="content-footer__brand"></div><a class="to-top" href="#top">
+          Zum Seitenanfang
+        </a><div class="content-footer__links"><ul class="js-collapse-palm"><li class="initial-open"><h3 class="heading js-trigger">Familienportal</h3><ul><li><a title="Impressum" href="/impressum">
+                    Impressum
+                  </a></li><li><a title="Datenschutz" href="/datenschutz">
+                    Datenschutz
+                  </a></li><li><a href="/barrierefreiheit">
+                    Barrierefreiheit
+                  </a></li><li><a title="Über uns" href="/ueber-uns">
+                    Über uns
+                  </a></li></ul></li><li><h3 class="heading js-trigger">Inhalte</h3><ul><li><a href="/mein-kind" title="Mein Kind">
+                        Mein Kind
+                      </a></li><li><a href="/meine-familie" title="Meine Familie">
+                        Meine Familie
+                      </a></li><li><a href="/meine-themen" title="Meine Themen">
+                        Meine Themen
+                      </a></li><li><a href="/veranstaltungen" title="Veranstaltungen">
+                        Veranstaltungen
+                      </a></li><li><a href="/artikel/fuer-fachkraefte" title="Für Fachkräfte">
+                        Für Fachkräfte
+                      </a></li></ul></li><li><h3 class="heading js-trigger">Allgemein</h3><ul><li>
+                  
+                    Suche im Familienportal
+                   
+                </li><li><a href="/sitemap" title="Sitemap">
+                    Sitemap                  
+                  </a></li><li></li></ul></li></ul></div></div><section class="modul-accordion js-accordion feedback-form" id="accordion_feedback-form" aria-label="Feedback"><h2 class="title title--right js-accordion__heading">
+          Feedback
+        </h2><div class="js-accordion__panel inner" role="region" style="display: none"><h2>Fragen und Feedback</h2><p>Schreiben Sie uns, wenn Sie Fragen oder Feedback für uns haben.</p><a class="Feedback" href="#" target="und" data-mailto-token="iwehpk6bwieheajlknpwhWbwieheajxaenwp9xanhej:za?oqxfayp=Bnwcaj" data-mailto-vector="-4" title="Familienportal">Kontakt aufnehmen</a></div></section></div></main><footer id="footer" aria-label="Footer Berliner Familienportal"><div class="footer__brand"><div class="image__image"><a href="https://www.berlin.de" title="Zur Startseite von Berlin.de" target="_blank"><img class="logo" alt="Berlin.de Logo" src="/_assets/261d86cbd1eb8b5cf0c75e0f12071210/images/logo_berlin_m_negativ.svg" width="64" height="64" /></a></div></div><nav class="footer__links" aria-label="Weitere Bereiche auf Berlin.de"><h2 class="aural">Weitere Informationen zu Berlin.de</h2><ul class="js-collapse-palm"><li><h3 class="heading js-trigger">Service</h3><ul><li><a href="https://service.berlin.de" target="_blank">Online-Dienstleistungen</a></li><li><a href="https://service.berlin.de/app/" target="_blank">Service-App</a></li><li><a href="https://service.berlin.de/terminvereinbarung/" target="_blank">Termin vereinbaren</a></li><li><a href="https://www.berlin.de/moderne-verwaltung/buergerservice/am-telefon/" target="_blank">Bürgertelefon 115</a></li><li><a href="https://www.berlin.de/polizei/service/so-erreichen-sie-uns/artikel.532842.php" target="_blank">Notdienste</a></li><li><a href="https://www.berlin.de/ea/" target="_blank">Gewerbeservice</a></li></ul></li><li><h3 class="heading js-trigger">Behörden</h3><ul><li><a href="https://service.berlin.de/behoerden/" target="_blank">Behörden A bis Z</a></li><li><a href="https://service.berlin.de/senatsverwaltungen/" target="_blank">Senatsverwaltungen</a></li><li><a href="https://service.berlin.de/bezirksaemter/" target="_blank">Bezirksämter</a></li><li><a href="https://service.berlin.de/standorte/buergeraemter/" target="_blank">Bürgerämter</a></li><li><a href="https://service.berlin.de/jobcenter/" target="_blank">Jobcenter</a></li><li><a href="https://berlin.de/einwanderung/" target="_blank">Einwanderungsamt</a></li></ul></li><li><h3 class="heading js-trigger">Politik &amp; Verwaltung</h3><ul><li><a href="https://www.berlin.de/rbmskzl/" target="_blank">Landesregierung</a></li><li><a href="https://berlin.de/karriereportal/" target="_blank">Karriere im Land Berlin</a></li><li><a href="https://mein.berlin.de" target="_blank">Bürgerbeteiligung</a></li><li><a href="https://daten.berlin.de" target="_blank">Open Data</a></li><li><a href="https://berlin.de/vergabeplattform/" target="_blank">Vergaben</a></li><li><a href="https://www.berlin.de/buergeraktiv/" target="_blank">Ehrenamt</a></li></ul></li><li><h3 class="heading js-trigger">Aktuelles</h3><ul><li><a href="https://berlin.de/ukraine/" target="_blank">Ukraine</a></li><li><a href="https://berlin.de/presse/" target="_blank">Pressemitteilungen</a></li><li><a href="https://berlin.de/polizei/polizeimeldungen/" target="_blank">Polizeimeldungen</a></li><li><a href="https://berlin.de/land/kalender/" target="_blank">Veranstaltungen</a></li></ul></li><li><h3 class="heading js-trigger">Themen</h3><ul><li><a href="https://gemeinsamdigital.berlin.de" target="_blank">Gemeinsam Digital</a></li><li><a href="https://berlin.de/grundsteuer/" target="_blank">Grundsteuer</a></li><li><a href="https://verkehrswende.berlin.de" target="_blank">Verkehrswende</a></li><li><a href="https://berlin.de/moderne-verwaltung/" target="_blank">Moderne Verwaltung</a></li><li><a href="https://www.berlin.de/mauer/" target="_blank">Berliner Mauer</a></li></ul></li><li><h3 class="heading js-trigger">Weitere Informationen</h3><ul><li><a href="https://berlin.de/kultur-und-tickets/" target="_blank">Kultur &amp; Ausgehen</a></li><li><a href="https://berlin.de/tourismus/" target="_blank">Tourismus</a></li><li><a href="https://berlin.de/wirtschaft/" target="_blank">Wirtschaft</a></li><li><a href="https://berlin.de/special/" target="_blank">Stadtleben</a></li><li><a href="https://berlin.de/adressen/" target="_blank">BerlinFinder</a></li><li><a href="https://berlin.de/stadtplan/" target="_blank">Stadtplan</a></li></ul></li></ul></nav><div class="footer__claim"><p>Berlin.de ist ein Angebot des Landes Berlin.</p></div></footer>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/twbs-pagination/1.4.2/jquery.twbsPagination.js" async="1"></script>
+<script src="/_assets/261d86cbd1eb8b5cf0c75e0f12071210/Scripts/Flatpickr/confirmDate.js?1787901087" async="1"></script>
+<script src="/_assets/261d86cbd1eb8b5cf0c75e0f12071210/Scripts/Flatpickr/shortcut-buttons-flatpickr.min.js?1787901087" async="1"></script>
+<script src="/_assets/261d86cbd1eb8b5cf0c75e0f12071210/Scripts/main.js?1787901087"></script>
+<script src="/_assets/e799cca3073eabb617dfebf5f7cabc53/JavaScript/JQuery/jquery.min.js?1787901093"></script>
+<script src="/_assets/14f6863797b7ad1655a95cb04ffd7e6b/JavaScript/JQuery/jquery.autocomplete.min.js?1787901091"></script>
+<script src="/_assets/14f6863797b7ad1655a95cb04ffd7e6b/JavaScript/suggest_controller.js"></script>
+<script src="/_assets/14f6863797b7ad1655a95cb04ffd7e6b/JavaScript/filter_search.js"></script>
+
+<script src="/_assets/bfa2c2186fd7a266438b0b120d5580e7/JavaScript/frontend/repeatable-container.js?1787901111"></script>
+<script async="async" src="/_assets/2a58d7833cb34b2a67d37f5b750aa297/JavaScript/default_frontend.js?1787901117"></script>
+<script src="/_assets/68cbb6b0b7fd534ab07f3ba684196150/Scripts/EventDateRangePicker.js?1787901091"></script>
+<script src="/_assets/68cbb6b0b7fd534ab07f3ba684196150/Scripts/unpoly/unpoly.min.js?1787901091"></script>
+<script src="/_assets/68cbb6b0b7fd534ab07f3ba684196150/Scripts/unpoly-eventresults.js?1787901091"></script>
+<script src="/_assets/261d86cbd1eb8b5cf0c75e0f12071210/Scripts/MapLibre/maplibre-gl_4.1.0.js?1787901087"></script>
+<script src="/_assets/261d86cbd1eb8b5cf0c75e0f12071210/Scripts/MapLibre/Local/Src/function_4.1.0.js?1787901087"></script>
+
+<link rel="stylesheet" type="text/css" href="/_assets/d62557c271d06262fbb7ce0981266e2f/Css/auto-complete.css" media="all">
+
+</body>
+</html>
