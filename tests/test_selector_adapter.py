@@ -72,6 +72,23 @@ def test_museumsportal_listing_offline(fixture_dir_museumsportal):
     adapter.close()
 
 
+def test_museumsportal_zu_event(fixture_dir_museumsportal):
+    """Ohne Event-Links: source_url fällt auf die Listing-Seite zurück,
+    Events bleiben valide und eindeutig (Slug = Hash aus Titel+Start)."""
+    from app.validate import validate_event
+    adapter = SelectorAdapter("museumsportal", regel_yaml=MUSEUMS_REGELN)
+    html = (fixture_dir_museumsportal / "listing.html").read_text(encoding="utf-8")
+    rows = adapter.parse_listing(html)
+    jetzt = datetime.now(TZ_BERLIN)
+    slugs = {r["slug"] for r in rows}
+    assert len(slugs) == len(rows), "Slug-Kollision: Events würden sich überschreiben"
+    ev0 = adapter.zu_event(rows[0], {}, jetzt)
+    assert ev0["source_url"] == "https://www.museumsportal-berlin.de/de/veranstaltungen"
+    assert ev0["id"] and ev0["titel"]
+    assert validate_event(ev0, jetzt) == [], validate_event(ev0, jetzt)
+    adapter.close()
+
+
 def test_ganztags_fixture():
     """Reines Datum (ohne Uhrzeit-Feld) → ganztags 00:00–23:59."""
     regeln = """quelle: test

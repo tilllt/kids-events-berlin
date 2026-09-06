@@ -175,6 +175,9 @@ class SelectorAdapter:
         url = f.get("url")
         if url and not url.startswith("http"):
             url = urljoin(self._listing_url, url)
+        # Kein URL-Fallback hier: Slug (Hash aus Titel+Start) und source_url
+        # (Listing-Seite als Beleg) werden getrennt behandelt — sonst kollabieren
+        # alle Events einer linklosen Quelle auf denselben Slug.
 
         sregel = self._felder["start"]
         start_text = _regex_ziehen(f.get("start"), sregel.get("regex"))
