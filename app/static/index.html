@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kinder-Events Berlin</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <h1>Kinder-Events Berlin</h1>
+    <div class="sub">Veranstaltungen mit Kindern — gesammelt aus mehreren Quellen, ohne KI zur Laufzeit.</div>
+    <div id="statusline" class="statusline">Lade…</div>
+  </header>
+
+  <div id="errorbar" class="errorbar hidden">
+    <span id="errortext"></span>
+    <button id="retrybtn" type="button">Erneut versuchen</button>
+  </div>
+
+  <main>
+    <aside id="filters">
+      <section>
+        <h2>Bezirk</h2>
+        <div id="bezirk-list" class="checkgrid"></div>
+      </section>
+      <section>
+        <h2>Alter</h2>
+        <div id="alter-list" class="chips"></div>
+      </section>
+      <section>
+        <h2>Uhrzeit</h2>
+        <div id="uhrzeit-list" class="chips"></div>
+      </section>
+      <section class="rowline">
+        <label for="von">Von</label><input type="date" id="von" />
+        <label for="bis">Bis</label><input type="date" id="bis" />
+      </section>
+      <section class="rowline">
+        <label class="switch">
+          <input type="checkbox" id="kostenlos" />
+          <span>Nur kostenlos</span>
+        </label>
+        <button id="resetbtn" type="button" class="ghost">Filter zurücksetzen</button>
+      </section>
+      <div id="meta-note" class="metanote"></div>
+    </aside>
+
+    <section id="content">
+      <div id="map"></div>
+      <div id="liststate" class="hidden"></div>
+      <ul id="eventlist"></ul>
+    </section>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
