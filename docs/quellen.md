@@ -1,77 +1,71 @@
 # Quellen-Audit: Veranstaltungen mit Kindern in Berlin
 
-> Recherche-Stand: **2026-09-06** · Prüfmethode: echte HTTP-Abrufe, CMS-/Struktur-Fingerprints aus gespeicherten HTML-Proben (Funde eines Recherche-Agenten, der vor Abschluss in einen Timeout lief — Befunde unten sind die gesicherten Teile; nicht abgeschlossene Prüfungen sind explizit als **offen** markiert).
+> Recherche-Stand: **2026-09-06** (zweite Runde: Live-Feed-Suche + Struktur-Verifikation, 2026-09-06; erste Runde: CMS-Fingerprints aus HTML-Proben). Prüfmethode: echte HTTP-Abrufe; Befunde unten mit Datum.
 
-## Kurzfassung — Priorisierung
+## Kurzfassung — Priorisierung & Entscheidung (2026-09-06)
 
-| Priorität | Quelle | Typ | Empfehlung |
+| Quelle | Typ | Status | Weg |
 |---|---|---|---|
-| 1 | jup.berlin/events | offiziell (SenBJF/jfsb), Drupal 10 | **Adapter fertig (MVP-Quelle)** |
-| 2 | familienportal.berlin.de/veranstaltungen | offiziell (Land) | aufnehmen — Struktur **offen** (robots offen) |
-| 3 | kinderkulturkalender-berlin.de | LKJ Berlin (gemeinnützig), Drupal | aufnehmen (reich strukturiert) |
-| 4 | ZLB-Veranstaltungen (zlb.de) | öffentlich, TYPO3 | aufnehmen (Liste mit Artikeln gefunden) |
-| 5 | berlinmitkind.de (HIMBEER) | Magazin (kommerziell-redaktionell) | beobachten → aufnehmen (WordPress+Events Manager, AJAX, JSON-LD) |
-| 6 | FEZ Berlin | gemeinnützig, TYPO3 | aufnehmen — Programm-URL **offen** (/programm → 404) |
-| 7 | Museumsportal Berlin | öffentlich, Angular-SPA | beobachten (API-Reverse nötig) |
-| 8 | Grips/Parkaue-Spielpläne | Theater | später (SPA/API) |
-| – | Kindaling, berlinfamily.de, rausgegangen | kommerziell/parked | **verwerfen** |
+| jup.berlin/events | offiziell (SenBJF/jfsb), Drupal 10 | **produktiv (MVP)** | bestehender Adapter; `rss.xml` = nur News, kein Event-Feed (geprüft) |
+| zlb.de/veranstaltungen | ZLB, TYPO3 | **aufnehmen (Stufe 2)** | saubere Teaser-Klassen: `article.eventTeaser`, `h3.eventTeaser__title`, Datum im Teaser — kein Feed (geprüft) |
+| berlinmitkind.de (HIMBEER) | WordPress + Events Manager | **aufnehmen (Stufe 2)** | Event-Liste AJAX (`em-events-search`); Detailseiten JSON-LD `@type:Event`; `/termine/rss` = Blog-Feed, kein Event-Feed (geprüft) |
+| familienportal.berlin.de/veranstaltungen | offiziell (Land) | **aufnehmen (Stufe 2)** | erreichbar (200, 103 KB); Datumsangaben + h3-Artikelstruktur; Feed: keiner gefunden |
+| kinderkulturkalender-berlin.de | LKJ Berlin, Drupal | **nicht aufnehmen** | Einträge laufen über die jup!-Datenbasis → Duplikat; kein Doppel-Scrape |
+| FEZ Berlin | TYPO3 | offen | Programm-URL noch zu klären |
+| Museumsportal Berlin | Angular-SPA | beobachten | API-Reverse nötig (Folgeaufwand) |
+| Grips/Parkaue-Spielpläne | SPA/API | später | |
+| Kindaling, berlinfamily.de, rausgegangen | kommerziell/parked | **verwerfen** | |
 
-## Detail-Befunde je Quelle (Belege 2026-09-06)
+**Prinzip (User-Vorgabe):** Feed-first (RSS/Atom/iCal) vor HTML-Selektoren; existierende Bibliotheken (feedparser, icalendar, parsel, extruct); Regeln als editierbare YAML-Daten, keine pro-Quelle-Parser.
 
-### 1. jup.berlin/events — ✅ Adapter fertig
-- Server-HTML (Drupal 10), Listing `<article class="event teaser">`, Filter-Parameter `borough`/`categories`/`forfree`/`date_start/date_end`, Pagination `?page=N`.
-- Detailseiten: Beschreibung, Adresse mit PLZ, Koordinaten als `"lat"/"lon"`, `field-forfree`.
-- robots.txt: Crawling erlaubt (Drupal-Standard, nur Core-Assets eingeschränkt).
-- Adapter: `app/adapters/jup_berlin.py`, Fixtures `tests/fixtures/jup-berlin/`.
+## Detail-Befunde je Quelle
 
-### 2. familienportal.berlin.de/veranstaltungen — offen
-- robots.txt: offen (nur `/suche//`, `/suche/s/` disallowed) — **geprüft**.
-- Seitenstruktur/Technik: **nicht verifiziert** (Fetch schlug beim Audit fehl, `fp2=000`).
+### jup.berlin/events — ✅ produktiv
+- Drupal 10, Server-HTML, Listing `<article class="event teaser">`, Filter-Parameter `borough/categories/forfree/date_start/date_end`, Pagination `?page=N`.
+- Detailseiten: Beschreibung, Adresse mit PLZ, Koordinaten (`lat/lon`), `field-forfree`.
+- **Feed-Check (2026-09-06):** `https://jup.berlin/rss.xml` → 200, aber nur 1 Item = News-Artikel („Takeover Bellevue“), kein Event-Feed. `…/events/rss.xml` und `…/events/feed` → 404. → bleibt beim bestehenden Adapter.
+- robots: Drupal-Standard, Crawling erlaubt.
 
-### 3. kinderkulturkalender-berlin.de — aufnehmen
-- **Drupal** (442 KB-Probe, 162 `<article>`, 321 Datumsangaben) — sehr listenreich, guter Kandidat.
-- robots.txt: Drupal-Standard, offen.
-- Hinweis: Einträge laufen über die jup!-DB — **Duplikat-Risiko zu Quelle 1** beim Merge prüfen.
+### familienportal.berlin.de/veranstaltungen — Stufe 2, aufnehmen
+- **Erreichbarkeit (2026-09-06):** 200, 103 KB, Titel „Veranstaltungen für Familien | Berliner Familienportal“. Der frühere Audit-Fetch-Fehler war transient/UA-bedingt.
+- Struktur: h2/h3-Artikelblöcke mit Datumsangaben (`06.09.2026` …); Feed-Link: keiner gefunden.
+- robots: offen (nur `/suche//`, `/suche/s/` disallowed).
+- Adapter: Regeldatei (Selektoren beim Implementieren präzisiert, Fixture-Pflicht).
 
-### 4. Berliner Bibliotheken / VÖBB
-- **ZLB** (zlb.de): TYPO3; Veranstaltungsliste gefunden (238 KB-Probe, 16 `<article>`, 43 Datumsangaben); TYPO3-Extension `tx_wwt3list_recordlist` (Transkript-Fund). robots: `Disallow /aDISWeb/`, `*.ics`; Events erlaubt. Selektoren: **offen** (Detail-Analyse nötig).
-- **VÖBB zentral** (voebb.de): keine zentrale `/veranstaltungen`-URL gefunden (`voebbev`-Probe 196 B = Fehler/Redirect). Einzelne Angebote liegen im aDISWeb (`/aDISWeb/app/prod00?sp=…`), teils mit `*.ics`-Disallow. Zentraler Bibliotheks-Kalender: **offen** — ggf. je Bezirksbibliothek (berlin.de-Seiten) oder ZLB-Liste als Einstieg.
-- robots voebb.de: Events-Pfade nicht disallowed (ausgenommen `/daia`, `/divibib`, `/download`, `/dvbapp`, `/ncip*`).
+### kinderkulturkalender-berlin.de — nicht aufnehmen (Duplikat)
+- Drupal, sehr listenreich. Einträge laufen über die jup!-Datenbasis → als eigene Quelle würde sie jup!-Events duplizieren. **Entscheidung:** nicht in Registry; Merge-Regel (Titel+Datum±1+Venue) bleibt für echte Quellen-Überschneidungen.
+- robots: offen.
 
-### 5. berlinmitkind.de (= HIMBEER-Magazin online) — beobachten → aufnehmen
-- **WordPress mit Events-Manager-Plugin**: Kalender nutzt `em-wrapper`/`em-list`, AJAX-Nachladen (23 AJAX-Referenzen in Probe), Detailseiten mit **JSON-LD `@type: Event`** (Beleg: Detail-Probe 179 KB).
-- robots.txt: `User-agent: *` **ohne Disallow** (Crawling erlaubt); explizit nur AI-Crawler geblockt (Amazonbot, CCBot, Bytespider, Applebot-Extended …).
-- Himbeer-Magazin (Print) hat **keinen eigenen Online-Kalender** jenseits von berlinmitkind.de (nicht verifiziert: himbeer-magazin.de ohne robots-Datei).
-- Wochenendtipps (`/termine/wochenendtipps/`) als redaktionelle Quelle — für Aggregation weniger geeignet.
+### Berliner Bibliotheken / ZLB (zlb.de) — Stufe 2, aufnehmen
+- **Struktur (2026-09-06):** `https://www.zlb.de/veranstaltungen` → 200 (239 KB); Event-Teaser als `<article class="eventTeaser …" is="event-teaser">` mit `<h3 class="eventTeaser__title">` und Datumsangaben im Teaser (`06.09.2026`). TYPO3.
+- Feed: weder auf Startseite noch auf der Veranstaltungsliste `<link rel="alternate">` (RSS/Atom) → keine Stufe 1.
+- robots: Events erlaubt; `Disallow /aDISWeb/`, `*.ics`.
+- VÖBB zentral: keine `/veranstaltungen`-URL; Einzelangebote im aDISWeb — **nicht** als eigene Quelle (ZLB-Liste deckt den Bibliotheks-Einstieg ab).
 
-### 6. FEZ Berlin — aufnehmen, URL offen
-- **TYPO3**; `fez-berlin.de/programm` → **404** (Struktur geändert); Programm-URL: **offen**.
-- robots.txt: offen (nur interne TYPO3-Pfade, `print=1` disallowed).
+### berlinmitkind.de (= HIMBEER) — Stufe 2, aufnehmen
+- WordPress + Events-Manager. Kalender `/termine/` rendert Suchmaske (`em-events-search`), Event-Liste lädt per AJAX; Detailseiten mit **JSON-LD `@type: Event`** (extruct-Pfad).
+- **Feed-Check (2026-09-06):** `/feed/`, `/termine/feed/`, `/termine/rss` → alle Blog-/Kategorie-Feeds (10 Items, redaktionelle Titel, `pubDate` = Veröffentlichung, keine Event-Zeiten); `/events/feed/` → 404. → kein EM-Event-Feed aktiv → Stufe 2 (AJAX-Endpunkt + JSON-LD-Details).
+- robots: `User-agent: *` ohne Disallow; nur AI-Crawler geblockt.
 
-### 7. Museumsportal Berlin — beobachten
-- **Angular/Ionic-SPA** (Proben 82–164 KB ohne server-seitige Event-Marker) → Events kommen per API; deterministisches Scraping = Reverse-Engineering des JSON-Endpunkts. Machbar, aber Folgeaufwand.
-- robots: generell offen (AI-Crawler geblockt).
+### FEZ Berlin — offen
+- TYPO3; Programm-URL (früher `/programm` → 404) noch zu klären; robots offen.
 
-### 8. Theater-Spielpläne (Grips, Parkaue)
-- **Grips**: JS-SPA (Probe 517 KB, 0 server-seitige Termine); robots.txt leer.
-- **Parkaue**: „spiritec“-System, Spielplan-API im JS (379 KB-Probe, 34 Datumsangaben, 0 Artikel).
-- Einordnung: schwer für deterministisches Scraping → spätere Phase.
+### Museumsportal Berlin — beobachten
+- Angular-SPA; Events per API (Reverse-Engineering nötig); robots offen, AI-Crawler geblockt.
+
+### Theater (Grips, Parkaue) — später
+- JS-SPA bzw. „spiritec“-API; deterministisch nur mit API-Reverse — spätere Phase.
 
 ### Verworfen
-- **Kindaling** (Rails, JS-lastig): kommerziell, Ticketing/Affiliate — ToS-Risiko; robots erlaubt `/` außer `/admin`,`/tickets`,`/account`.
-- **berlinfamily.de**: laut Audit parked/verkauft (kein redaktioneller Kalender).
-- **rausgegangen.de**: robots offen, aber Fokus Erwachsenen-Events/Clubs — geringer Kindertreffer-Anteil.
+- **Kindaling** (kommerziell, Ticketing/Affiliate, ToS-Risiko), **berlinfamily.de** (parked), **rausgegangen.de** (Erwachsenen-Fokus).
 
-## Offene Punkte (nächste Recherche-Runde)
-1. familienportal.berlin.de: Technik + Listings-Struktur verifizieren (Fetch schlug fehl).
-2. FEZ: aktuelle Programm-/Kalender-URL finden.
-3. ZLB: Event-Listen-Selektoren + Detail-URL-Muster bestimmen.
-4. VÖBB: zentralen Bibliotheks-Veranstaltungskalender klären (ggf. je Bezirk).
-5. berlinmitkind.de: AJAX-Kalender-Endpunkt + JSON-LD-Felder dokumentieren (für Adapter).
-6. jup!- vs. kinderkulturkalender-Duplikate: Merge-Regel.
-7. daten.berlin.de: offene Datensätze (z. B. Familienzentren-Standorte) als Venue-Stammdaten prüfen.
+## Offene Punkte
+1. FEZ: aktuelle Programm-/Kalender-URL finden.
+2. berlinmitkind: konkreten AJAX-Endpunkt (admin-ajax `action=…`) + Parameter aus der Listenseite extrahieren.
+3. familienportal: exakte Teaser-Selektoren beim Adapter-Bau bestimmen (Fixture).
+4. daten.berlin.de: offene Datensätze (Familienzentren-Standorte) als Venue-Stammdaten prüfen (später).
 
-## Methodik
-- Proben als HTML in `/tmp/kidaudit/` (Recherche-Agent 2026-09-06) — nicht versioniert.
-- CMS-/Struktur-Fingerprints per Regex über gespeicherte Proben; robots.txt je Domain direkt abgerufen.
-- Neue Quelle → Adapter mit Fixture-Test + Eintrag oben (Repo-Wartungsregel).
+## Methodik & Wartungsregel
+- Proben/Feeds: Live-Abrufe (UA `kids-events-berlin/0.2 (research)`) — Fixtures versioniert unter `tests/fixtures/<quelle>/`.
+- Neue Quelle → Entscheidung Feed (Stufe 1) oder Regeln (Stufe 2) nach Live-Check; Eintrag in `configs/quellen.yaml` (+ ggf. `configs/regeln/<quelle>.yaml`); Fixture-Test Pflicht.
+- Quelle fällt um oder baut um → Fixture-Test rot + Anomalie-Alarm; Regeln per Volume-Overlay korrigierbar (Anleitung in `docs/quellen-regeln.md`).
