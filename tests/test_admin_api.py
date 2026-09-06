@@ -108,10 +108,13 @@ def test_regeln_schema_checks(tmp_path):
 
 def test_settings(tmp_path):
     c, _ = _client(tmp_path)
-    assert c.get("/api/admin/settings").json()["scrape_interval_h"] == "24"
-    assert c.put("/api/admin/settings", json={"scrape_interval_h": "6"}).status_code == 200
-    assert c.get("/api/admin/settings").json()["scrape_interval_h"] == "6"
-    r = c.put("/api/admin/settings", json={"scrape_interval_h": "abc", "böse": "1"})
+    assert c.get("/api/admin/settings").json()["scrape_at"] == "05:30"
+    assert c.put("/api/admin/settings", json={"scrape_at": "06:15"}).status_code == 200
+    assert c.get("/api/admin/settings").json()["scrape_at"] == "06:15"
+    # Leeres Intervall löscht die Einstellung (Uhrzeit-Modus)
+    assert c.put("/api/admin/settings",
+                 json={"scrape_interval_h": ""}).status_code == 200
+    r = c.put("/api/admin/settings", json={"scrape_at": "25:99", "böse": "1"})
     assert r.status_code == 422 and r.json()["detail"]["fehler"]
 
 

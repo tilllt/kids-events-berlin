@@ -471,7 +471,7 @@ class Store:
                      self._jetzt()),
                 )
                 self._conn.execute(
-                    "INSERT OR IGNORE INTO settings(key, wert, geaendert) VALUES ('scrape_interval_h','24',?)",
+                    "INSERT OR IGNORE INTO settings(key, wert, geaendert) VALUES ('scrape_at','05:30',?)",
                     (self._jetzt(),),
                 )
                 self._conn.commit()

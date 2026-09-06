@@ -13,7 +13,8 @@ def test_seed_default_sources(tmp_path):
     quellen = [q["quelle"] for q in s.list_sources()]
     assert quellen == ["jup-berlin"]
     assert s.get_source("jup-berlin")["typ"] == "intern"
-    assert s.get_setting("scrape_interval_h") == "24"
+    assert s.get_setting("scrape_at") == "05:30"
+    assert s.get_setting("scrape_interval_h") is None
     # idempotent
     s.seed_default_sources()
     assert len(s.list_sources()) == 1

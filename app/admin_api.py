@@ -182,12 +182,14 @@ def settings_put(body: dict, request: Request):
     for k in sorted(unbekannt):
         fehler.append(f"Unbekannte Einstellung '{k}' (erlaubt: {', '.join(sorted(erlaubt))}).")
     if "scrape_interval_h" in body:
-        try:
-            v = float(body["scrape_interval_h"])
-            if not 0.5 <= v <= 168:
-                raise ValueError
-        except ValueError:
-            fehler.append("scrape_interval_h muss eine Zahl zwischen 0.5 und 168 sein.")
+        v_raw = (body["scrape_interval_h"] or "").strip()
+        if v_raw:  # leer = Einstellung löschen (Uhrzeit-Modus)
+            try:
+                v = float(v_raw)
+                if not 0.5 <= v <= 168:
+                    raise ValueError
+            except ValueError:
+                fehler.append("scrape_interval_h muss eine Zahl zwischen 0.5 und 168 sein (oder leer).")
     if "scrape_at" in body:
         at = (body["scrape_at"] or "").strip()
         if at:
