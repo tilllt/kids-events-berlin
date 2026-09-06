@@ -238,10 +238,14 @@ function renderGeo(gj) {
   gj.features.forEach((f) => {
     const p = f.properties;
     const st = ZEIT_STUFEN[zeitStufe(p)];
-    const m = L.circleMarker([f.geometry.coordinates[1], f.geometry.coordinates[0]], {
-      radius: 8, stroke: true, color: "#101a24", weight: 1.5,
-      fillColor: st.farbe, fillOpacity: st.op,
+    /* divIcon statt SVG-Kreis: 30×30px Trefferfläche (Touch-tauglich),
+       sichtbarer Punkt 14px mit 2px Rand — Optik wie der alte Kreis. */
+    const ic = L.divIcon({
+      className: "ev-marker",
+      html: `<span class="ev-marker__dot" style="background:${st.farbe};opacity:${st.op}"></span>`,
+      iconSize: [30, 30], iconAnchor: [15, 15], popupAnchor: [0, -4],
     });
+    const m = L.marker([f.geometry.coordinates[1], f.geometry.coordinates[0]], { icon: ic });
     m.bindPopup(popupHtml(p));
     m._ev = p;
     if (cluster) cluster.addLayer(m); else m.addTo(map);
