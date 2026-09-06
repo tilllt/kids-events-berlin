@@ -15,6 +15,7 @@ def test_zlb_regeln_validieren():
 
 def test_zlb_listing_offline(fixture_dir_zlb):
     adapter = SelectorAdapter("zlb", regel_yaml=ZLB_REGELN)
+    assert adapter.braucht_detail is False
     html = (fixture_dir_zlb / "listing.html").read_text(encoding="utf-8")
     rows = adapter.parse_listing(html)
     warn = adapter.drain_warnungen()
@@ -24,8 +25,13 @@ def test_zlb_listing_offline(fixture_dir_zlb):
     assert r0["start"].year == 2026
     assert r0["start"].tzinfo is not None
     assert r0["url"] and r0["url"].startswith("http")
-    assert 8 <= r0["start"].hour <= 20
-    assert r0["ende"] is None or r0["ende"] > r0["start"]
+    assert r0["ort"] and r0["ort"] != "Ohne Angabe"
+    # Erstes Event (Sonntagsprogramm AGB): 11:00–12:00 Uhr
+    assert r0["start"].hour == 11 and r0["ende"].hour == 12
+    assert r0["ende"] > r0["start"]
+    # Kein Event ohne Ort (ZLB listet den Ort im Teaser)
+    ohne = [r["titel"] for r in rows if not r.get("ort")]
+    assert not ohne, f"Events ohne Ort: {ohne}"
     adapter.close()
 
 

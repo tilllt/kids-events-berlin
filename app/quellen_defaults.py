@@ -15,16 +15,10 @@ listing:
   felder:
     titel: {css: ".eventTeaser__title > span:not(.eventTeaser__superHeadline)"}
     url: {css: "a", attr: "href"}
-    start: {css: ".eventTeaser__meta", regex: "([0-9]{2}[.][0-9]{2}[.][0-9]{4})", format: "%d.%m.%Y"}
-    zeit: {css: ".eventTeaser__meta", regex: "([0-9]{1,2}:[0-9]{2}) Uhr", format: "%H:%M"}
-    ende: {css: ".eventTeaser__meta", regex: "[0-9]{1,2}:[0-9]{2} Uhr - ([0-9]{1,2}:[0-9]{2})", format: "%H:%M"}
-    ort: {css: ".eventTeaser__location"}
-detail:
-  jsonld: true
-  felder:
-    beschreibung_kurz: {jsonld: "$.description"}
-    ort: {jsonld: "$.location.name"}
-    adresse: {jsonld: "$.location.address.streetAddress"}
+    start: {css: ".visuallyhidden span", regex: "([0-9]{2}[.][0-9]{2}[.][0-9]{4})", format: "%d.%m.%Y"}
+    zeit: {css: "span.meta:nth-of-type(1) .meta__text", regex: "([0-9]{1,2}:[0-9]{2}) Uhr", format: "%H:%M"}
+    ende: {css: "span.meta:nth-of-type(1) .meta__text", regex: "[0-9]{1,2}:[0-9]{2} Uhr - ([0-9]{1,2}:[0-9]{2})", format: "%H:%M"}
+    ort: {css: "span.meta:nth-of-type(2) .meta__text"}
 """
 
 MUSEUMS_REGELN = """quelle: museumsportal

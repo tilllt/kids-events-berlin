@@ -95,7 +95,7 @@ def _scrape_mit_adapter(store, adapter, quelle, *, online, geo,
     if max_details is not None:
         unique_slugs = unique_slugs[:max_details]
     for i, slug in enumerate(unique_slugs):
-        if online:
+        if online and getattr(adapter, "braucht_detail", True):
             try:
                 html = adapter.fetch_detail(slug)
                 details[slug] = adapter.parse_detail(html)
@@ -103,7 +103,9 @@ def _scrape_mit_adapter(store, adapter, quelle, *, online, geo,
                 store.log_error(quelle, f"Detail {slug}: {e}")
                 details[slug] = {}
         else:
-            details[slug] = adapter.parse_detail(detail_html.get(slug, ""))
+            details[slug] = adapter.parse_detail(
+                (detail_html or {}).get(slug, "") if not online
+                else "")
         if sleep_s and online:
             import time as _t
             _t.sleep(sleep_s)

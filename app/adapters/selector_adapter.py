@@ -100,6 +100,9 @@ class SelectorAdapter:
         self._felder: dict = listing.get("felder") or {}
         self._pag = listing.get("pagination") or {}
         self._detail_cfg = self._regeln.get("detail") or {}
+        # Detailseiten nur laden, wenn die Regeln sie auswerten (JSON-LD/CSS).
+        self.braucht_detail = bool(self._detail_cfg.get("jsonld")
+                                   or self._detail_cfg.get("felder"))
         q = self._regeln.get("quelle") or quelle
         robots = (self._regeln.get("robots") or "")[:200]
         self.robots_policy = robots or "siehe docs/quellen.md"
