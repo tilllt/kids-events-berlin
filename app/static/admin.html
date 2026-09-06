@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Verwaltung — Kinder-Events Berlin</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <style>
+    body { max-width: 1100px; margin: 0 auto; padding: 16px; }
+    header { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+    header h1 { font-size: 20px; margin: 0; }
+    .adminnote { border: 1px solid #b8860b; color: #e6c36a; background: rgba(184,134,11,.08);
+      border-radius: 6px; padding: 6px 10px; font-size: 12.5px; margin: 10px 0; }
+    h2 { font-size: 15px; margin: 22px 0 8px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    th { color: var(--muted); font-weight: 600; font-size: 11.5px; text-transform: uppercase; }
+    .badge { display: inline-block; font-size: 11px; padding: 0 7px; border-radius: 8px; border: 1px solid var(--border); color: var(--muted); }
+    .badge.ok { color: var(--ok); border-color: var(--ok); }
+    .badge.err { color: #f85149; border-color: #f85149; }
+    .badge.off { opacity: .55; }
+    .btnrow { display: flex; gap: 6px; flex-wrap: wrap; }
+    button { background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 5px;
+      padding: 5px 10px; cursor: pointer; font-size: 12.5px; }
+    button:hover { border-color: var(--accent); }
+    button.primary { background: var(--accent); color: #0c0f14; border-color: var(--accent); font-weight: 600; }
+    button.danger { color: #f85149; border-color: #f85149; }
+    button.ghost { background: transparent; color: var(--muted); }
+    .panel { border: 1px solid var(--border); border-radius: 8px; padding: 14px; background: var(--panel); margin: 10px 0; }
+    .formgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px 14px; }
+    label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
+    input, select, textarea { background: #0f131a; color: var(--text); border: 1px solid var(--border);
+      border-radius: 5px; padding: 6px 8px; font-size: 13px; font-family: inherit; }
+    input[type="checkbox"] { accent-color: var(--accent); width: auto; }
+    textarea { font-family: ui-monospace, monospace; font-size: 12px; min-height: 240px; width: 100%; box-sizing: border-box; }
+    .hinweis { color: var(--ok); font-size: 12.5px; margin-top: 6px; }
+    .fehler { color: #f85149; font-size: 12.5px; margin-top: 6px; }
+    .muted { color: var(--muted); font-size: 12px; }
+    .hidden { display: none; }
+    .spalte { display: grid; grid-template-columns: 2fr 1fr; gap: 18px; align-items: start; }
+    @media (max-width: 900px) { .spalte { grid-template-columns: 1fr; } }
+    #statusline { margin-left: auto; color: var(--muted); font-size: 12.5px; }
+    code { background: rgba(255,255,255,.06); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+    a.back { color: var(--accent); font-size: 13px; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Kinder-Events Berlin — Verwaltung</h1>
+    <a class="back" href="/">← Zur Karte</a>
+    <div id="statusline">Lade…</div>
+  </header>
+
+  <div class="adminnote">⚠ Diese Verwaltungsseite ist derzeit <b>offen</b> (ohne Anmeldung). Vor einem öffentlichen Betrieb absichern — Schutz folgt in einem späteren Schritt.</div>
+  <div id="errorbar" class="errorbar hidden"><span id="errortext"></span></div>
+
+  <section>
+    <h2>Quellen</h2>
+    <div class="btnrow" style="margin-bottom:8px">
+      <button id="neuBtn" type="button" class="primary">+ Neue Quelle</button>
+      <button id="refreshBtn" type="button" class="ghost">Aktualisieren</button>
+    </div>
+    <div id="quellenPanel" class="panel hidden"></div>
+    <div id="regelnPanel" class="panel hidden"></div>
+    <table id="quellenTabelle">
+      <thead><tr>
+        <th>Quelle</th><th>Typ</th><th>URL</th><th>Aktiv</th><th>Events</th><th>Letzter Lauf</th><th>Aktionen</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <div class="spalte">
+    <section>
+      <h2>Letzte Läufe</h2>
+      <table id="runsTabelle">
+        <thead><tr><th>Zeit</th><th>Quelle</th><th>Status</th><th>Neu</th><th>Geänd.</th><th>Fehler</th><th>Dauer</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+    <section>
+      <h2>Fehler-Queue</h2>
+      <div id="fehlerListe" class="muted"></div>
+    </section>
+  </div>
+
+  <section>
+    <h2>Einstellungen</h2>
+    <div class="panel">
+      <div class="formgrid" style="max-width:520px">
+        <label>Scrape-Intervall (Stunden)
+          <input type="number" id="setInterval" min="0.5" max="168" step="0.5" />
+        </label>
+      </div>
+      <div style="margin-top:10px"><button id="settingsBtn" type="button" class="primary">Einstellungen speichern</button>
+      <span id="settingsMsg"></span></div>
+    </div>
+  </section>
+
+  <script src="/static/admin.js"></script>
+</body>
+</html>
