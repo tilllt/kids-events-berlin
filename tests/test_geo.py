@@ -83,6 +83,8 @@ def test_ort_aufloesen():
         "Berliner Stadtbibliothek (PopUp Saal)", "Breite Straße 30-36, 10178 Berlin")
     assert ort_aufloesen("AGB") == ("Amerika-Gedenkbibliothek",
                                     "Blücherplatz 1, 10961 Berlin")
+    assert ort_aufloesen("Treffpunkt") == (
+        "Amerika-Gedenkbibliothek (Treffpunkt)", "Blücherplatz 1, 10961 Berlin")
     assert ort_aufloesen("Neue Nationalgalerie") == ("Neue Nationalgalerie", None)
     assert ort_aufloesen("Ohne Angabe") == ("Ohne Angabe", None)
     assert ort_aufloesen(None) == (None, None)

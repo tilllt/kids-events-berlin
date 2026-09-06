@@ -92,12 +92,15 @@ def _scrape_mit_adapter(store, adapter, quelle, *, online, geo,
     details: dict[str, dict] = {}
     slugs = [r["slug"] for r in rows_all]
     unique_slugs = list(dict.fromkeys(slugs))
+    # Detail-Fetch braucht die volle URL — der Slug ist nur der Pfadteil
+    # („staudenmarkt-2026“), fetch_detail verwirft Nicht-http-Werte.
+    slug_url = {r["slug"]: (r.get("url") or "") for r in rows_all}
     if max_details is not None:
         unique_slugs = unique_slugs[:max_details]
     for i, slug in enumerate(unique_slugs):
         if online and getattr(adapter, "braucht_detail", True):
             try:
-                html = adapter.fetch_detail(slug)
+                html = adapter.fetch_detail(slug_url.get(slug) or slug)
                 details[slug] = adapter.parse_detail(html)
             except Exception as e:
                 store.log_error(quelle, f"Detail {slug}: {e}")

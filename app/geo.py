@@ -37,6 +37,7 @@ WFS_ADRESSEN = "https://gdi.berlin.de/services/wfs/adressen_berlin"
 ORT_ALIAS: dict[str, tuple[str, str]] = {
     "AGB": ("Amerika-Gedenkbibliothek", "Blücherplatz 1, 10961 Berlin"),
     "BSTB": ("Berliner Stadtbibliothek", "Breite Straße 30-36, 10178 Berlin"),
+    "TREFFPUNKT": ("Amerika-Gedenkbibliothek (Treffpunkt)", "Blücherplatz 1, 10961 Berlin"),
 }
 
 
