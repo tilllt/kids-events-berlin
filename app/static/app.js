@@ -17,10 +17,20 @@ function fmtDate(s) {
   return t ? `${dd}.${m}.${y}, ${t.slice(0, 5)}` : `${dd}.${m}.${y}`;
 }
 function fmtZeit(e) {
-  const start = fmtDate(e.start_local).replace(",", "");
-  if (e.ganztags) return `${start}, ganztägig`;
-  const end = e.ende_local ? fmtDate(e.ende_local).split(",")[1].trim() : "";
-  return `${start}${end ? " – " + end : ""} Uhr`;
+  const s = fmtDate(e.start_local);            // „05.09.2026, 10:00“
+  const [sd, st] = s.split(", ");
+  const en = e.ende_local ? fmtDate(e.ende_local).split(", ") : null;
+  const ed = en ? en[0] : null;
+  const et = en ? en[1] : "";
+  if (e.ganztags) {
+    // mehrlägig ganztägig: Datumsbereich, sonst nur der Tag
+    return ed && ed !== sd ? `${sd} – ${ed}, ganztägig` : `${sd}, ganztägig`;
+  }
+  if (!e.ende_local) return `${sd} ${st || ""} Uhr`;
+  // Ende an anderem Tag → End-DATUM mitzeigen (kein „Event von gestern“-Eindruck)
+  return ed !== sd
+    ? `${sd} ${st} – ${ed} ${et} Uhr`
+    : `${sd} ${st} – ${et} Uhr`;
 }
 function alterLabel(e) {
   if (e.alters_familie) return "Familie";
