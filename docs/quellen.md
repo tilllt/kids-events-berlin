@@ -15,7 +15,7 @@
 | kinderkulturkalender-berlin.de | LKJ Berlin, Drupal | **nicht aufnehmen** | Einträge laufen über die jup!-Datenbasis → Duplikat; kein Doppel-Scrape |
 | FEZ Berlin | TYPO3 | offen | Programm-URL noch zu klären |
 | Grips/Parkaue-Spielpläne | SPA/API | später | |
-| Kindaling, berlinfamily.de, rausgegangen | kommerziell/parked | **verwerfen** | |
+| Kindaling, berlinfamily.de, rausgegangen | kommerziell/parked/bot-geschützt | **verwerfen** | rausgegangen: Bunny-Shield-Challenge (403, kein deterministischer Zugriff) |
 
 **Prinzip (User-Vorgabe):** Feed-first (RSS/Atom/iCal) vor HTML-Selektoren; existierende Bibliotheken (feedparser, icalendar, parsel, extruct); Regeln als editierbare YAML-Daten, keine pro-Quelle-Parser.
 
@@ -67,7 +67,8 @@
 - JS-SPA bzw. „spiritec“-API; deterministisch nur mit API-Reverse — spätere Phase.
 
 ### Verworfen
-- **Kindaling** (kommerziell, Ticketing/Affiliate, ToS-Risiko), **berlinfamily.de** (parked), **rausgegangen.de** (Erwachsenen-Fokus).
+- **Kindaling** (kommerziell, Ticketing/Affiliate, ToS-Risiko), **berlinfamily.de** (parked).
+- **rausgegangen.de** — **technisch blockiert (2026-09-06 neu geprüft):** gesamte Domain hinter **Bunny Shield** (JS-Proof-of-Work-Challenge, `/.bunny-shield/`); selbst `robots.txt` liefert 403/Challenge-HTML. Deterministischer LLM-freier Zugriff ohne Browser-Automation/Challenge-Umgehung nicht möglich → nicht aufnehmen (unabhängig vom Erwachsenen-Fokus, der die ursprüngliche Runde-1-Begründung war). Bei Wegfall des Schutzes neu bewerten: Kinder-/Familien-Kategorien ggf. mit Kinder-Filter wie tip-berlin.
 
 ## Offene Punkte
 1. FEZ: aktuelle Programm-/Kalender-URL finden.
