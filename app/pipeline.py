@@ -153,58 +153,65 @@ def _scrape_mit_adapter(store, adapter, quelle, *, online, geo,
       for row in rows_all:
         slug = row["slug"]
         det = details.get(slug, {})
-        ev = adapter.zu_event(row, det, jetzt)
-        # Regel-Anreicherung
-        text = f"{ev['titel']} {ev.get('beschreibung_kurz') or ''}"
-        alter = classify_alter(ev["titel"], ev.get("beschreibung_kurz") or "")
-        ev["altersband_min"] = alter["altersband_min"]
-        ev["altersband_max"] = alter["altersband_max"]
-        ev["alters_familie"] = alter["alters_familie"]
-        ev["kategorien"] = classify_kategorien(text)
-        ev["kostenlos"] = classify_kostenlos(det.get("kostenlos_flag"), text)
-        # Berlinweit-Veranstaltungen (jup: „Berlinweit“ mit Platzhalter-
-        # Koordinaten) bekommen den Sonder-Bezirk und KEINE Geokodierung.
-        ort_roh = ev.get("ort") or ""
-        if ort_roh.strip().lower() in ("berlinweit", "ganz berlin"):
-            ev["bezirk"] = BEZIRK_BERLINWEIT
-        # Orts-Alias auflösen („AGB | Wiese“ → Amerika-Gedenkbibliothek (Wiese)
-        # + Adresse für die Geokodierung) — deterministisches Lexikon.
-        ort_klar, ort_adresse = ort_aufloesen(ev.get("ort"))
-        ev["ort"] = ort_klar
-        if ort_adresse and not (ev.get("adresse") or "").strip():
-            ev["adresse"] = ort_adresse
-        # Bezirk: Koordinaten (aus Quelle) → Nominatim-Reverse (gecacht)
-        if (geo_client and ev.get("lat") is not None and ev.get("lon") is not None
-                and not ev.get("bezirk")):
-            bz = bezirk_from_latlon(store, ev["lat"], ev["lon"], geo_client)
-            if bz:
-                ev["bezirk"] = bz
-        # Ort ohne Koordinaten → erst amtliche Adress-Geokodierung (Straße +
-        # Hausnummer + PLZ, WFS Adressen Berlin), dann Venue-Name über
-        # Nominatim („Neue Nationalgalerie“). Bezirk aus der Quelle schützt
-        # vor wertlosem Lookup reiner Bezirksnamen.
-        if (geo_client and (ev.get("lat") is None or ev.get("lon") is None)
-                and not ev.get("bezirk")):
-            treffer = None
-            if (ev.get("adresse") or "").strip():
-                treffer = adresse_amtlich(store, ev["adresse"], geo_client)
-            if not treffer and (ev.get("ort") or "").strip() and ev["ort"] != "Ohne Angabe":
-                treffer = ort_koordinaten(store, ev["ort"], geo_client)
-            if treffer:
-                ev["lat"] = treffer["lat"]
-                ev["lon"] = treffer["lon"]
-                ev["bezirk"] = treffer["bezirk"] or ev.get("bezirk")
-                if not ev.get("adresse") and treffer.get("adresse"):
-                    ev["adresse"] = treffer["adresse"]
-        fehler = validate_event(ev, jetzt)
-        if fehler:
-            n_fehler += 1
-            store.log_error(quelle, "; ".join(fehler), {k: ev.get(k) for k in
-                            ("titel", "start_iso", "source_url")})
-            continue
-        neu, geaendert = store.upsert_event(ev)
-        n_neu += int(neu)
-        n_geaendert += int(geaendert)
+        # Serien: Detailseite mit mehreren Terminen → ein Event pro Termin.
+        # Das 3-Wochen-Fenster gilt auch für expandierte Termine (kein
+        # Scrapen über den Horizont hinaus).
+        for ev in adapter.zu_events(row, det, jetzt):
+          if horizont:
+            ev_start = datetime.fromisoformat(ev["start_iso"])
+            if not _im_fenster(ev_start, von, bis):
+              continue
+          # Regel-Anreicherung
+          text = f"{ev['titel']} {ev.get('beschreibung_kurz') or ''}"
+          alter = classify_alter(ev["titel"], ev.get("beschreibung_kurz") or "")
+          ev["altersband_min"] = alter["altersband_min"]
+          ev["altersband_max"] = alter["altersband_max"]
+          ev["alters_familie"] = alter["alters_familie"]
+          ev["kategorien"] = classify_kategorien(text)
+          ev["kostenlos"] = classify_kostenlos(det.get("kostenlos_flag"), text)
+          # Berlinweit-Veranstaltungen (jup: „Berlinweit“ mit Platzhalter-
+          # Koordinaten) bekommen den Sonder-Bezirk und KEINE Geokodierung.
+          ort_roh = ev.get("ort") or ""
+          if ort_roh.strip().lower() in ("berlinweit", "ganz berlin"):
+              ev["bezirk"] = BEZIRK_BERLINWEIT
+          # Orts-Alias auflösen („AGB | Wiese“ → Amerika-Gedenkbibliothek (Wiese)
+          # + Adresse für die Geokodierung) — deterministisches Lexikon.
+          ort_klar, ort_adresse = ort_aufloesen(ev.get("ort"))
+          ev["ort"] = ort_klar
+          if ort_adresse and not (ev.get("adresse") or "").strip():
+              ev["adresse"] = ort_adresse
+          # Bezirk: Koordinaten (aus Quelle) → Nominatim-Reverse (gecacht)
+          if (geo_client and ev.get("lat") is not None and ev.get("lon") is not None
+                  and not ev.get("bezirk")):
+              bz = bezirk_from_latlon(store, ev["lat"], ev["lon"], geo_client)
+              if bz:
+                  ev["bezirk"] = bz
+          # Ort ohne Koordinaten → erst amtliche Adress-Geokodierung (Straße +
+          # Hausnummer + PLZ, WFS Adressen Berlin), dann Venue-Name über
+          # Nominatim („Neue Nationalgalerie“). Bezirk aus der Quelle schützt
+          # vor wertlosem Lookup reiner Bezirksnamen.
+          if (geo_client and (ev.get("lat") is None or ev.get("lon") is None)
+                  and not ev.get("bezirk")):
+              treffer = None
+              if (ev.get("adresse") or "").strip():
+                  treffer = adresse_amtlich(store, ev["adresse"], geo_client)
+              if not treffer and (ev.get("ort") or "").strip() and ev["ort"] != "Ohne Angabe":
+                  treffer = ort_koordinaten(store, ev["ort"], geo_client)
+              if treffer:
+                  ev["lat"] = treffer["lat"]
+                  ev["lon"] = treffer["lon"]
+                  ev["bezirk"] = treffer["bezirk"] or ev.get("bezirk")
+                  if not ev.get("adresse") and treffer.get("adresse"):
+                      ev["adresse"] = treffer["adresse"]
+          fehler = validate_event(ev, jetzt)
+          if fehler:
+              n_fehler += 1
+              store.log_error(quelle, "; ".join(fehler), {k: ev.get(k) for k in
+                              ("titel", "start_iso", "source_url")})
+              continue
+          neu, geaendert = store.upsert_event(ev)
+          n_neu += int(neu)
+          n_geaendert += int(geaendert)
     finally:
         if geo_client is not None:
             geo_client.close()

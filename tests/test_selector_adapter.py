@@ -182,3 +182,51 @@ def test_listing_url_zeitraum_platzhalter():
     n = re.search(r"filter_22_end%5D=(\d+)", url0)
     assert m and n and int(n.group(1)) - int(m.group(1)) >= 20 * 86400
     adapter.close()
+
+
+def test_museumsportal_serien_termine(fixture_dir_museumsportal):
+    """Detailseite mit Serien-Terminliste („Datum und Uhrzeit“) → _termine."""
+    from app.quellen_defaults import MUSEUMS_REGELN
+    adapter = SelectorAdapter("museumsportal", regel_yaml=MUSEUMS_REGELN)
+    html = (fixture_dir_museumsportal / "detail_serie.html").read_text(encoding="utf-8")
+    d = adapter.parse_detail(html)
+    termine = d.get("_termine") or []
+    assert len(termine) >= 6, f"nur {len(termine)} Termine in der Serie"
+    # Erster Termin: 6. September 2026, 11:00 (Berlin)
+    t0 = termine[0]
+    assert t0[0].year == 2026 and t0[0].month == 9 and t0[0].day == 6
+    assert (t0[0].hour, t0[0].minute) == (11, 0)
+    assert t0[0].tzinfo is not None
+    # Chronologisch sortiert? (Quelle listet aufsteigend)
+    starts = [t[0] for t in termine]
+    assert starts == sorted(starts)
+    # JSON-LD-Felder kommen weiterhin an
+    assert d.get("ort"), "Ort aus JSON-LD fehlt"
+    adapter.close()
+
+
+def test_museumsportal_zu_events_serie_expandiert(fixture_dir_museumsportal):
+    """Serien-Detail → ein Event pro Termin (nicht nur das JSON-LD-Event)."""
+    from app.quellen_defaults import MUSEUMS_REGELN
+    from app.validate import validate_event
+    adapter = SelectorAdapter("museumsportal", regel_yaml=MUSEUMS_REGELN)
+    # Listing-Row künstlich aus der Detailseite extrahieren ist nicht möglich —
+    # nimm den ersten Row des Listing-Fixtures + Serien-Detail.
+    lhtml = (fixture_dir_museumsportal / "listing.html").read_text(encoding="utf-8")
+    rows = adapter.parse_listing(lhtml)
+    dhtml = (fixture_dir_museumsportal / "detail_serie.html").read_text(encoding="utf-8")
+    det = adapter.parse_detail(dhtml)
+    jetzt = datetime.now(TZ_BERLIN)
+    evs = adapter.zu_events(rows[0], det, jetzt)
+    termine = det["_termine"]
+    # Row-Start in der Terminliste? Dann exakt len(termine) Events, sonst +1.
+    row_start = rows[0]["start"].astimezone(TZ_BERLIN).replace(second=0, microsecond=0)
+    erwartet = len(termine) if any(t[0] == row_start for t in termine) else len(termine) + 1
+    assert len(evs) == erwartet, f"{len(evs)} != {erwartet}"
+    ids = {e["id"] for e in evs}
+    assert len(ids) == len(evs), "Serien-Events kollidieren in der ID"
+    for e in evs:
+        assert e["quelle"] == "museumsportal"
+        assert e["start_local"]
+        assert validate_event(e, jetzt) == [], validate_event(e, jetzt)
+    adapter.close()

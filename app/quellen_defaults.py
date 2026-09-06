@@ -26,6 +26,9 @@ robots: "Content-Signal search=yes, use=reference; AI-Crawler geblockt (2026-09-
 listing:
   url: https://www.museumsportal-berlin.de/de/veranstaltungen
   item_css: "mp-card.mp-card-program"
+  # 3-Wochen-Horizont: Serien-Termine aus Detailseiten (und Listing-Rows)
+  # werden nur bis heute+21 Tage übernommen (User-Vorgabe).
+  horizont_tage: 21
   felder:
     titel: {css: "h2"}
     url: {xpath: "ancestor::hylo-router-link[1]/@href"}
@@ -39,6 +42,10 @@ detail:
     beschreibung_kurz: {jsonld: "$.description"}
     ort: {jsonld: "$.location.name"}
     adresse: {jsonld: "$.location.address"}
+  # Serien: Detailseite listet weitere Termine („Datum und Uhrzeit“) als
+  # li mit zwei Spans (deutsches Datum + Uhrzeit) → ein Event pro Termin
+  # (3-Wochen-Horizont via listing.horizont_tage unten analog familienportal).
+  termine_css: "hylo-list-more ul li"
 """
 
 FAMILIENPORTAL_REGELN = """quelle: familienportal

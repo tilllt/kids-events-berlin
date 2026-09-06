@@ -28,6 +28,28 @@ UA = "kids-events-berlin/0.2 (+https://github.com/tilllt/kids-events-berlin)"
 # wenn eine Quelle den Bezirk direkt im Listing nennt (z. B. familienportal).
 _LABEL_ZU_SLUG = {v.lower(): k for k, v in BEZIRK_LABELS.items()}
 
+# Deutsche Monatsnamen für Datumstexte wie „6. September 2026“ (Detail-Termine).
+_DE_MONATE = {
+    "januar": 1, "februar": 2, "märz": 3, "maerz": 3, "april": 4, "mai": 5,
+    "juni": 6, "juli": 7, "august": 8, "september": 9, "oktober": 10,
+    "november": 11, "dezember": 12,
+}
+_RE_DE_DATUM = re.compile(r"(\d{1,2})\.\s*([A-Za-zäöüß]+)\s*(\d{4})")
+
+
+def _parse_de_datum(text: str) -> datetime | None:
+    """„6. September 2026“ → datetime (Europe/Berlin, 00:00)."""
+    m = _RE_DE_DATUM.search(text or "")
+    if not m:
+        return None
+    mon = _DE_MONATE.get(m.group(2).lower())
+    if not mon:
+        return None
+    try:
+        return datetime(int(m.group(3)), mon, int(m.group(1)), tzinfo=TZ_BERLIN)
+    except ValueError:
+        return None
+
 
 def _lade_regeln(regel_yaml: str | None, quelle: str) -> dict:
     fehler = validate_regeln_yaml(regel_yaml or "", quelle)
@@ -343,12 +365,46 @@ class SelectorAdapter:
                     else:
                         v = v.get("name") or v.get("streetAddress") or ""
                 out[feldname] = v if isinstance(v, str) else str(v)
+
+        # Serien-Terminliste der Detailseite (z. B. mp „Datum und Uhrzeit“):
+        # li-Elemente mit zwei Spans (deutsches Datum + Uhrzeit). Ergänzt das
+        # JSON-LD-Einzelevent um alle weiteren Termine → zu_events expandiert.
+        tcss = self._detail_cfg.get("termine_css")
+        if tcss:
+            termine: list[tuple[datetime, datetime | None, bool]] = []
+            sel = parsel.Selector(text=html)
+            for li in sel.css(tcss):
+                spans = li.css("span")
+                if len(spans) < 1:
+                    continue
+                dt = _parse_de_datum(" ".join(spans[0].css("::text").getall()))
+                if dt is None:
+                    continue
+                zeit_txt = ""
+                if len(spans) > 1:
+                    zeit_txt = " ".join(spans[1].css("::text").getall()).strip()
+                mz = re.match(r"(\d{1,2}):(\d{2})", zeit_txt)
+                if mz:
+                    dt = dt.replace(hour=int(mz.group(1)), minute=int(mz.group(2)))
+                    termine.append((dt, None, False))
+                else:
+                    # Nur Datum → ganztägig (00:00–23:59, wie Listing-Konvention)
+                    termine.append((dt.replace(hour=0, minute=0),
+                                    dt.replace(hour=23, minute=59), True))
+            if termine:
+                out["_termine"] = termine
         return out
 
     # --- Event-Bau ----------------------------------------------------------
     def zu_event(self, row: dict, detail: dict | None, jetzt: datetime) -> dict:
-        detail = detail or {}
-        start_local = row["start"].astimezone(TZ_BERLIN)
+        """Erstes Event (Kompatibilität); Serien → zu_events."""
+        return self.zu_events(row, detail, jetzt)[0]
+
+    def _bau_event(self, row: dict, detail: dict, jetzt: datetime,
+                   start: datetime, ende: datetime | None = None,
+                   ganztags: bool | None = None) -> dict:
+        """Ein Event aus row+detail mit konkretem Termin (start/ende/ganztags)."""
+        start_local = start.astimezone(TZ_BERLIN)
         occ = start_local.strftime("%Y%m%dT%H%M")
         source_event_id = f"{row['slug']}#{occ}"
         url = row.get("url") or ""
@@ -359,17 +415,21 @@ class SelectorAdapter:
         # → kanonischer Slug; schützt die Pipeline vor Geo-Lookup von
         # reinen Bezirksnamen („Bezirk aus der Quelle“-Prinzip).
         bezirk = _LABEL_ZU_SLUG.get((row.get("bezirk") or "").strip().lower())
+        if ende is None:
+            ende = row.get("ende")
+        if ganztags is None:
+            ganztags = row.get("ganztags", False)
         return {
             "id": make_event_id(self.name, source_event_id),
             "titel": row["titel"],
             "beschreibung_kurz": row.get("beschreibung_kurz") or detail.get("beschreibung_kurz"),
-            "start_iso": row["start"].astimezone(TZ_BERLIN).isoformat(),
-            "ende_iso": (row["ende"].astimezone(TZ_BERLIN).isoformat()
-                         if row.get("ende") else None),
+            "start_iso": start.astimezone(TZ_BERLIN).isoformat(),
+            "ende_iso": (ende.astimezone(TZ_BERLIN).isoformat()
+                         if ende else None),
             "start_local": start_local.strftime("%Y-%m-%dT%H:%M:%S"),
-            "ende_local": (row["ende"].astimezone(TZ_BERLIN).strftime("%Y-%m-%dT%H:%M:%S")
-                           if row.get("ende") else None),
-            "ganztags": row.get("ganztags", False),
+            "ende_local": (ende.astimezone(TZ_BERLIN).strftime("%Y-%m-%dT%H:%M:%S")
+                           if ende else None),
+            "ganztags": ganztags,
             "ort": ort,
             "adresse": row.get("adresse") or detail.get("adresse"),
             "bezirk": bezirk,
@@ -381,3 +441,22 @@ class SelectorAdapter:
             "source_url": url or self._listing_url,
             "geholt_am": jetzt.isoformat(),
         }
+
+    def zu_events(self, row: dict, detail: dict | None, jetzt: datetime) -> list[dict]:
+        """→ Events für einen Listing-Treffer.
+
+        Ohne Serien-Terminliste im Detail: ein Event (bisheriges Verhalten).
+        Mit Terminliste (detail['_termine']): ein Event pro Termin; enthält
+        die Liste den Listing-Start, ist sie autoritativ, sonst kommt das
+        Row-Event zusätzlich (Sicherheitsnetz bei abweichenden Daten).
+        """
+        detail = detail or {}
+        termine = detail.get("_termine") or []
+        if not termine:
+            return [self._bau_event(row, detail, jetzt, row["start"])]
+        row_start = row["start"].astimezone(TZ_BERLIN).replace(second=0, microsecond=0)
+        in_liste = any(t[0] == row_start for t in termine)
+        evs = [self._bau_event(row, detail, jetzt, t[0], t[1], t[2]) for t in termine]
+        if not in_liste:
+            evs.insert(0, self._bau_event(row, detail, jetzt, row["start"]))
+        return evs
