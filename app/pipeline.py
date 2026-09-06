@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 
 from .adapters import aktive_quellen, build_adapter
 from .enrich import classify_alter, classify_kategorien, classify_kostenlos
-from .geo import adresse_amtlich, bezirk_from_latlon, ort_koordinaten
+from .geo import adresse_amtlich, bezirk_from_latlon, ort_aufloesen, ort_koordinaten
 from .model import TZ_BERLIN
 from .store import Store
 from .validate import validate_event
@@ -132,6 +132,12 @@ def _scrape_mit_adapter(store, adapter, quelle, *, online, geo,
         ev["alters_familie"] = alter["alters_familie"]
         ev["kategorien"] = classify_kategorien(text)
         ev["kostenlos"] = classify_kostenlos(det.get("kostenlos_flag"), text)
+        # Orts-Alias auflösen („AGB | Wiese“ → Amerika-Gedenkbibliothek (Wiese)
+        # + Adresse für die Geokodierung) — deterministisches Lexikon.
+        ort_klar, ort_adresse = ort_aufloesen(ev.get("ort"))
+        ev["ort"] = ort_klar
+        if ort_adresse and not (ev.get("adresse") or "").strip():
+            ev["adresse"] = ort_adresse
         # Bezirk: Koordinaten (aus Quelle) → Nominatim-Reverse (gecacht)
         if geo_client and ev.get("lat") is not None and ev.get("lon") is not None:
             bz = bezirk_from_latlon(store, ev["lat"], ev["lon"], geo_client)

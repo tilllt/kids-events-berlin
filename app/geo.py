@@ -30,6 +30,38 @@ NOMINATIM_SEARCH = "https://nominatim.openstreetmap.org/search"
 WFS_ADRESSEN = "https://gdi.berlin.de/services/wfs/adressen_berlin"
 
 
+# --- Orts-Alias-Lexikon ----------------------------------------------------
+# Quellen liefern Orte teils als Abkürzungen („AGB | Wiese“ = Raum in der
+# Amerika-Gedenkbibliothek). Alias → (kanonischer Name, Adresse für die
+# Geokodierung). Deterministisch, LLM-frei; erweiterbar je Quelle.
+ORT_ALIAS: dict[str, tuple[str, str]] = {
+    "AGB": ("Amerika-Gedenkbibliothek", "Blücherplatz 1, 10961 Berlin"),
+    "BSTB": ("Berliner Stadtbibliothek", "Breite Straße 30-36, 10178 Berlin"),
+}
+
+
+def ort_aufloesen(ort: str | None) -> tuple[str | None, str | None]:
+    """„AGB | Wiese“ → („Amerika-Gedenkbibliothek (Wiese)“, Lexikon-Adresse).
+
+    Unbekannte Orte bleiben unverändert (adresse None).
+    """
+    if not ort or ort == "Ohne Angabe":
+        return ort, None
+    o = ort.strip()
+    if "|" in o:
+        kuerzel, raum = (p.strip() for p in o.split("|", 1))
+        eintrag = ORT_ALIAS.get(kuerzel.upper())
+        if eintrag:
+            name, adresse = eintrag
+            if raum:
+                return f"{name} ({raum})", adresse
+            return name, adresse
+    eintrag = ORT_ALIAS.get(o.upper())
+    if eintrag:
+        return eintrag
+    return ort, None
+
+
 # --- UTM Zone 33N (ETRS89 ≈ WGS84) → WGS84 --------------------------------
 # Standard-UTM-Inverse (Ellipsoid WGS84); für Events genügt Meter-Genauigkeit.
 def _utm33n_zu_wgs84(east: float, north: float) -> tuple[float, float]:

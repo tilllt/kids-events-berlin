@@ -75,6 +75,19 @@ def test_ort_key_ohne_treffer_wird_negativ_gespeichert(tmp_path):
     assert store.get_ort_geo(ort_key("Unbekannter Ort XYZ")) is None
 
 
+def test_ort_aufloesen():
+    from app.geo import ort_aufloesen
+    assert ort_aufloesen("AGB | Wiese") == (
+        "Amerika-Gedenkbibliothek (Wiese)", "Blücherplatz 1, 10961 Berlin")
+    assert ort_aufloesen("BStB | PopUp Saal") == (
+        "Berliner Stadtbibliothek (PopUp Saal)", "Breite Straße 30-36, 10178 Berlin")
+    assert ort_aufloesen("AGB") == ("Amerika-Gedenkbibliothek",
+                                    "Blücherplatz 1, 10961 Berlin")
+    assert ort_aufloesen("Neue Nationalgalerie") == ("Neue Nationalgalerie", None)
+    assert ort_aufloesen("Ohne Angabe") == ("Ohne Angabe", None)
+    assert ort_aufloesen(None) == (None, None)
+
+
 # --- Amtliche Geokodierung (WFS Adressen Berlin) ---------------------------
 def test_utm33n_zu_wgs84():
     """Rostocker Straße 32 (RBS-Punkt) → Koordinaten nahe Nominatim-Wert."""

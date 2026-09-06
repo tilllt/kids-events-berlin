@@ -179,6 +179,21 @@ class Store:
                 self._conn.commit()
                 return True, False
             old_row = dict(old)
+            # Altlast-Bereinigung auch im Update-Pfad: Wenn dieselbe Quelle
+            # dasselbe Event (Titel+Start+Ort) unter einer ANDEREN id führt
+            # (ID-Schema-Wechsel, z. B. Quelle bekam später Event-URLs), ist
+            # die andere id eine verwaiste Duplikat-Version → entfernen.
+            zwi = self._conn.execute(
+                """SELECT id FROM events
+                   WHERE quelle=? AND titel=? AND start_iso=?
+                     AND COALESCE(ort,'')=COALESCE(?,'') AND id != ? AND id != ?
+                   ORDER BY id LIMIT 1""",
+                (ev["quelle"], ev["titel"], ev["start_iso"], ev.get("ort"),
+                 old_row["id"], ev["id"]),
+            ).fetchone()
+            if zwi is not None:
+                self._conn.execute("DELETE FROM events WHERE id=?", (zwi["id"],))
+                self._conn.commit()
             comparable = {
                 k: old_row[k] for k in ("titel", "beschreibung_kurz", "start_iso", "ende_iso",
                                         "ganztags", "ort", "adresse", "bezirk", "lat", "lon",
