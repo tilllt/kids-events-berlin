@@ -63,7 +63,13 @@ def _css_ok(selektor: str) -> str | None:
     return None
 
 
-def _pruefe_feld(feldname: str, regeln: dict, pfad: str, erlaubt: set[str]) -> list[str]:
+# Feld-Optionen: css (parsel) und/oder jsonld (extruct-Pfad).
+# Zusätzlich: attr (href aus css-Element), regex (erster Treffer im Text),
+# format (strptime auf extrahiertem Text), join (Textliste verbinden).
+_FELD_OPTIONEN = {"css", "jsonld", "attr", "regex", "format", "join"}
+
+
+def _pruefe_feld(feldname: str, regeln: dict, pfad: str) -> list[str]:
     fehler: list[str] = []
     if not isinstance(regeln, dict):
         return [f"{pfad}: Feld-Regel für '{feldname}' ist kein Mapping."]
@@ -80,13 +86,19 @@ def _pruefe_feld(feldname: str, regeln: dict, pfad: str, erlaubt: set[str]) -> l
         p = regeln["jsonld"]
         if not isinstance(p, str) or not p.startswith("$"):
             fehler.append(f"{pfad}/{feldname}.jsonld: Pfad muss mit '$' beginnen (z. B. $.name).")
-    if "format" in regeln and "css" not in regeln:
-        fehler.append(f"{pfad}/{feldname}: 'format' ist nur mit 'css' sinnvoll.")
+    if "regex" in regeln:
+        rx = regeln["regex"]
+        try:
+            re.compile(rx)
+        except re.error as e:
+            fehler.append(f"{pfad}/{feldname}.regex: ungültig ({e}).")
+    if "format" in regeln and not any(k in regeln for k in ("css", "jsonld", "regex")):
+        fehler.append(f"{pfad}/{feldname}: 'format' ist nur mit 'css'/'regex'/'jsonld' sinnvoll.")
     if "attr" in regeln and "css" not in regeln:
         fehler.append(f"{pfad}/{feldname}: 'attr' ist nur mit 'css' sinnvoll.")
-    unbekannt = keys - {"css", "jsonld", "attr", "format", "regex", "join"}
+    unbekannt = keys - _FELD_OPTIONEN
     for u in sorted(unbekannt):
-        fehler.append(f"{pfad}/{feldname}: unbekannte Option '{u}'.")
+        fehler.append(f"{pfad}/{feldname}: unbekannte Option '{u}' (erlaubt: {', '.join(sorted(_FELD_OPTIONEN))}).")
     return fehler
 
 
@@ -145,7 +157,7 @@ def validate_regeln_yaml(yaml_text: str, quelle: str | None = None) -> list[str]
         if pflicht not in fkeys:
             fehler.append(f"listing.felder: Pflichtfeld '{pflicht}' fehlt.")
     for fname, regel in felder.items():
-        fehler.extend(_pruefe_feld(fname, regel, f"listing.felder", set(_LISTING_FELDER)))
+        fehler.extend(_pruefe_feld(fname, regel, "listing.felder"))
 
     detail = doc.get("detail")
     if detail is not None:
@@ -163,7 +175,7 @@ def validate_regeln_yaml(yaml_text: str, quelle: str | None = None) -> list[str]
                         fehler.append(f"detail.felder: unbekanntes Feld '{u}' "
                                       f"(erlaubt: {', '.join(sorted(_DETAIL_FELDER))}).")
                     for fname, regel in dfelder.items():
-                        fehler.extend(_pruefe_feld(fname, regel, "detail.felder", _DETAIL_FELDER))
+                        fehler.extend(_pruefe_feld(fname, regel, "detail.felder"))
 
     fk = doc.get("filter_kinder")
     if fk is not None:

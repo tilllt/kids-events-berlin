@@ -38,19 +38,37 @@ async def lifespan(app: FastAPI):
 
     stop = threading.Event()
 
+    def _scrape_aktive():
+        """Alle aktiven Quellen aus der DB; Fehler je Quelle in die Queue."""
+        from .adapters import aktive_quellen
+        from .pipeline import scrape
+        quellen = aktive_quellen(store)
+        for s in quellen:
+            try:
+                summary = scrape(store, s["quelle"], online=True, geo=geocode)
+                print(f"[scheduler] {s['quelle']} ok: {summary}", flush=True)
+            except Exception as e:  # pragma: no cover
+                print(f"[scheduler] {s['quelle']} fehlgeschlagen: {e}", flush=True)
+                store.log_error(s["quelle"], f"Scheduler-Lauf fehlgeschlagen: {e}")
+
     def worker():
         from .pipeline import scrape
         if boot and store.count_events() == 0:
             try:
                 print("[scheduler] Erstlauf (DB leer)…", flush=True)
-                scrape(store, "jup-berlin", online=True, geo=geocode)
+                _scrape_aktive()
                 print("[scheduler] Erstlauf fertig.", flush=True)
             except Exception as e:  # pragma: no cover
                 print(f"[scheduler] Erstlauf fehlgeschlagen: {e}", flush=True)
-        while not stop.wait(interval_h * 3600):
+        interval_env = float(os.environ.get("SCRAPE_INTERVAL_H", "24"))
+        while True:
+            aus_db = store.get_setting("scrape_interval_h")
+            h = float(aus_db) if aus_db else interval_env
+            if stop.wait(h * 3600):
+                break
             try:
-                summary = scrape(store, "jup-berlin", online=True, geo=geocode)
-                print(f"[scheduler] Lauf ok: {summary}", flush=True)
+                _scrape_aktive()
+                print(f"[scheduler] Läufe ok (Intervall {h}h).", flush=True)
             except Exception as e:  # pragma: no cover
                 print(f"[scheduler] Lauf fehlgeschlagen: {e}", flush=True)
 

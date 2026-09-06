@@ -10,7 +10,7 @@ import sys
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from .adapters import get_adapter
+from .adapters import aktive_quellen, build_adapter
 from .enrich import classify_alter, classify_kategorien, classify_kostenlos
 from .geo import bezirk_from_latlon
 from .model import TZ_BERLIN
@@ -23,7 +23,21 @@ def scrape(store: Store, quelle: str = "jup-berlin", *, online: bool = True,
            sleep_s: float | None = None, detail_html: dict[str, str] | None = None,
            listing_htmls: list[str] | None = None) -> dict:
     """Führt einen Lauf aus. offline: listing_htmls/detail_html statt Netz."""
-    adapter = get_adapter(quelle)
+    adapter = build_adapter(store, quelle)
+    try:
+        return _scrape_mit_adapter(store, adapter, quelle, online=online, geo=geo,
+                                   max_pages=max_pages, max_details=max_details,
+                                   sleep_s=sleep_s, detail_html=detail_html,
+                                   listing_htmls=listing_htmls)
+    finally:
+        try:
+            adapter.close()
+        except Exception:  # pragma: no cover
+            pass
+
+
+def _scrape_mit_adapter(store, adapter, quelle, *, online, geo,
+                        max_pages, max_details, sleep_s, detail_html, listing_htmls) -> dict:
     sleep_s = sleep_s if sleep_s is not None else getattr(adapter, "min_interval_s", 1.0)
     jetzt = datetime.now(TZ_BERLIN)
     run_id = store.start_run(quelle)
@@ -41,6 +55,8 @@ def scrape(store: Store, quelle: str = "jup-berlin", *, online: bool = True,
                 break
             n_pages += 1
             rows = adapter.parse_listing(html)
+            for w in getattr(adapter, "drain_warnungen", lambda: [])():
+                store.log_error(quelle, w)
             if not rows:
                 break
             slugs = {r["slug"] for r in rows}
@@ -61,6 +77,8 @@ def scrape(store: Store, quelle: str = "jup-berlin", *, online: bool = True,
         seen_slugs = set()
         for html in listing_htmls or []:
             rows = adapter.parse_listing(html)
+            for w in getattr(adapter, "drain_warnungen", lambda: [])():
+                store.log_error(quelle, w)
             if not rows:
                 continue
             slugs = {r["slug"] for r in rows}

@@ -13,6 +13,7 @@ def test_offline_scrape_idempotent(tmp_path, listing_p0, listing_p1,
                                    detail_fam, detail_raetsel):
     db = tmp_path / "events.db"
     store = Store(db)
+    store.seed_default_sources()
     listings = [listing_p0, listing_p1]
     details = {
         "familiensportfest": detail_fam,
