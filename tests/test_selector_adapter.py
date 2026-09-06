@@ -239,8 +239,8 @@ def test_familienportal_detail_css_felder(fixture_dir_familienportal):
     html = (fixture_dir_familienportal / "detail.html").read_text(encoding="utf-8")
     d = adapter.parse_detail(html)
     assert d.get("ort") == "Eisbahn im Sportforum Hohenschönhausen", d
-    adr = d.get("adresse") or ""
-    assert "Konrad-Wolf-Str. 39" in adr and "13055 Berlin" in adr, adr
+    # Textknoten-Komma normalisiert: „…39, 13055 Berlin“ ohne Leerzeichen vor Komma
+    assert d.get("adresse") == "Konrad-Wolf-Str. 39, 13055 Berlin", d
     adapter.close()
 
 

@@ -326,6 +326,9 @@ class SelectorAdapter:
             for feldname, regel in css_felder.items():
                 txt = " ".join(sel_css.css(regel["css"]).css("::text").getall())
                 txt = re.sub(r"\s+", " ", txt).strip()
+                # Textknoten-Kommas („Straße 1 , 12435 Berlin“) normalisieren:
+                # Leerzeichen vor Komma entfernen — für WFS-Geokodierung + Anzeige.
+                txt = re.sub(r"\s*,\s*", ", ", txt)
                 if txt:
                     out[feldname] = txt
         jsonld_felder = {k: v for k, v in (self._detail_cfg.get("felder") or {}).items()
