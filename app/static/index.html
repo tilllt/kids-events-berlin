@@ -22,7 +22,12 @@
   </div>
 
   <main>
-    <aside id="filters">
+    <aside id="filters" class="filters-closed">
+      <button id="filter-toggle" type="button" class="filter-toggle" aria-expanded="false" aria-controls="filter-body">
+        <span>Filter</span>
+        <span id="filter-count" class="filter-count hidden"></span>
+      </button>
+      <div id="filter-body">
       <section>
         <h2>Bezirk</h2>
         <div id="bezirk-list" class="checkgrid"></div>
@@ -51,6 +56,7 @@
         <button id="resetbtn" type="button" class="ghost">Filter zurücksetzen</button>
       </section>
       <div id="meta-note" class="metanote"></div>
+      </div>
     </aside>
 
     <section id="content">

@@ -321,9 +321,29 @@ async function load() {
   }
 }
 
-function apply() { load(); }
+function apply() {
+  updateFilterCount();
+  load();
+}
+
+/* Aktive Filter im Toggle-Button zählen (Mobile) — „Heute“ als Standard
+   zählt nicht als aktiver Filter. */
+function updateFilterCount() {
+  const el = $("#filter-count");
+  let n = state.bezirk.length + state.altersband.length + state.uhrzeit.length;
+  if (state.zeitraum !== "heute") n += 1;
+  if (state.kostenlos) n += 1;
+  el.textContent = `${n} aktiv`;
+  el.classList.toggle("hidden", n === 0);
+}
 
 /* ---------- Init ---------- */
+// Filter collapsible (Mobile): Toggle zwischen offen/zugeklappt
+$("#filter-toggle").addEventListener("click", () => {
+  const aside = $("#filters");
+  const zu = aside.classList.toggle("filters-closed");
+  $("#filter-toggle").setAttribute("aria-expanded", String(!zu));
+});
 $("#detail-close").addEventListener("click", closeDetail);
 $("#detail").addEventListener("click", (ev) => { if (ev.target === ev.currentTarget) closeDetail(); });
 document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") closeDetail(); });
