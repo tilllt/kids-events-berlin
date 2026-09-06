@@ -95,10 +95,16 @@ def test_ort_aufloesen():
 # --- Amtliche Geokodierung (WFS Adressen Berlin) ---------------------------
 def test_utm33n_zu_wgs84():
     """Rostocker Straße 32 (RBS-Punkt) → Koordinaten nahe Nominatim-Wert."""
-    from app.geo import _utm33n_zu_wgs84
+    from app.geo import _utm33n_zu_wgs84, _wgs84_zu_utm33n
     lat, lon = _utm33n_zu_wgs84(386477.656, 5821519.552)
     assert abs(lat - 52.5318) < 0.001
     assert abs(lon - 13.3262) < 0.001
+    # Roundtrip: WGS84 → UTM33 → WGS84 (cm-Genauigkeit genügt)
+    east, north = _wgs84_zu_utm33n(lat, lon)
+    assert abs(east - 386477.656) < 1.0
+    assert abs(north - 5821519.552) < 1.0
+    lat2, lon2 = _utm33n_zu_wgs84(east, north)
+    assert abs(lat2 - lat) < 1e-6 and abs(lon2 - lon) < 1e-6
 
 
 def test_adresse_teile():

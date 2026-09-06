@@ -29,6 +29,8 @@ NOMINATIM_SEARCH = "https://nominatim.openstreetmap.org/search"
 # Amtlicher WFS „Adressen Berlin“ (gdi.berlin.de, Datenlizenz Zero 2.0):
 # RBS-Adresspunkte mit Straße, Hausnummer, PLZ und Bezirk (bez_name).
 WFS_ADRESSEN = "https://gdi.berlin.de/services/wfs/adressen_berlin"
+# Amtlicher WFS „ALKIS Berlin Bezirke“ (Bezirksgrenzen, Punkt-in-Polygon).
+WFS_BEZIRKE = "https://gdi.berlin.de/services/wfs/alkis_bezirke"
 
 
 # --- Orts-Alias-Lexikon ----------------------------------------------------
@@ -65,7 +67,6 @@ def ort_aufloesen(ort: str | None) -> tuple[str | None, str | None]:
 
 
 # --- UTM Zone 33N (ETRS89 ≈ WGS84) → WGS84 --------------------------------
-# Standard-UTM-Inverse (Ellipsoid WGS84); für Events genügt Meter-Genauigkeit.
 def _utm33n_zu_wgs84(east: float, north: float) -> tuple[float, float]:
     a = 6378137.0
     f = 1 / 298.257223563
@@ -96,8 +97,35 @@ def _utm33n_zu_wgs84(east: float, north: float) -> tuple[float, float]:
            - (1 + 2 * t + c) * d ** 3 / 6
            + (5 - 2 * c + 28 * t - 3 * c * c + 8 * ep2 + 24 * t * t)
            * d ** 5 / 120) / math.cos(phi1)
-    return (math.degrees(lat),  # noqa: E501
+    return (math.degrees(lat),
             33 * 6 - 183 + math.degrees(lon))
+
+
+def _wgs84_zu_utm33n(lat: float, lon: float) -> tuple[float, float]:
+    """WGS84 → ETRS89/UTM Zone 33N (für den ALKIS-Bezirke-WFS-Filter)."""
+    a = 6378137.0
+    f = 1 / 298.257223563
+    k0 = 0.9996
+    e2 = f * (2 - f)
+    ep2 = e2 / (1 - e2)
+    phi = math.radians(lat)
+    lam = math.radians(lon)
+    lam0 = math.radians(33 * 6 - 183)
+    n = a / (1 - e2 * math.sin(phi) ** 2) ** 0.5
+    t = math.tan(phi) ** 2
+    c = ep2 * math.cos(phi) ** 2
+    a_ = math.cos(phi) * (lam - lam0)
+    m = a * ((1 - e2 / 4 - 3 * e2 ** 2 / 64 - 5 * e2 ** 3 / 256) * phi
+             - (3 * e2 / 8 + 3 * e2 ** 2 / 32 + 45 * e2 ** 3 / 1024) * math.sin(2 * phi)
+             + (15 * e2 ** 2 / 256 + 45 * e2 ** 3 / 1024) * math.sin(4 * phi)
+             - (35 * e2 ** 3 / 3072) * math.sin(6 * phi))
+    east = k0 * n * (a_ + (1 - t + c) * a_ ** 3 / 6
+                     + (5 - 18 * t + t ** 2 + 72 * c - 58 * ep2) * a_ ** 5 / 120) + 500000.0
+    north = k0 * (m + n * math.tan(phi)
+                  * (a_ ** 2 / 2
+                     + (5 - t + 9 * c + 4 * c ** 2) * a_ ** 4 / 24
+                     + (61 - 58 * t + t ** 2 + 600 * c - 330 * ep2) * a_ ** 6 / 720))
+    return east, north
 
 
 _ADRESSE_RX = re.compile(
@@ -206,6 +234,30 @@ def bezirk_from_latlon(store, lat: float, lon: float, client: httpx.Client | Non
             return cached["bezirk"] or None
     if client is None:
         return None  # offline: kein Netz, kein Raten
+    # 1) Amtlich: ALKIS-Bezirke-WFS (gdi.berlin.de, Punkt-in-Polygon,
+    #    EPSG:25833) — der Bezirksname kommt als Attribut `gem`.
+    try:
+        import urllib.parse as _up
+        east, north = _wgs84_zu_utm33n(float(lat), float(lon))
+        cql = _up.quote(f"INTERSECTS(geom, POINT({east:.3f} {north:.3f}))")
+        u = (f"{WFS_BEZIRKE}?service=WFS&version=2.0.0&request=GetFeature"
+             f"&typeNames=alkis_bezirke:bezirksgrenzen&outputFormat=application/json"
+             f"&count=1&cql_filter={cql}")
+        r = client.get(u)
+        r.raise_for_status()
+        feats = (r.json() or {}).get("features", [])
+        if feats:
+            gem = (feats[0].get("properties") or {}).get("gem")
+            bezirk = _LABEL_SLUG.get(gem) if gem else None
+            if bezirk:
+                store.set_venue_cache(key, lat, lon, bezirk, None)
+                if sleep_s:
+                    time.sleep(sleep_s)
+                return bezirk
+    except Exception:
+        pass  # WFS nicht erreichbar → Nominatim-Reverse als Fallback
+    # 2) Fallback: Nominatim-Reverse (nur für Nicht-Berlin-Punkte relevant;
+    #    Berliner Punkte liefert der ALKIS-WFS zuverlässig).
     try:
         r = client.get(NOMINATIM, params={
             "format": "jsonv2", "lat": lat, "lon": lon, "zoom": 14,
