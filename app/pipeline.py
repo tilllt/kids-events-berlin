@@ -36,11 +36,36 @@ def scrape(store: Store, quelle: str = "jup-berlin", *, online: bool = True,
             pass
 
 
+def _im_fenster(start, von, bis) -> bool:
+    """Start liegt im Scrape-Fenster [von, bis] (tz-aware Vergleiche)."""
+    return von <= start <= bis
+
+
+def _fenster_grenzen(jetzt: datetime, horizont_tage: int) -> tuple[datetime, datetime]:
+    """Fenster [heute 00:00, heute+horizont 23:59] Europe/Berlin."""
+    von = jetzt.replace(hour=0, minute=0, second=0, microsecond=0)
+    bis = (von + timedelta(days=horizont_tage + 1)
+           ).replace(hour=23, minute=59, second=59)
+    return von, bis
+
+
 def _scrape_mit_adapter(store, adapter, quelle, *, online, geo,
                         max_pages, max_details, sleep_s, detail_html, listing_htmls) -> dict:
     sleep_s = sleep_s if sleep_s is not None else getattr(adapter, "min_interval_s", 1.0)
     jetzt = datetime.now(TZ_BERLIN)
     run_id = store.start_run(quelle)
+
+    # Quellen mit Zeitraum-Abfrage (z. B. familienportal, horizont_tage=21):
+    # hartes Fenster [heute .. heute+horizont] — Streudaten und alles über den
+    # Horizont hinaus wird verworfen; bricht ab, sobald eine Seite nur noch
+    # außerhalb liegende Events listet.
+    horizont = int(getattr(adapter, "horizont_tage", 0) or 0)
+    von, bis = _fenster_grenzen(jetzt, horizont) if horizont else (None, None)
+
+    def _filter_rows(rows: list[dict]) -> list[dict]:
+        if not horizont:
+            return rows
+        return [r for r in rows if _im_fenster(r["start"], von, bis)]
 
     if online:
         detail_html = {}
@@ -57,6 +82,7 @@ def _scrape_mit_adapter(store, adapter, quelle, *, online, geo,
             rows = adapter.parse_listing(html)
             for w in getattr(adapter, "drain_warnungen", lambda: [])():
                 store.log_error(quelle, w)
+            rows = _filter_rows(rows)
             if not rows:
                 break
             slugs = {r["slug"] for r in rows}
@@ -79,6 +105,7 @@ def _scrape_mit_adapter(store, adapter, quelle, *, online, geo,
             rows = adapter.parse_listing(html)
             for w in getattr(adapter, "drain_warnungen", lambda: [])():
                 store.log_error(quelle, w)
+            rows = _filter_rows(rows)
             if not rows:
                 continue
             slugs = {r["slug"] for r in rows}

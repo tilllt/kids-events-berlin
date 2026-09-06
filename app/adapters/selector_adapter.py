@@ -118,6 +118,7 @@ class SelectorAdapter:
         self._felder: dict = listing.get("felder") or {}
         self._pag = listing.get("pagination") or {}
         self._horizont_tage = int(listing.get("horizont_tage") or 0)
+        self.horizont_tage = self._horizont_tage  # für die Pipeline (Fenster-Filter)
         self._detail_cfg = self._regeln.get("detail") or {}
         # Detailseiten nur laden, wenn die Regeln sie auswerten (JSON-LD/CSS).
         self.braucht_detail = bool(self._detail_cfg.get("jsonld")
