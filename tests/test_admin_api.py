@@ -128,6 +128,35 @@ def test_runs_errors_sichtbar(tmp_path):
     assert r.json()["runs"][0]["status"] == "ok"
 
 
+def test_scrape_regeln_ohne_regeln_422(tmp_path):
+    c, _ = _client(tmp_path)
+    c.post("/api/admin/sources", json={"quelle": "zlb", "name": "ZLB", "typ": "regeln"})
+    r = c.post("/api/admin/sources/zlb/scrape")
+    assert r.status_code == 422
+    assert "Regeln" in r.json()["detail"]["message"] or any(
+        "Regeln" in f for f in r.json()["detail"]["fehler"])
+
+
+def test_scrape_regeln_startet(tmp_path, monkeypatch):
+    c, _ = _client(tmp_path)
+    c.post("/api/admin/sources", json={"quelle": "zlb", "name": "ZLB", "typ": "regeln",
+                                       "url": "https://www.zlb.de/veranstaltungen"})
+    c.put("/api/admin/sources/zlb/regeln", json={"regel_yaml": GUT_REGELN})
+    gerufen = []
+
+    def fake_scrape(store, quelle, **kw):
+        gerufen.append(quelle)
+        return {"run_id": 1, "quelle": quelle}
+
+    monkeypatch.setattr("app.pipeline.scrape", fake_scrape)
+    assert c.post("/api/admin/sources/zlb/scrape").status_code == 202
+    for _ in range(40):
+        if gerufen:
+            break
+        time.sleep(0.05)
+    assert gerufen == ["zlb"]
+
+
 def test_scrape_intern_startet(tmp_path, monkeypatch):
     c, _ = _client(tmp_path)
     gerufen = []
@@ -137,10 +166,11 @@ def test_scrape_intern_startet(tmp_path, monkeypatch):
         return {"run_id": 1, "quelle": quelle}
 
     monkeypatch.setattr("app.pipeline.scrape", fake_scrape)
-    # typ regeln → 409 (Engine folgt in Phase 3)
-    c.post("/api/admin/sources", json={"quelle": "zlb", "name": "ZLB", "typ": "regeln"})
-    assert c.post("/api/admin/sources/zlb/scrape").status_code == 409
-    # typ intern → 202, Thread ruft scrape
+    # pausiert → 409
+    c.put("/api/admin/sources/jup-berlin", json={"aktiv": False})
+    assert c.post("/api/admin/sources/jup-berlin/scrape").status_code == 409
+    c.put("/api/admin/sources/jup-berlin", json={"aktiv": True})
+    # aktiv → 202, Thread ruft scrape
     assert c.post("/api/admin/sources/jup-berlin/scrape").status_code == 202
     for _ in range(40):
         if gerufen:

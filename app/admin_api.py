@@ -199,15 +199,25 @@ def settings_put(body: dict, request: Request):
 # --- Lauf auslösen ---------------------------------------------------------
 @router.post("/sources/{quelle}/scrape", status_code=202)
 def source_scrape(quelle: str, request: Request):
-    """Startet einen Lauf. Aktuell nur typ 'intern' (jup-berlin); feed/regeln
-    folgen mit der Adapter-Engine (Phase 3)."""
+    """Startet einen Lauf im Hintergrund. Typ 'feed' folgt (keine Feed-Quelle
+    aufgenommen); 'intern' und 'regeln' laufen sofort über ihre Adapter."""
     store = _store(request)
     s = store.get_source(quelle)
     if not s:
         raise HTTPException(404, f"Unbekannte Quelle: {quelle}")
-    if s["typ"] != "intern":
+    if not s["aktiv"]:
+        raise HTTPException(409, {"fehler": [f"Quelle '{quelle}' ist pausiert — erst aktivieren."]})
+    if s["typ"] == "feed":
         raise HTTPException(409, {"fehler": [
-            f"Quelle '{quelle}' ist vom Typ '{s['typ']}': die Adapter-Engine (feed/regeln) folgt in Phase 3."]})
+            f"Quelle '{quelle}' ist vom Typ 'feed': der Feed-Adapter folgt, "
+            "sobald die erste Feed-Quelle aufgenommen wird."]})
+    # Regeln/Adapter vorab prüfen (Fehler sofort sichtbar statt im Thread)
+    try:
+        from .adapters import build_adapter
+        adapter = build_adapter(store, quelle)
+        adapter.close()
+    except ValueError as e:
+        raise HTTPException(422, {"message": "Quelle kann nicht laufen.", "fehler": [str(e)]}) from e
 
     ergebnis: dict = {}
     def _lauf():
