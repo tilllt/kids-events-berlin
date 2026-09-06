@@ -6,7 +6,7 @@ Die Web-Oberfläche zeigt Veranstaltungen auf einer OpenStreetMap-Karte und als 
 
 ## Requirements
 
-### Req 1: Kartenansicht mit Event-Markern
+### Requirement: Kartenansicht mit Event-Markern
 
 - **Ablauf:** Die Karte nutzt Leaflet mit OpenStreetMap-Kacheln (kein API-Key). Jedes gefilterte Event mit Koordinate erscheint als Marker; bei großer Dichte werden Marker geclustert.
 - **Marker-Klick:** Öffnet Popup mit Titel, Zeit, Ort, Bezirk, Kostenlos-Status und Link „Zur Quelle“.
@@ -17,7 +17,7 @@ Die Web-Oberfläche zeigt Veranstaltungen auf einer OpenStreetMap-Karte und als 
 - **Eingaben:** Kein Filter gesetzt, September-Zeitfenster.
 - **Ergebnis:** Karte zeigt geclusterte Marker (Cluster-Zahl sichtbar); Liste zeigt alle Events; Popup enthält Quell-Link.
 
-### Req 2: Filter-Sidebar (Bezirk, Alter, Uhrzeit, Datum, Kostenlos)
+### Requirement: Filter-Sidebar (Bezirk, Alter, Uhrzeit, Datum, Kostenlos)
 
 - **Ablauf:** Sidebar mit: Bezirk (12 + „Berlinweit“), Altersband (Vorschulalter/Kita, Grundschule, 10+, Jugendliche, Familie, ohne Angabe), Uhrzeit (Vormittag/Nachmittag/Abend/Ganztags), Datum-von/bis, Kostenlos-Schalter.
 - **Verhalten:** Jede Filteränderung lädt Karte + Liste neu (`/api/events` + `.geojson`); aktive Filter sind sichtbar und einzeln entfernbar; Seitenzustand in der URL (teilbar).
@@ -28,7 +28,7 @@ Die Web-Oberfläche zeigt Veranstaltungen auf einer OpenStreetMap-Karte und als 
 - **Eingaben:** Bezirk=Pankow, Alter=Grundschule, Uhrzeit=Nachmittag.
 - **Ergebnis:** Karte und Liste zeigen nur passende Events; URL enthält die Filter; beim Teilen/Neuladen bleiben sie erhalten.
 
-### Req 3: Sichtbare Zustände und Fehler
+### Requirement: Sichtbare Zustände und Fehler
 
 - **Ablauf:** Ladezustand („lade…“ mit echter Fortschritts-/Statusanzeige), Leer-Zustand („Keine Veranstaltungen für diese Filter“ + Vorschlag Filter zurücksetzen), Fehler-Zustand (API nicht erreichbar → Meldung + Retry-Button).
 - **Invarianz:** Keine stillen Fehler: Jede gescheiterte Anfrage oder leere Antwort erzeugt eine sichtbare Meldung.

@@ -7,7 +7,7 @@ const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
 
 const state = {
   bezirk: [], altersband: [], uhrzeit: [],
-  kostenlos: false, von: "", bis: "", meta: null,
+  kostenlos: false, von: "", bis: "", zeitraum: "heute", meta: null,
 };
 
 function fmtDate(s) {
@@ -28,6 +28,53 @@ function alterLabel(e) {
   if (e.altersband_min != null) return `ab ${e.altersband_min}`;
   if (e.altersband_max != null) return `bis ${e.altersband_max} J.`;
   return null;
+}
+
+/* ---------- Zeitraum-Schnellwahl (Europe/Berlin) ---------- */
+function berlinDateStr(offsetDays) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Berlin", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date());
+  const m = {};
+  parts.forEach((p) => (m[p.type] = p.value));
+  const d = new Date(Date.UTC(+m.year, +m.month - 1, +m.day) + (offsetDays || 0) * 86400000);
+  return d.toISOString().slice(0, 10);
+}
+const ZEITRAUM_OPTIONEN = [
+  { id: "heute", label: "Heute", von: () => berlinDateStr(0), bis: () => berlinDateStr(0) },
+  { id: "morgen", label: "Morgen", von: () => berlinDateStr(1), bis: () => berlinDateStr(1) },
+  { id: "diese-woche", label: "Diese Woche", von: () => berlinDateStr(0), bis: () => berlinDateStr(6) },
+  { id: "naechste-woche", label: "Nächste Woche", von: () => berlinDateStr(7), bis: () => berlinDateStr(13) },
+];
+const ZEITRAUM_IDS = ZEITRAUM_OPTIONEN.map((o) => o.id);
+
+function zeitChip(opt) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.textContent = opt.label;
+  b.dataset.id = opt.id;
+  b.addEventListener("click", () => {
+    state.zeitraum = opt.id;
+    syncZeitraumUI();
+    apply();
+  });
+  return b;
+}
+
+/* Aktive Schnellwahl: berechnete Grenzen setzen + Von/Bis-Felder sperren.
+ * Benutzerdefiniert: Felder frei, Werte aus state. */
+function syncZeitraumUI() {
+  const auto = ZEITRAUM_IDS.includes(state.zeitraum);
+  $$("#zeitraum-list button").forEach((b) => b.classList.toggle("on", b.dataset.id === state.zeitraum));
+  $("#von").disabled = auto;
+  $("#bis").disabled = auto;
+  if (auto) {
+    const o = ZEITRAUM_OPTIONEN.find((x) => x.id === state.zeitraum);
+    state.von = o.von();
+    state.bis = o.bis();
+  }
+  $("#von").value = state.von;
+  $("#bis").value = state.bis;
 }
 
 /* ---------- Filter-Optionen aus /api/meta ---------- */
@@ -52,9 +99,11 @@ async function loadMeta() {
   state.meta.altersbaender.forEach((o) => al.appendChild(chip(o.id, o.label, "altersband")));
   const uz = $("#uhrzeit-list");
   state.meta.uhrzeiten.forEach((o) => uz.appendChild(chip(o.id, o.label, "uhrzeit")));
+  const zl = $("#zeitraum-list");
+  ZEITRAUM_OPTIONEN.forEach((o) => zl.appendChild(zeitChip(o)));
   $("#kostenlos").addEventListener("change", (ev) => { state.kostenlos = ev.target.checked; apply(); });
-  $("#von").addEventListener("change", (ev) => { state.von = ev.target.value; apply(); });
-  $("#bis").addEventListener("change", (ev) => { state.bis = ev.target.value; apply(); });
+  $("#von").addEventListener("change", (ev) => { state.von = ev.target.value; state.zeitraum = "benutzerdefiniert"; syncZeitraumUI(); apply(); });
+  $("#bis").addEventListener("change", (ev) => { state.bis = ev.target.value; state.zeitraum = "benutzerdefiniert"; syncZeitraumUI(); apply(); });
   $("#resetbtn").addEventListener("click", resetFilters);
   $("#retrybtn").addEventListener("click", () => { $("#errorbar").classList.add("hidden"); load(); });
   const note = $("#meta-note");
@@ -80,10 +129,11 @@ function chip(id, label, key) {
 
 function resetFilters() {
   state.bezirk = []; state.altersband = []; state.uhrzeit = [];
-  state.kostenlos = false; state.von = ""; state.bis = "";
+  state.kostenlos = false; state.von = ""; state.bis = ""; state.zeitraum = "heute";
   $$("#bezirk-list input").forEach((i) => (i.checked = false));
   $$(".chips button").forEach((b) => b.classList.remove("on"));
-  $("#kostenlos").checked = false; $("#von").value = ""; $("#bis").value = "";
+  $("#kostenlos").checked = false;
+  syncZeitraumUI();
   apply();
 }
 
@@ -93,6 +143,7 @@ function queryParams() {
   if (state.altersband.length) p.set("altersband", state.altersband.join(","));
   if (state.uhrzeit.length) p.set("uhrzeit", state.uhrzeit.join(","));
   if (state.kostenlos) p.set("kostenlos", "true");
+  if (ZEITRAUM_IDS.includes(state.zeitraum)) p.set("zeitraum", state.zeitraum);
   if (state.von) p.set("von", state.von);
   if (state.bis) p.set("bis", state.bis);
   const qs = p.toString();
@@ -106,6 +157,8 @@ function readUrl() {
   state.altersband = (p.get("altersband") || "").split(",").filter(Boolean);
   state.uhrzeit = (p.get("uhrzeit") || "").split(",").filter(Boolean);
   state.kostenlos = p.get("kostenlos") === "true";
+  const zr = p.get("zeitraum");
+  state.zeitraum = ZEITRAUM_IDS.includes(zr) ? zr : (p.get("von") || p.get("bis") ? "benutzerdefiniert" : "heute");
   state.von = p.get("von") || ""; state.bis = p.get("bis") || "";
 }
 
@@ -233,8 +286,7 @@ loadMeta()
       b.classList.toggle("on", state[key].includes(b.dataset.id));
     });
     $("#kostenlos").checked = state.kostenlos;
-    $("#von").value = state.von;
-    $("#bis").value = state.bis;
+    syncZeitraumUI();
     return load();
   })
   .catch((err) => {

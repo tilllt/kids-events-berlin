@@ -6,7 +6,7 @@ Die REST-API stellt die aggregierten Veranstaltungen mit Filtern nach Bezirk, Al
 
 ## Requirements
 
-### Req 1: Filterbare Event-Liste
+### Requirement: Filterbare Event-Liste
 
 - **Ablauf:** `GET /api/events` liefert Events im Zeitfenster mit Query-Parametern:
   - `bezirk` (12 Berliner Bezirke + `berlinweit`, mehrfach)
@@ -21,7 +21,7 @@ Die REST-API stellt die aggregierten Veranstaltungen mit Filtern nach Bezirk, Al
 - **Eingaben:** `GET /api/events?bezirk=neukoelln&altersband=4-6&uhrzeit=vormittag&von=2026-09-12&bis=2026-09-13`
 - **Ergebnis:** Nur Events, die in Neukölln stattfinden, für 4–6-Jährige geeignet sind und vormittags starten; Felder vollständig; leere Treffer → `[]` mit HTTP 200.
 
-### Req 2: GeoJSON für die Karte
+### Requirement: GeoJSON für die Karte
 
 - **Ablauf:** `GET /api/events.geojson` liefert dieselbe Filterung als GeoJSON `FeatureCollection` mit `Point`-Geometrie (`lat/lon` aus Venue-Geokodierung).
 - **Ohne Koordinate:** Events ohne Punkt erscheinen zusätzlich im Feld `ohne_position` (FeatureCollection-Property), damit die UI sie in der Liste zeigen kann.
@@ -31,7 +31,7 @@ Die REST-API stellt die aggregierten Veranstaltungen mit Filtern nach Bezirk, Al
 - **Eingaben:** Filter Bezirk=Mitte; 3 Events, davon 1 ohne Geokoordinate.
 - **Ergebnis:** GeoJSON enthält 2 Features mit `Point`; das dritte Event steht unter `ohne_position`.
 
-### Req 3: Quellen-Provenienz sichtbar
+### Requirement: Quellen-Provenienz sichtbar
 
 - **Ablauf:** Jeder Event-Datensatz führt `quelle` (Adapter-Name), `source_url` (Original-Seite) und `geholt_am` (Abrufzeitpunkt).
 - **Zweck:** Nachvollziehbarkeit und korrekte Verlinkung; Aggregation übernimmt keine fremden Volltexte.

@@ -6,7 +6,7 @@ Die Kern-Pipeline nimmt die Roh-Events eines Adapters entgegen, normalisiert sie
 
 ## Requirements
 
-### Req 1: Normalisiertes Event-Modell
+### Requirement: Normalisiertes Event-Modell
 
 - **Ablauf:** Jeder Adapter liefert Roh-Events; die Pipeline bildet sie auf das kanonische Modell ab.
 - **Pflichtfelder:** `titel`, `start` (lokal, tz Europe/Berlin), `ort` (Venue-Name), `quelle`, `source_url`.
@@ -19,7 +19,7 @@ Die Kern-Pipeline nimmt die Roh-Events eines Adapters entgegen, normalisiert sie
 - **Eingaben:** Je ein Roh-Event mit unterschiedlichen Feldnamen (z. B. „Bezirk“ vs. „Stadtteil“).
 - **Ergebnis:** Beide Events liegen im Store mit identischem Feld-Schema; Feldnamen-Quirks der Quellen sind aufgelöst.
 
-### Req 2: Idempotenter Lauf je Quelle
+### Requirement: Idempotenter Lauf je Quelle
 
 - **Ablauf:** Ein Lauf lädt alle aktuellen Events einer Quelle, vergleicht gegen den Store und schreibt nur Änderungen (Upsert).
 - **Wiederholung:** Ein zweiter Lauf ohne Quell-Änderungen erzeugt keine neuen Zeilen und keine Duplikate.
@@ -31,7 +31,7 @@ Die Kern-Pipeline nimmt die Roh-Events eines Adapters entgegen, normalisiert sie
 - **Eingaben:** Zweiter Lauf derselben Quelle innerhalb 24 h ohne Quell-Änderung.
 - **Ergebnis:** `n_neu = 0`, `n_geaendert = 0`, Event-Anzahl im Store unverändert, Lauf protokolliert.
 
-### Req 3: Validierung mit sichtbarer Fehler-Queue
+### Requirement: Validierung mit sichtbarer Fehler-Queue
 
 - **Ablauf:** Vor dem Speichern wird jedes Event validiert: Pflichtfelder vorhanden, `ende >= start`, Datum im konfigurierten Sicht-Horizont, `source_url` wohlgeformt.
 - **Ablehnung:** Nicht valide Events werden NICHT still verworfen, sondern in die Fehler-Queue geschrieben (`n_fehler` im Lauf, Eintrag mit Rohdaten + Grund).
@@ -43,7 +43,7 @@ Die Kern-Pipeline nimmt die Roh-Events eines Adapters entgegen, normalisiert sie
 - **Eingaben:** Event mit `ende` vor `start` und nicht parsebarem Datumsstring.
 - **Ergebnis:** Event landet in der Fehler-Queue mit Grund „Zeitlogik: ende < start“ bzw. „Datum nicht parsebar“; der Lauf meldet `n_fehler ≥ 1`; Alarm ausgelöst.
 
-### Req 4: LLM-frei zur Laufzeit
+### Requirement: LLM-frei zur Laufzeit
 
 - **Ablauf:** Aggregation, Anreicherung, Dedupe und Validierung laufen ohne LLM-, Embedding- oder externe ML-Aufrufe.
 - **Ausnahme:** Nur der Entwicklungs-Loop (Adapter schreiben, Fehler-Analyse, Code-Review) darf KI-Werkzeuge nutzen — nie der Produktiv-Pfad.

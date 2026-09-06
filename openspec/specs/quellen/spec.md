@@ -6,7 +6,7 @@ Pro Veranstaltungsquelle existiert ein Adapter, der deklarativ beschreibt, wie d
 
 ## Requirements
 
-### Req 1: Deklarative Adapter-Konfiguration
+### Requirement: Deklarative Adapter-Konfiguration
 
 - **Ablauf:** Ein Adapter definiert: Listing-URL(s), Pagination, Extraktionsregeln, Rate-Limit, robots-Policy (erlaubt/nicht erlaubt, dokumentiert), erwarteter Event-Mengenbereich, Sicht-Horizont.
 - **Datei:** `app/adapters/<quelle>.py` bzw. `configs/<quelle>.yaml` + ggf. Mini-Parser; Registry in `app/adapters/__init__.py`.
@@ -17,7 +17,7 @@ Pro Veranstaltungsquelle existiert ein Adapter, der deklarativ beschreibt, wie d
 - **Eingaben:** Neue Quelle (z. B. voebb.de-Veranstaltungen) mit Konfiguration und Fixture.
 - **Ergebnis:** Adapter erscheint in der Registry; `--quelle=alle` führt ihn mit aus; `docs/quellen.md` enthält den Audit-Eintrag.
 
-### Req 2: Extraktions-Priorität JSON-LD → hEvent → CSS
+### Requirement: Extraktions-Priorität JSON-LD → hEvent → CSS
 
 - **Ablauf:** Beim Parsen einer Detail-/Listing-Seite wird in fester Reihenfolge versucht: (1) eingebettetes JSON-LD mit `@type: Event`, (2) hEvent-Microformate, (3) konfigurierte CSS-Selektoren, (4) Regex nur für Einzelfelder.
 - **Zweck:** Robuste Extraktion ohne LLM; strukturierte Daten (JSON-LD) schlagen fragile Selektoren.
@@ -27,7 +27,7 @@ Pro Veranstaltungsquelle existiert ein Adapter, der deklarativ beschreibt, wie d
 - **Eingaben:** Museum-Seite mit JSON-LD; Bibliotheks-Seite nur HTML-Liste.
 - **Ergebnis:** Museum-Event vollständig aus JSON-LD extrahiert; Bibliotheks-Event über Selektoren; beide im gleichen Modell.
 
-### Req 3: Fixture-Tests und Anomalie-Alarme
+### Requirement: Fixture-Tests und Anomalie-Alarme
 
 - **Ablauf:** Zu jedem Adapter gehört ein Fixture-Snapshot (gespeichertes HTML + erwartete Events) als Regressionstest; CI führt sie aus.
 - **Anomalie:** Liefert eine Quelle `0 Events` oder weicht die Zahl um mehr als 50 % vom 7-Tage-Mittel ab, wird ein Alarm ausgelöst (ntfy/Matrix) — nie stiller Lauf.
