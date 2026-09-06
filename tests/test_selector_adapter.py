@@ -11,13 +11,13 @@ ZLB_REGELN = """quelle: zlb
 robots: "erlaubt; Events-Pfade nicht disallowed (2026-09-06)"
 listing:
   url: https://www.zlb.de/veranstaltungen
-  pagination: {param: "tx_news_pi1%5B%40widget_0%5D%5BcurrentPage%5D"}
   item_css: article.eventTeaser
   felder:
     titel: {css: ".eventTeaser__title > span:not(.eventTeaser__superHeadline)"}
     url: {css: "a", attr: "href"}
     start: {css: ".eventTeaser__meta", regex: "(\\\\d{2}\\\\.\\\\d{2}\\\\.\\\\d{4})", format: "%d.%m.%Y"}
     zeit: {css: ".eventTeaser__meta", regex: "(\\\\d{1,2}:\\\\d{2}) Uhr", format: "%H:%M"}
+    ende: {css: ".eventTeaser__meta", regex: "\\\\d{1,2}:\\\\d{2} Uhr - (\\\\d{1,2}:\\\\d{2})", format: "%H:%M"}
     ort: {css: ".eventTeaser__location"}
 detail:
   jsonld: true
@@ -25,6 +25,19 @@ detail:
     beschreibung_kurz: {jsonld: "$.description"}
     ort: {jsonld: "$.location.name"}
     adresse: {jsonld: "$.location.address.streetAddress"}
+"""
+
+MUSEUMS_REGELN = """quelle: museumsportal
+robots: "Content-Signal search=yes, use=reference; AI-Crawler geblockt (2026-09-06)"
+listing:
+  url: https://www.museumsportal-berlin.de/de/veranstaltungen
+  item_css: "mp-card.mp-card-program"
+  felder:
+    titel: {css: "h2"}
+    start: {css: ".mp-card-content__info time", regex: "(\\\\d{2}\\\\.\\\\d{2}\\\\.\\\\d{2})", format: "%d.%m.%y"}
+    zeit: {css: ".mp-card-content__info time", regex: "(\\\\d{1,2}:\\\\d{2})", format: "%H:%M"}
+    ort: {css: ".mp-card-location"}
+    beschreibung_kurz: {css: "h3"}
 """
 
 
@@ -64,3 +77,24 @@ def test_zlb_zu_event(fixture_dir_zlb):
 def test_regeln_kaputt_wirft():
     with pytest.raises(ValueError):
         SelectorAdapter("zlb", regel_yaml="listing:\n  item_css: x\n")
+
+
+def test_museumsportal_regeln_validieren():
+    assert validate_regeln_yaml(MUSEUMS_REGELN, "museumsportal") == []
+
+
+def test_museumsportal_listing_offline(fixture_dir_museumsportal):
+    adapter = SelectorAdapter("museumsportal", regel_yaml=MUSEUMS_REGELN)
+    html = (fixture_dir_museumsportal / "listing.html").read_text(encoding="utf-8")
+    rows = adapter.parse_listing(html)
+    warn = adapter.drain_warnungen()
+    assert len(rows) >= 5, f"nur {len(rows)} Events; warnungen: {warn}"
+    r0 = rows[0]
+    assert r0["titel"]
+    assert r0["start"].year == 2026
+    assert r0["ort"]
+    # featured-Karte hat Zeit → nicht ganztags
+    assert r0["ganztags"] is False or r0["start"].hour != 0
+    # Keine Detail-URL in der Liste → slug = Hash, url leer
+    assert not r0["url"]
+    adapter.close()

@@ -124,6 +124,8 @@ class SelectorAdapter:
         return r.text
 
     def fetch_detail(self, slug: str) -> str:
+        if not slug.startswith("http"):
+            return ""  # Listing ohne Detail-URL (z. B. Museumsportal) → kein Fetch
         r = self._client.get(slug)
         r.raise_for_status()
         return r.text
@@ -170,41 +172,56 @@ class SelectorAdapter:
         url = f.get("url")
         if url and not url.startswith("http"):
             url = urljoin(self._listing_url, url)
-        start_text = f.get("start")
-        if not start_text:
-            raise ValueError("start fehlt")
+
         sregel = self._felder["start"]
-        start_text = _regex_ziehen(start_text, sregel.get("regex"))
-        fmt = sregel.get("format")
-        if fmt is None:
-            fmt = None
-        start = _parse_zeit(start_text, fmt, "start")
-        # Uhrzeit (optional): ergänzt start/ende um Tageszeit
-        zeit_regel = self._felder.get("zeit") or self._felder.get("ende_zeit")
+        start_text = _regex_ziehen(f.get("start"), sregel.get("regex"))
+        start = _parse_zeit(start_text, sregel.get("format"), "start")
+
+        # Zeit-/Ende-Extraktion (Konvention):
+        #   'zeit' = Start-Uhrzeit (ersetzt Uhrzeit von start), 'ende' = Ende
+        #   (Zeit oder Datum+Zeit; reine Zeit = gleicher Tag wie start).
         ende = None
-        if f.get("ende") or zeit_regel:
-            et = f.get("ende") or f.get("zeit")
-            eregel = self._felder.get("ende") or {}
-            if zeit_regel and not et:
-                et = _feld_wert(item, zeit_regel)
-                eregel = zeit_regel
-            et = _regex_ziehen(et, eregel.get("regex"))
-            if et:
-                try:
-                    ende = _parse_zeit(et, eregel.get("format"), "ende")
-                except ValueError:
-                    ende = None  # Ende optional
+        start_hat_zeit = "%H" in (sregel.get("format") or "")
+        zeit_text = None
+        ende_regel = self._felder.get("ende")
+        zeit_regel = self._felder.get("zeit")
+        if ende_regel:
+            eregel = ende_regel
+            et = _regex_ziehen(f.get("ende"), eregel.get("regex"))
+        elif zeit_regel:
+            eregel = zeit_regel
+            et = _regex_ziehen(f.get("zeit"), zeit_regel.get("regex"))
+        else:
+            eregel = None
+            et = None
+        if et and eregel:
+            try:
+                extra = _parse_zeit(et, eregel.get("format"), "ende/zeit")
+            except ValueError:
+                extra = None
+            if extra is not None:
+                nur_zeit = "%H" in (eregel.get("format") or "") \
+                    and "%d" not in (eregel.get("format") or "")
+                if nur_zeit:
+                    extra = extra.replace(year=start.year, month=start.month, day=start.day)
+                if eregel is ende_regel and ende_regel is not None:
+                    ende = extra
+                    zeit_text = f"{extra.hour:02d}:{extra.minute:02d}"
+                else:
+                    zeit_text = f"{extra.hour:02d}:{extra.minute:02d}"
+        if zeit_text and not start_hat_zeit:
+            h, m = zeit_text.split(":")
+            start = start.replace(hour=int(h), minute=int(m), second=0)
+            start_hat_zeit = True
+
         ganztags = False
-        if not zeit_regel and not f.get("ende"):
-            # Nur ein Datum ohne Uhrzeit → ganztägig
-            if not any(k in self._felder.get("start", {}) for k in ("zeit",)) \
-                    and "format" in sregel and ":" not in (fmt or ""):
-                start = start.replace(hour=0, minute=0, second=0)
-                ende = start
-                ganztags = True
+        if not start_hat_zeit:
+            # Nur ein Datum ohne Uhrzeit → ganztägig (00:00–23:59, wie jup-Konvention)
+            start = start.replace(hour=0, minute=0, second=0)
+            ende = start.replace(hour=23, minute=59)
+            ganztags = True
+
         ort = f.get("ort")
-        beschreibung = f.get("beschreibung_kurz")
-        adresse = f.get("adresse")
         return {
             "slug": self._url_to_slug(url) if url else hashlib.sha1(
                 f"{titel}|{start.isoformat()}".encode()).hexdigest()[:16],
@@ -214,12 +231,14 @@ class SelectorAdapter:
             "ende": ende,
             "ganztags": ganztags,
             "ort": ort or None,
-            "beschreibung_kurz": beschreibung,
-            "adresse": adresse,
+            "beschreibung_kurz": f.get("beschreibung_kurz"),
+            "adresse": f.get("adresse"),
         }
 
     # --- Detail-Parsing (JSON-LD via extruct) -------------------------------
     def parse_detail(self, html: str) -> dict:
+        if not html.strip():
+            return {}  # kein Detail vorhanden (Listing ohne URL)
         if not self._detail_cfg.get("jsonld"):
             return {}
         try:
