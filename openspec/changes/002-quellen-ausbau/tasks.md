@@ -1,41 +1,41 @@
-# Tasks — Change 002 Quellen-Ausbau
+# Tasks — Change 002 Quellen-Ausbau (konfigurationsgetrieben)
 
-Reihenfolge mit TDD; nach jeder Aufgabe committen (`feat:`/`test:`/`docs:`).
+Reihenfolge mit TDD; nach jeder Aufgabe committen. **Leitprinzip: keine pro-Quelle-Parser; Regeln als YAML-Daten, ausgeführt von einer generischen Engine (parsel + extruct); user-korrigierbar via Volume-Overlay.**
 
-## Phase 0 — Live-Erkundung (Befunde → docs/quellen.md)
+## Phase 0 — Engine (generisch, einmal)
 
-- [ ] berlinmitkind.de: robots (bereits offen, AI-Crawler geblockt), Listing-URL, AJAX-Endpunkt oder Server-HTML, Detail-JSON-LD-Felder dokumentieren
-- [ ] zlb.de: Veranstaltungs-Listen-URL(s), Artikel-Selektoren, Datums-Muster, Detail-URL-Form, Kinder-Events-Anteil dokumentieren
-- [ ] familienportal.berlin.de: Erreichbarkeit (UA/Retry), Technik, Listen-/Detailstruktur dokumentieren; falls blockiert: Status „pending“ + Grund
-- [ ] kinderkulturkalender-berlin.de: Duplikat-Befund zu jup.berlin verifizieren (gleiche Events?) → Entscheidung in docs/quellen.md
+- [ ] Deps: `extruct`, `jsonpath-ng` zu pyproject (parsel vorhanden); Dev-Umgebung aktualisieren
+- [ ] `configs/`-Loader: YAML aus Paket-`configs/` + Overlay `$DATA_DIR/configs/` (Overlay gewinnt, Log mit Quelle+Hash); Schema-Validierung
+- [ ] `app/adapters/config_adapter.py`: listing (item_css, Feld-CSS inkl. attr, Datums-`format`, Pagination query-param/next_css), JSON-LD-Detailpfad via extruct (Feld-Mapping JSONPath), Normalisierung → Event-Modell
+- [ ] Registry: config-Adapter liest `configs/*.yaml`; `--quelle=alle` führt alle produktiven Quellen; Mengenbereich je Quelle
+- [ ] Tests: Loader (Overlay gewinnt), Engine gegen synthetisches HTML + JSON-LD-Fixture
 
-## Phase 1 — Adapter berlinmitkind.de
+## Phase 1 — Quelle berlinmitkind.de (JSON-LD-Pfad)
 
-- [ ] Fixtures: Listing + 2 Detailseiten (davon ≥ 1 Kinder-Event mit JSON-LD)
-- [ ] `app/adapters/berlinmitkind.py`: Listing-Parser + JSON-LD-Detailparser → Event-Modell (Titel, Zeit, Ort, URL, Beschreibung)
-- [ ] Registry + Mengenbereich; Tests gegen Fixtures; Enrichment-Regeln (kostenlos/Alter) greifen
+- [ ] Live-Erkundung: Listing-URL/Struktur, Detail-JSON-LD-Felder → docs/quellen.md
+- [ ] `configs/berlinmitkind.yaml` (Regeln) + Fixtures (Listing + 2 Details)
+- [ ] Engine offline grün; Online-Gegenprobe idempotent
 
-## Phase 2 — Adapter ZLB (zlb.de)
+## Phase 2 — Quelle zlb.de (CSS/TYPO3-Pfad)
 
-- [ ] Fixtures: Listen-Seite(n) + 1 Detailseite
-- [ ] `app/adapters/zlb.py`: TYPO3-Artikel-Parser (Titel/Datum/Zeit/Ort/URL), Regel-Filter Kinder/Familie am Enrichment
-- [ ] Registry + Mengenbereich; Tests gegen Fixtures
+- [ ] Live-Erkundung: Listen-/Detail-Selektoren → docs/quellen.md
+- [ ] `configs/zlb.yaml` + Fixtures
+- [ ] Engine offline grün; Online-Gegenprobe idempotent
 
-## Phase 3 — Adapter familienportal.berlin.de
+## Phase 3 — Quelle familienportal.berlin.de
 
-- [ ] Fixtures (nach Live-Befund; falls Seite nicht parsebar → Task entfällt mit Begründung)
-- [ ] `app/adapters/familienportal.py` nach Befund
-- [ ] Registry + Mengenbereich; Tests gegen Fixtures
+- [ ] Live-Erkundung (Erreichbarkeit/Struktur); falls parsebar → `configs/familienportal.yaml` + Fixtures + Gegenprobe; sonst Status „pending“ + Grund dokumentiert
 
-## Phase 4 — Integration + Verifikation
+## Phase 4 — Betrieb + Doku
 
-- [ ] `--quelle=alle` läuft alle produktiven Adapter (offline: Fixtures); Online-Gegenprobe je Quelle: > 0 Events, 2. Lauf `n_neu=0`
-- [ ] `docs/quellen.md` + README aktualisiert (Quellen-Matrix, Duplikat-Entscheidung)
-- [ ] pytest gesamt grün; Commit; Deploy über Coolify (kinderkram.cia-spandau.de), Events der neuen Quellen sichtbar
+- [ ] Duplikat-Befund kinderkulturkalender→jup dokumentieren (keine eigene Quelle)
+- [ ] `docs/quellen.md`: Quellen-Matrix + „Regeln anpassen“-Anleitung (Overlay, Selektoren, Fixture-Pflicht)
+- [ ] changedetection.io-Watch je produktiver Listing-URL (Element-existiert) als Frühwarnung; Anomalie-Alarm-Pipeline unverändert
+- [ ] pytest gesamt grün; Commit; Deploy (kinderkram.cia-spandau.de); Events neuer Quellen sichtbar
+- [ ] (optional, separat) jup_berlin.py auf config_adapter migrieren → ein Adapter-Code
 
 ## Abnahme-Kriterien
 
-- pytest grün (alle Fixture-Adapter offline)
-- Online-Läufe je neuer Quelle: > 0 Events, idempotent
-- API `/api/events?quelle=…` liefert Events der neuen Quellen mit Provenienz
-- kinderkulturkalender nicht in Registry; Entscheidung dokumentiert
+- Kein neuer Quell-Parser-Code außerhalb der generischen Engine; neue Quellen = nur `configs/*.yaml` + Fixtures
+- Regel-Änderung (Selektor) ohne Code-Deploy möglich: Datei ins Volume-Overlay → nächster Lauf nutzt sie (Log-Beleg)
+- pytest grün; Online-Läufe je Quelle > 0 Events und idempotent; kinderkulturkalender nicht in Registry

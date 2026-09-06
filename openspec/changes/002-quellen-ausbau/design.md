@@ -1,26 +1,67 @@
-# Design — Change 002 Quellen-Ausbau
+# Design — Change 002 Quellen-Ausbau (konfigurationsgetrieben)
 
-## Vorgehen je Quelle (deterministisch, kein LLM)
+## Leitprinzip (User-Vorgabe 2026-09-06)
 
-1. **Live-Erkundung** (einmalig, im Dev-Loop): robots.txt, Struktur der Listing-/Detail-Seiten, URL-Muster, Pagination/AJAX, JSON-LD-Vorkommen. Befunde dokumentieren in `docs/quellen.md` und als Adapter-Kommentar.
-2. **Fixtures:** echte HTML-Proben (Listing + 1–2 Detailseiten, repräsentativ inkl. Kinder-/Familien-Event) unter `tests/fixtures/<quelle>/`, versioniert.
-3. **Adapter** `app/adapters/<quelle>.py`: Parser gegen Fixtures (offline testbar), Extraktion nach Spec-Req 2 (JSON-LD → hEvent → CSS → Regex).
-4. **Registry** in `app/adapters/__init__.py` + Mengenbereich je Quelle.
-5. **Tests:** Fixture-Parser-Tests + Idempotenz via bestehendem Pipeline-Offline-Testmuster; CI-grün.
-6. **Online-Gegenprobe:** ein echter Lauf je Quelle (> 0 Events, zweiter Lauf `n_neu=0`), nur lokal/Dev, nicht im Container-Scheduler-Zyklus.
+Keine pro-Quelle handgeschriebenen Parser als Standard. Stattdessen:
+- **Existierende Bibliotheken:** `parsel` (CSS/XPath, bereits Dependency) + `extruct` (JSON-LD/Microformats/Microdata/RDFa) — kein eigener Extraktions-Code-Standard.
+- **Regeln sind Daten, nicht Code:** Eine generische Engine führt je Quelle eine YAML-Regeldatei aus. Selektoren (CSS/XPath), JSON-LD-Pfade, Datumsformate, Filter sind editierbar — angelehnt an changedetection.io (dort: XPath/CSS/JSONPath/jq als User-Regeln pro Watch, „Extract text“, „Remove by selector“).
+- **User-korrigierbar im Betrieb:** Configs liegen versioniert unter `configs/` (Fixture-Tests laden sie) **und** werden zur Laufzeit aus `$DATA_DIR/configs/` überlesen (Volume-Overlay) → ein Admin korrigiert Selektoren per Datei-Edit, kein Rebuild/Code.
+- **changedetection.io als Frühwarnung:** Je produktiver Quelle ein Watch auf die Listing-URL (Element-existiert/Text-Änderung) → Alarm bei Site-Umbau, bevor Fixture-Tests/Anomalie-Erkennung greifen (Betriebs-Task, Instanz + API vorhanden).
 
-## Quellen-Matrix (Ziel)
+## Architektur
 
-| Quelle | CMS/Struktur | Extraktionspfad | Kinder-Filter | Menge (erwartet) |
-|---|---|---|---|---|
-| jup.berlin/events | Drupal 10, Server-HTML | CSS (Artikel) | Bezirk/Kategorien-Filter | vorhanden (MVP) |
-| berlinmitkind.de | WordPress + Events Manager | JSON-LD (Detail), CSS/AJAX (Liste) | redaktionell: Titel/Beschreibung-Regeln | 5–60 |
-| zlb.de | TYPO3, Server-HTML | CSS (Artikel), Datum-Muster | Regel-Lexikon (Kinder/Familie) | 5–80 |
-| familienportal.berlin.de | offen (Live-Befund) | nach Befund | Kategorien/Familie | 5–50 |
+```
+configs/<quelle>.yaml   (Regeln: listing, felder, jsonld-mapping, filter, menge)
+        │  (Volume-Overlay: $DATA_DIR/configs/ gewinnt)
+        ▼
+app/adapters/config_adapter.py   (eine generische Engine, keine Quell-Parser)
+   ├─ fetch: HTTP mit Rate-Limit/robots (bestehende Pipeline-Helfer)
+   ├─ liste: item_css + Feld-Selektoren via parsel; Pagination (query-param oder next-css)
+   ├─ detail/jsonld: extruct → @type:Event/@type:ItemList; Feld-Mapping per JSONPath (jsonpath-ng)
+   └─ normalisieren → app.model.Event (Validierung/Enrichment unverändert)
+```
 
-## Risiken & Gegenmaßnahmen
+- Die bestehende Req-2-Extraktionskette (JSON-LD → hEvent → CSS) wird durch `extruct` (json-ld, microformat, microdata) + `parsel`-Fallback abgebildet — Konfig wählt je Quelle den Pfad.
+- `jup_berlin.py` bleibt vorerst (funktioniert, Sonderfälle Drupal-Pagination); Ziel: später ebenfalls auf Config umstellen → dann existiert genau EIN Adapter-Code.
 
-- **AJAX-Listing (berlinmitkind):** Falls Liste nur per AJAX lädt → dokumentierten Endpunkt direkt fetchen (deterministisch); sonst Server-HTML-Listenansicht nutzen.
-- **TYPO3-Selektoren fragil (ZLB):** Fixture-Test schlägt bei Umbau an; Struktur-Hash/Anomalie-Alarm greift (Spec-Req 3).
-- **familienportal Fetch-Fehler:** ggf. TLS/UA-Problem → mit Browser-UA + Retry testen; wenn Seite weiter nicht erreichbar: Quelle auf „blockiert/pending“ setzen, nicht erfinden.
-- **Duplikate zu jup:** kinderkulturkalender nicht aufnehmen (gleiche DB); sonst greift Merge mit Provenienz, keine blinden Überschreibungen.
+## YAML-Schema (Entwurf)
+
+```yaml
+quelle: berlinmitkind          # Registry-Schlüssel
+name: "berlinmitkind.de (HIMBEER)"
+robots: "erlaubt; AI-Crawler geblockt (2026-09-06)"
+rate_limit_s: 2
+menge: {min: 5, max: 60}        # Anomalie-Schwellen
+horizont_tage: 60
+listing:
+  url: "https://berlinmitkind.de/termine/"
+  pagination: {param: "pg"}     # oder: next_css: "a.next"
+  item_css: "article, .em-event-item"
+felder:                          # parsel-CSS je Feld (attr optional)
+  titel:  {css: ".event-title, h2 a"}
+  url:    {css: "h2 a", attr: "href"}
+  start:  {css: ".event-date", format: "%d.%m.%Y"}
+  ort:    {css: ".event-location"}
+  # statt css möglich: jsonld: "$.name"  (extruct-Pfad)
+detail:
+  jsonld: true                   # Detailseite: extruct @type:Event
+  url_css: "h2 a"                # Listing-URLs → Details
+  felder:
+    beschreibung: {jsonld: "$.description"}
+    adresse:      {jsonld: "$.location.address.streetAddress"}
+filter_kinder: {regex: ["kind", "familie", "kinder", "eltern"]}   # Relevanz-Hinweis (Enrichment bleibt Hauptfilter)
+```
+
+## Ablauf je Quelle
+
+1. Live-Erkundung (robots, Struktur, URL-Muster, JSON-LD) → Befunde in `docs/quellen.md`.
+2. `configs/<quelle>.yaml` schreiben (Regeln als Daten).
+3. Fixtures (Listing + 1–2 Details) unter `tests/fixtures/<quelle>/`.
+4. Engine offline gegen Fixtures testen (kein Netz); Registry-Eintrag mit menge.
+5. Online-Gegenprobe (`--quelle=alle`), idempotent; changedetection-Watch als Betriebs-Task.
+
+## Risiken
+
+- Zu fragile generische Engine → Regeln wachsen; Gegenmittel: Fixture-Tests je Quelle bleiben Pflicht (Spec Req 3).
+- Config-Schema zu starr für Sonderfälle (AJAX, Auth) → Schema um `fetch:`-Hinweise (headers, json_endpoint) erweiterbar; wenn eine Quelle echte Sonderlogik braucht, wird sie als dokumentierte Ausnahme mit Begründung geführt — nicht der Standard.
+- Volume-Overlay divergiert vom Repo → Overlay-Eintrag wird bei jedem Lauf geloggt (quelle + hash), `docs/quellen.md`-Hinweis.
