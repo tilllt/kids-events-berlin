@@ -75,6 +75,30 @@ CREATE TABLE IF NOT EXISTS venues_cache (
     venue_key TEXT PRIMARY KEY,
     lat REAL, lon REAL, bezirk TEXT, adresse TEXT, geholt_am TEXT
 );
+CREATE TABLE IF NOT EXISTS sources (
+    quelle TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    typ TEXT NOT NULL DEFAULT 'regeln',
+    url TEXT,
+    aktiv INTEGER NOT NULL DEFAULT 1,
+    rate_limit_s REAL NOT NULL DEFAULT 1.0,
+    menge_min INTEGER,
+    menge_max INTEGER,
+    horizont_tage INTEGER NOT NULL DEFAULT 60,
+    robots TEXT,
+    notiz TEXT,
+    zuletzt_geaendert TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS regeln (
+    quelle TEXT PRIMARY KEY REFERENCES sources(quelle) ON DELETE CASCADE,
+    regel_yaml TEXT NOT NULL,
+    geaendert TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    wert TEXT NOT NULL,
+    geaendert TEXT NOT NULL
+);
 """
 
 # Uhrzeit-Bänder (Ortszeit), für time()-Vergleich in SQL.
@@ -93,6 +117,7 @@ class Store:
         self._conn = sqlite3.connect(self.path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("PRAGMA foreign_keys=ON")
         self._conn.executescript(SCHEMA)
         self._conn.execute(
             "INSERT OR IGNORE INTO meta(key, value) VALUES('schema_version', ?)",
@@ -318,5 +343,127 @@ class Store:
                 """INSERT OR REPLACE INTO venues_cache(venue_key, lat, lon, bezirk, adresse, geholt_am)
                    VALUES (?,?,?,?,?,?)""",
                 (key, lat, lon, bezirk, adresse, iso_utc(datetime.now(TZ_BERLIN))),
+            )
+            self._conn.commit()
+
+    # --- Admin: Quellen / Regeln / Einstellungen ----------------------------
+    def _jetzt(self) -> str:
+        return iso_utc(datetime.now(TZ_BERLIN))
+
+    def seed_default_sources(self):
+        """Erster Start: MVP-Quelle eintragen (idempotent, nur wenn leer)."""
+        with self._lock:
+            n = self._conn.execute("SELECT COUNT(*) c FROM sources").fetchone()["c"]
+            if n == 0:
+                self._conn.execute(
+                    """INSERT INTO sources(quelle, name, typ, url, aktiv, rate_limit_s,
+                       menge_min, menge_max, horizont_tage, robots, notiz, zuletzt_geaendert)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    ("jup-berlin", "jup! Berlin (offizielles Jugendportal)",
+                     "intern", "https://jup.berlin/events", 1, 1.0,
+                     5, 300, 60,
+                     "erlaubt (robots.txt 2026-09-06)",
+                     "Bestehender Python-Adapter (Change 001), typ intern",
+                     self._jetzt()),
+                )
+                self._conn.execute(
+                    "INSERT OR IGNORE INTO settings(key, wert, geaendert) VALUES ('scrape_interval_h','24',?)",
+                    (self._jetzt(),),
+                )
+                self._conn.commit()
+
+    def list_sources(self) -> list[dict]:
+        with self._lock:
+            rows = self._conn.execute("SELECT * FROM sources ORDER BY quelle").fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["events"] = int(self._conn.execute(
+                "SELECT COUNT(*) c FROM events WHERE quelle=?", (d["quelle"],)).fetchone()["c"])
+            out.append(d)
+        return out
+
+    def get_source(self, quelle: str) -> dict | None:
+        with self._lock:
+            r = self._conn.execute("SELECT * FROM sources WHERE quelle=?", (quelle,)).fetchone()
+        if not r:
+            return None
+        d = dict(r)
+        d["events"] = int(self._conn.execute(
+            "SELECT COUNT(*) c FROM events WHERE quelle=?", (quelle,)).fetchone()["c"])
+        return d
+
+    def add_source(self, quelle: str, name: str, typ: str, url: str | None = None, *,
+                   aktiv: bool = True, rate_limit_s: float = 1.0,
+                   menge_min: int | None = None, menge_max: int | None = None,
+                   horizont_tage: int = 60, robots: str | None = None,
+                   notiz: str | None = None) -> None:
+        with self._lock:
+            try:
+                self._conn.execute(
+                    """INSERT INTO sources(quelle, name, typ, url, aktiv, rate_limit_s,
+                       menge_min, menge_max, horizont_tage, robots, notiz, zuletzt_geaendert)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (quelle, name, typ, url, int(bool(aktiv)), float(rate_limit_s),
+                     menge_min, menge_max, int(horizont_tage), robots, notiz, self._jetzt()),
+                )
+            except sqlite3.IntegrityError:
+                raise ValueError(f"Quelle existiert bereits: {quelle}") from None
+            self._conn.commit()
+
+    def update_source(self, quelle: str, **felder) -> None:
+        erlaubt = {"name", "typ", "url", "aktiv", "rate_limit_s", "menge_min",
+                   "menge_max", "horizont_tage", "robots", "notiz"}
+        vals = {k: v for k, v in felder.items() if k in erlaubt and v is not None}
+        if not vals:
+            return
+        vals["zuletzt_geaendert"] = self._jetzt()
+        sets = ", ".join(f"{k}=?" for k in vals)
+        with self._lock:
+            cur = self._conn.execute(
+                f"UPDATE sources SET {sets} WHERE quelle=?", (*vals.values(), quelle))
+            self._conn.commit()
+            if cur.rowcount == 0:
+                raise ValueError(f"Unbekannte Quelle: {quelle}")
+
+    def delete_source(self, quelle: str) -> None:
+        with self._lock:
+            cur = self._conn.execute("DELETE FROM sources WHERE quelle=?", (quelle,))
+            self._conn.commit()
+            if cur.rowcount == 0:
+                raise ValueError(f"Unbekannte Quelle: {quelle}")
+
+    def get_regeln(self, quelle: str) -> dict | None:
+        with self._lock:
+            r = self._conn.execute(
+                "SELECT regel_yaml, geaendert FROM regeln WHERE quelle=?", (quelle,)).fetchone()
+        return dict(r) if r else None
+
+    def set_regeln(self, quelle: str, regel_yaml: str) -> None:
+        with self._lock:
+            self._conn.execute(
+                """INSERT INTO regeln(quelle, regel_yaml, geaendert) VALUES (?,?,?)
+                   ON CONFLICT(quelle) DO UPDATE SET regel_yaml=excluded.regel_yaml,
+                   geaendert=excluded.geaendert""",
+                (quelle, regel_yaml, self._jetzt()),
+            )
+            self._conn.commit()
+
+    def all_settings(self) -> dict:
+        with self._lock:
+            rows = self._conn.execute("SELECT key, wert FROM settings").fetchall()
+        return {r["key"]: r["wert"] for r in rows}
+
+    def get_setting(self, key: str, default: str | None = None) -> str | None:
+        with self._lock:
+            r = self._conn.execute("SELECT wert FROM settings WHERE key=?", (key,)).fetchone()
+        return r["wert"] if r else default
+
+    def set_setting(self, key: str, wert: str) -> None:
+        with self._lock:
+            self._conn.execute(
+                """INSERT INTO settings(key, wert, geaendert) VALUES (?,?,?)
+                   ON CONFLICT(key) DO UPDATE SET wert=excluded.wert, geaendert=excluded.geaendert""",
+                (key, wert, self._jetzt()),
             )
             self._conn.commit()
