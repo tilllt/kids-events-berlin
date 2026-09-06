@@ -1,46 +1,64 @@
-# Design — Change 002 Quellen-Ausbau
+# Design — Change 002 Quellen-Ausbau + Admin
 
 ## Leitprinzipien (User-Vorgaben 2026-09-06)
 
-1. **Benutzerfreundlichkeit ist Priorität** — für Betreiber UND Endnutzer. Quelle anbinden soll so einfach wie ein Abo sein; Regeln pflegen muss ohne Code/ohne Expertenwissen gehen; die Kinder-Events-UI bleibt einfach.
-2. **Feed-first statt Selektor-Pflege:** RSS/Atom/iCal/JSON-Endpunkte konsumieren, bevor HTML geparst wird. Feeds (WordPress `/feed/`, Drupal `rss.xml`, TYPO3-RSS) brechen nicht bei Layout-Umbauten → deutlich weniger Wartung, kein Regeln-Basteln. changedetection.io war nur Referenz für das Konzept „Regeln als User-Daten“ — kein Dogma.
-3. **Existierende, gepflegte Bibliotheken statt Eigenbau:** `feedparser` (RSS/Atom), `icalendar` (iCal), `parsel` (CSS/XPath), `extruct` (JSON-LD/Microformats). Kein Custom-Scraping-Code-Standard.
-4. **Regeln sind Daten, user-korrigierbar:** Wenn doch Selektoren nötig sind (kein Feed), als einfache YAML-Regeldatei — versioniert + als Volume-Overlay editierbar, ohne Rebuild.
+1. **Benutzerfreundlichkeit ist Priorität** — Betreiber binden Quellen über die GUI an; Regeln pflegen ohne Code; Kinder-Events-UI bleibt einfach.
+2. **Alle konfigurierbaren Optionen über die GUI** — Admin-Sektion, zunächst offen, später geschützt. Kein Datei-Edit im Betrieb.
+3. **Feed-first** (RSS/Atom/iCal) vor Selektoren; existierende Bibliotheken (feedparser, icalendar, parsel, extruct); keine pro-Quelle-Parser.
+4. Regeln bleiben Daten — aber in der DB, nicht in YAML-Dateien; die GUI ist der einzige Schreibweg (außer API).
 
-## Stufenmodell je Quelle
-
-| Stufe | Mechanik | Aufwand Betreiber | Bibliothek |
-|---|---|---|---|
-| 1 (bevorzugt) | Feed-Abo: RSS/Atom/iCal/JSON-Endpunkt | URL + Typ angeben | feedparser, icalendar |
-| 2 (Fallback) | Regeldatei: Item-/Feld-Selektoren oder JSON-LD-Pfade | YAML editieren (dokumentiert, Fixture-Selbsttest) | parsel, extruct |
-| 3 (Ergänzung) | changedetection.io-Watch auf Listing-URL | Watch anlegen | changedetection-API |
-
-Entscheidung je Quelle fällt bei der Live-Erkundung: **erst nach Feed suchen** (`/feed/`, `rss.xml`, `<link rel="alternate" type="application/rss+xml">`, iCal-Export). Quellen mit Feed landen auf Stufe 1, ohne Feed auf Stufe 2.
-
-## Architektur
+## Persistenz & Admin (Kern dieser Erweiterung)
 
 ```
-configs/quellen.yaml  (einfache Liste: quelle, name, typ: feed|regeln, url, menge, rate_limit)
-   └─ Overlay: $DATA_DIR/configs/quellen.yaml gewinnt (Edit ohne Rebuild, Log mit Hash)
+SQLite (bestehender Store, WAL)
+├─ sources      (quelle PK, name, typ: feed|regeln, url, aktiv, rate_limit_s,
+│                menge_min/max, horizont_tage, robots, zuletzt_geaendert)
+├─ regeln       (quelle PK/FK, regel_yaml TEXT — nur für typ=regeln)
+├─ settings     (key PK, wert TEXT — z. B. scrape_cron, admin_hinweis)
+├─ runs         (bestehend — Läufe je Quelle)
+└─ errors       (bestehend — Fehler-Queue je Lauf)
 
-app/adapters/feed_adapter.py     generisch: feedparser/icalendar → Event-Modell
-app/adapters/selector_adapter.py generisch: YAML-Regeln (parsel/extruct) → Event-Modell
-   (jeweils: Fetch mit Rate-Limit/robots, Normalisierung, kein Quell-Parser-Code)
+Admin-API (Router /api/admin, offen; Auth-Middleware später davor)
+├─ GET/POST /sources · PUT/DELETE /sources/{quelle}
+├─ GET/PUT /sources/{quelle}/regeln
+├─ POST /sources/{quelle}/validate   (YAML-Parse + Schema + Selektoren-Kompilierung)
+├─ GET /sources/{quelle}/run-latest  (letzter Lauf + Fehler)
+├─ GET /runs?quelle=…  · GET /errors?quelle=…
+└─ GET/PUT /settings
+
+Admin-UI (/admin, statisch wie Haupt-UI, Vanilla JS)
+├─ Quellen-Liste: Name/Typ/URL/Aktiv/Events/letzter Lauf/Fehler + Aktionen
+├─ Quelle bearbeiten (Formular) / neu (Vorlage)
+├─ Regel-Editor (Textarea + „Prüfen“ → Ergebnis; Vorlage je Typ)
+└─ Status: letzte Läufe + Fehler-Queue (nichts Stilles)
 ```
 
-- Konfig-Datei bleibt **eine einfache, kommentierte YAML** (kein tiefes Regelwerk für Feed-Quellen).
-- Validierung/Enrichment/Dedupe/Store unverändert (Change-001-Pipeline).
-- `jup_berlin.py` bleibt bis zur Feed-Prüfung; falls jup.berlin einen RSS/JSON-Feed hat, wird der MVP-Adapter auf Stufe 1 umgestellt (ein Code-Pfad weniger).
+- Seed beim ersten Start: jup-berlin als `regeln`-Quelle mit dem heutigen Parser-Verhalten markiert? Nein: jup-berlin läuft über den **bestehenden Python-Adapter** (Sonderfall, dokumentiert); die `sources`-Tabelle führt ihn als `typ: intern` mit Status; neue Quellen sind `feed` oder `regeln`.
+- Schutz später: Admin-Router + `/admin` statisch getrennt; Doku-Vermerk „vor öffentlichem Betrieb absichern (Basic-Auth/OIDC via Traefik oder App-Middleware)“.
 
-## Ablauf je Quelle
+## Stufenmodell je Quelle (wie bisher, jetzt über GUI)
 
-1. Live-Erkundung: robots → **Feed suchen** → sonst Struktur/JSON-LD → Befund in `docs/quellen.md`.
-2. Quelle in `configs/quellen.yaml` (Stufe 1) bzw. `configs/regeln/<quelle>.yaml` (Stufe 2) eintragen.
-3. Fixtures (Feed-Antwort bzw. HTML) unter `tests/fixtures/<quelle>/`; Engine offline grün.
-4. Online-Gegenprobe idempotent; changedetection-Watch nur als optionale Frühwarnung.
+| Stufe | Mechanik | Bibliothek |
+|---|---|---|
+| 1 (bevorzugt) | Feed-Abo: RSS/Atom/iCal/JSON | feedparser, icalendar |
+| 2 (Fallback) | Regeldatei: Item-/Feld-Selektoren oder JSON-LD-Pfade | parsel, extruct |
+
+Erkundungsbefunde (2026-09-06): zlb.de → Stufe 2 (Teaser `article.eventTeaser`, Titel `h3.eventTeaser__title > span:not(.eventTeaser__superHeadline)`, Datum `So, 06.09.2026`, Zeit in `.eventTeaser__meta`, Detailseite mit Ereignisort, JSON-LD @type:Event vorhanden); berlinmitkind.de → Stufe 2 (AJAX-Liste `em-events-search`, Detail-JSON-LD); familienportal → Stufe 2 (erreichbar, Datums-Struktur); jup rss.xml = News (kein Feed); kinderkulturkalender = jup-Duplikat.
+
+## Adapter-Engine
+
+- `app/adapters/feed_adapter.py` / `selector_adapter.py`: erfüllen das Pipeline-Interface (`fetch_listing_page`, `parse_listing` → [{slug,titel,start,ende,ganztags,ort}], `fetch_detail`, `parse_detail`, `zu_event`); Registry baut sie aus `sources`/`regeln` (Store-Read), `--quelle=alle` = alle aktiven.
+- selector_regeln-Schema (DB-Feld regel_yaml, validiert): listing {url, pagination, item_css, felder{css/attr/format}} + optional detail {jsonld: bool, url_css, felder{jsonld-Pfade}} — kompakt dokumentiert, Vorlage in der GUI.
+
+## Ablauf je Quelle (Betreiber, über GUI)
+
+1. Quelle anlegen (Typ, URL, Mengenbereich, Rate-Limit) → speichern.
+2. Bei `regeln`: Regel-Editor öffnen → „Prüfen“ (Schema/Selektoren) → speichern.
+3. Lauf starten (Button „Jetzt scrapen“ ruft Pipeline) oder Scheduler abwarten → Status/Fehler sichtbar.
+4. Struktur-Umbau: Fehler/0-Events sichtbar → Regeln in der GUI korrigieren → erneut scrapen. Fixture-Test bleibt Dev-Pflicht (CI), GUI-Validierung ergänzt.
 
 ## Risiken
 
-- Feed unvollständig (nur Titel/Link, kein Datum/Ort) → Stufe 2 Detail-Regeln oder Quelle zurückstellen; nie stiller Datenmangel (Validierungs-Queue).
-- iCal-Zeitzonen (Europe/Berlin) → icalendar-Parsing normalisiert auf *_local wie bisher.
-- Overlay divergiert → Lauf loggt Quelle + Hash; docs-Hinweis.
+- GUI-Regeln ohne Fixture können kaputte Selektoren speichern → `validate` kompiliert Selektoren + Schema; 0-Events-Lauf erzeugt sichtbaren Alarm (bestehend). Dev-Fixtures bleiben Quelle der Wahrheit für CI.
+- Offene Admin-API → dokumentiert + später geschützt; kein Zugriff aus der Haupt-UI verlinkt (nur /admin).
+- Feed unvollständig → Stufe-2-Details oder Quelle zurückstellen; Validierungs-Queue zeigt Grund.

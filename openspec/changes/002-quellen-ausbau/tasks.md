@@ -1,40 +1,43 @@
-# Tasks — Change 002 Quellen-Ausbau
+# Tasks — Change 002 Quellen-Ausbau + Admin
 
-Reihenfolge mit TDD; nach jeder Aufgabe committen. **Prinzip: Benutzerfreundlichkeit zuerst → Feed-first (Stufe 1) vor Selektoren (Stufe 2); existierende Bibliotheken; Regeln als editierbare Daten.**
+Reihenfolge mit TDD; nach jeder Aufgabe committen. **Prinzip: alle Konfiguration über GUI (Admin, offen, später geschützt); Feed-first; generische Engine; keine pro-Quelle-Parser.**
 
-## Phase 0 — Feed-Adapter (generisch, bevorzugter Weg)
+## Phase 0 — Persistenz
 
-- [ ] Deps: `feedparser`, `icalendar` (+ `extruct`, `jsonpath-ng` für Stufe 2) zu pyproject
-- [ ] `configs/quellen.yaml`: einfache Quellen-Liste (quelle, name, typ: feed|regeln, url, menge, rate_limit, horizont); Overlay-Loader `$DATA_DIR/configs/` (gewinnt, Log mit Hash)
-- [ ] `app/adapters/feed_adapter.py`: RSS/Atom via feedparser, iCal via icalendar → Event-Modell (Titel, start/ende, ganztags, Ort, URL, Beschreibung); Zeitnormalisierung Europe/Berlin
-- [ ] Registry: `--quelle=alle` führt feed- und regel-Quellen; Mengenbereich je Quelle
-- [ ] Tests: Loader (Overlay), feedparser/icalendar-Fixtures (synthetisch)
+- [ ] `store.py`: Tabellen `sources` (quelle PK, name, typ feed|regeln|intern, url, aktiv, rate_limit_s, menge_min/max, horizont_tage, robots, zuletzt_geaendert), `regeln` (quelle PK, regel_yaml), `settings` (key PK, wert); Seed: jup-berlin (typ intern) + Default-Settings; Migration bestehender DB (CREATE IF NOT EXISTS)
+- [ ] Store-API: source_crud (list/get/add/update/delete), regeln_get/set, settings_get/set; Tests
 
-## Phase 1 — Quelle berlinmitkind.de
+## Phase 1 — Admin-API (offen)
 
-- [ ] Live-Erkundung: robots → Feed suchen (WP `/feed/`, `/events/feed/`) → sonst AJAX/JSON-LD → docs/quellen.md
-- [ ] Bei Feed: Eintrag in `configs/quellen.yaml` + Fixture; sonst `configs/regeln/berlinmitkind.yaml`
-- [ ] Engine offline grün; Online-Gegenprobe idempotent
+- [ ] `app/admin_api.py` (Router `/api/admin`): GET/POST `/sources`, PUT/DELETE `/sources/{quelle}`, GET/PUT `/sources/{quelle}/regeln`, POST `/sources/{quelle}/validate` (YAML-Parse + Schema + Selektor-Kompilierung, deutsche Meldungen), GET `/sources/{quelle}/run-latest`, GET `/runs`, GET `/errors`, GET/PUT `/settings`, POST `/sources/{quelle}/scrape` (Lauf auslösen)
+- [ ] Registrierung in main.py; Parametertests je Endpunkt
 
-## Phase 2 — Quelle zlb.de
+## Phase 2 — Admin-UI (`/admin`)
 
-- [ ] Live-Erkundung: Feed suchen (TYPO3-RSS) → sonst Listen-/Detail-Selektoren → docs/quellen.md
-- [ ] Konfig + Fixtures; offline grün; Online-Gegenprobe idempotent
+- [ ] `app/static/admin.html` + `admin.js` (+ CSS-Erweiterung): Quellen-Liste (Name/Typ/URL/Aktiv/Events/letzter Lauf/Fehler), Neu/Bearbeiten/Löschen, Regel-Editor mit „Prüfen“, Einstellungen, Läufe/Fehler-Ansicht; dunkles Design wie Haupt-UI; Fehler-/Leerzustände sichtbar
+- [ ] Smoke: CRUD-Durchlauf im Browser
 
-## Phase 3 — Quelle familienportal.berlin.de (+ jup-Feed-Prüfung)
+## Phase 3 — Adapter-Engine
 
-- [ ] Live-Erkundung familienportal (Erreichbarkeit, Feed/Struktur); falls parsebar → Konfig; sonst Status „pending“ + Grund
-- [ ] jup.berlin auf RSS/JSON-Feed prüfen → falls vorhanden: MVP-Adapter auf feed_adapter umstellen (Entfall `jup_berlin.py`-Parser)
+- [ ] Deps feedparser/icalendar (extruct/jsonpath-ng/PyYAML bereits ergänzt)
+- [ ] `feed_adapter.py`: RSS/Atom + iCal → Pipeline-Interface
+- [ ] `selector_adapter.py`: Regeln aus DB (listing: url/pagination/item_css/felder; detail: jsonld/url_css/felder) mit parsel/extruct → Pipeline-Interface; slug = Detail-URL-Hash
+- [ ] Registry: baut aktive Adapter aus `sources` (intern → JupBerlinAdapter); `--quelle=alle`; Tests (offline gegen Fixtures)
 
-## Phase 4 — Betrieb + Doku
+## Phase 4 — Quellen
 
-- [ ] Duplikat-Befund kinderkulturkalender→jup dokumentieren (keine eigene Quelle)
-- [ ] `docs/quellen.md`: Quellen-Matrix + „Quelle hinzufügen“-Anleitung (Stufe 1/2, Overlay, Fixture-Pflicht) — in Alltagssprache
-- [ ] changedetection.io-Watch optional je Stufe-2-Quelle (Frühwarnung)
-- [ ] pytest grün; Commit; Deploy (kinderkram.cia-spandau.de); Events neuer Quellen sichtbar
+- [ ] zlb.de: Fixture (vorhanden: `tests/fixtures/zlb/listing.html`, Detail-Probe sichern) + Regeln in DB/GUI validiert; offline grün; Online-Gegenprobe
+- [ ] berlinmitkind.de: AJAX-Endpunkt dokumentieren (aus `em-events-search`-Seite), Fixtures, Regeln; offline grün; Online-Gegenprobe
+- [ ] familienportal.berlin.de: Struktur-Feinschliff, Fixture, Regeln; offline grün; Online-Gegenprobe; falls nicht parsebar → Status „pending“ + Grund
+
+## Phase 5 — Betrieb + Doku
+
+- [ ] kinderkulturkalender-Duplikat-Befund in docs/quellen.md (bereits dokumentiert)
+- [ ] docs/admin.md: Admin-Sektion in Alltagssprache (Quelle anlegen, Regeln prüfen, Läufe lesen) + Hinweis „vor öffentlichem Betrieb schützen (Auth folgt)“
+- [ ] pytest grün; Commit; Deploy (kinderkram.cia-spandau.de); Admin-UI + neue Quellen online sichtbar
 
 ## Abnahme-Kriterien
 
-- Neue Quelle OHNE Feed → nur YAML (kein Python); MIT Feed → nur Listeneintrag
-- Regel-/Config-Änderung per Overlay-Edit wirkt beim nächsten Lauf (Log-Beleg), kein Rebuild
-- pytest grün; Online-Läufe je Quelle > 0 Events, idempotent; kinderkulturkalender nicht in Registry
+- Quelle anlegen/bearbeiten/löschen + Regeln editieren ausschließlich über `/admin` (API); kein Datei-Edit im Betrieb
+- „Prüfen“ meldet kaputte YAML/Selektoren verständlich; 0-Events-Läufe sichtbar (Alarm)
+- pytest grün; Online-Läufe je Quelle > 0 Events idempotent; kinderkulturkalender nicht in Registry
