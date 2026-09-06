@@ -1,0 +1,13 @@
+.git
+.gitignore
+.env
+*.sqlite3
+*.db
+.venv
+__pycache__
+*.pyc
+tests
+docs
+.hermes
+openspec
+data
