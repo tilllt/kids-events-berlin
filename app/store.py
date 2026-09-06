@@ -320,6 +320,38 @@ class Store:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def recent_runs_all(self, quelle: str | None = None, limit: int = 50) -> list[dict]:
+        if quelle:
+            return self.recent_runs(quelle, limit)
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM runs ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def recent_errors(self, quelle: str | None, limit: int = 50) -> list[dict]:
+        if quelle:
+            with self._lock:
+                rows = self._conn.execute(
+                    "SELECT * FROM errors WHERE quelle=? ORDER BY id DESC LIMIT ?",
+                    (quelle, limit)).fetchall()
+        else:
+            with self._lock:
+                rows = self._conn.execute(
+                    "SELECT * FROM errors ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            if d.get("roh"):
+                try:
+                    d["roh"] = json.loads(d["roh"])
+                except json.JSONDecodeError:
+                    pass
+            out.append(d)
+        return out
+
+    def recent_errors_all(self, limit: int = 50) -> list[dict]:
+        return self.recent_errors(None, limit)
+
     def prune_stale(self, quelle: str, cutoff_iso_utc: str) -> int:
         """Löscht Events der Quelle, deren Start vor cutoff liegt (ISO UTC)."""
         with self._lock:

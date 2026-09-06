@@ -17,6 +17,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from .admin_api import router as admin_router
 from .api import router as api_router
 from .store import Store
 
@@ -29,6 +30,7 @@ STATIC_DIR = Path(__file__).parent / "static"
 async def lifespan(app: FastAPI):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     store = Store(DB_PATH)
+    store.seed_default_sources()
     app.state.store = store
     interval_h = float(os.environ.get("SCRAPE_INTERVAL_H", "24"))
     geocode = os.environ.get("GEOCODE", "1") != "0"
@@ -63,9 +65,17 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="kids-events-berlin", lifespan=lifespan)
 app.include_router(api_router)
+app.include_router(admin_router)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 @app.get("/", include_in_schema=False)
 def index():
     return FileResponse(str(STATIC_DIR / "index.html"))
+
+
+@app.get("/admin", include_in_schema=False)
+def admin():
+    """Admin-Sektion: Quellen/Regeln/Einstellungen. Offen — Schutz folgt
+    (vor öffentlichem Betrieb absichern, siehe docs/admin.md)."""
+    return FileResponse(str(STATIC_DIR / "admin.html"))
