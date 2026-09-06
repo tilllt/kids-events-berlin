@@ -58,10 +58,40 @@ main { flex: 1; display: grid; grid-template-columns: 300px 1fr; min-height: 0; 
   margin: 0; padding: 6px 14px; background: var(--panel); border-bottom: 1px solid var(--border);
 }
 #map { flex: 1; }
+/* Legende: Zeit-Farben der Karten-Marker (unten links auf der Karte) */
+.map-legende {
+  background: rgba(13, 20, 28, 0.92);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 11.5px;
+  color: var(--text);
+  line-height: 1.7;
+}
+.map-legende__titel {
+  text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--muted); font-size: 10px; margin-bottom: 2px;
+}
+.map-legende__zeile { display: flex; align-items: center; gap: 7px; }
+.map-legende__punkt { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 #eventlist li {
   padding: 9px 14px; border-bottom: 1px solid var(--border); cursor: pointer;
   display: flex; gap: 10px; align-items: flex-start;
 }
+#eventlist li::before {
+  content: ""; width: 10px; height: 10px; border-radius: 50%;
+  flex: 0 0 auto; margin-top: 4px;
+  background: var(--muted); opacity: 0.35;
+}
+/* Zeit-Farbkodierung der Liste (deckungsgleich mit den Karten-Markern) */
+#eventlist li.tz-heute::before { background: #3b82f6; opacity: 1; }
+#eventlist li.tz-morgen::before { background: #157a3e; opacity: 0.7; }
+#eventlist li.tz-uebermorgen::before { background: #4ade80; opacity: 0.5; }
+#eventlist li.tz-woche::before { background: #facc15; opacity: 0.4; }
+#eventlist li.tz-heute .when { color: #5ea8ff; }
+#eventlist li.tz-morgen .when { color: #3fae63; }
+#eventlist li.tz-uebermorgen .when { color: #4ade80; }
+#eventlist li.tz-woche .when { color: #facc15; }
 #eventlist li:hover { background: var(--panel2); }
 #eventlist li .li-main { flex: 1; min-width: 0; }
 #eventlist li .li-actions { display: flex; flex-direction: column; gap: 6px; }

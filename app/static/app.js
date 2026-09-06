@@ -7,7 +7,7 @@ const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
 
 const state = {
   bezirk: [], altersband: [], uhrzeit: [],
-  kostenlos: false, von: "", bis: "", zeitraum: "heute", meta: null,
+  kostenlos: false, von: "", bis: "", zeitraum: "demnächst", meta: null,
 };
 
 function fmtDate(s) {
@@ -41,12 +41,46 @@ function berlinDateStr(offsetDays) {
   return d.toISOString().slice(0, 10);
 }
 const ZEITRAUM_OPTIONEN = [
+  { id: "demnächst", label: "Demnächst", von: () => berlinDateStr(0), bis: () => berlinDateStr(13) },
   { id: "heute", label: "Heute", von: () => berlinDateStr(0), bis: () => berlinDateStr(0) },
   { id: "morgen", label: "Morgen", von: () => berlinDateStr(1), bis: () => berlinDateStr(1) },
   { id: "diese-woche", label: "Diese Woche", von: () => berlinDateStr(0), bis: () => berlinDateStr(6) },
   { id: "naechste-woche", label: "Nächste Woche", von: () => berlinDateStr(7), bis: () => berlinDateStr(13) },
 ];
 const ZEITRAUM_IDS = ZEITRAUM_OPTIONEN.map((o) => o.id);
+
+/* Zeit-Farbkodierung (Karte + Liste): Distanz des Event-Starttags zu heute.
+   Opazität wie gewünscht: heute voll sichtbar, dann abnehmend. */
+const ZEIT_STUFEN = {
+  heute:      { farbe: "#3b82f6", op: 1.0, label: "Heute" },
+  morgen:     { farbe: "#157a3e", op: 0.7, label: "Morgen" },
+  uebermorgen:{ farbe: "#4ade80", op: 0.5, label: "Übermorgen" },
+  woche:      { farbe: "#facc15", op: 0.4, label: "Diese Woche" },
+  spaeter:    { farbe: "#94a3b8", op: 0.35, label: "Später" },
+};
+const ZEIT_STUFEN_REIHENFOLGE = ["heute", "morgen", "uebermorgen", "woche", "spaeter"];
+
+function tageDifferenz(tagA, tagB) {
+  return Math.round((Date.parse(tagA + "T00:00:00Z") - Date.parse(tagB + "T00:00:00Z")) / 86400000);
+}
+
+/* Zeitstufe eines Events: läuft es gerade (Start gestern, Ende heute/morgen),
+   zählt der heutige Tag; vergangene Events → neutral „später“. */
+function zeitStufe(e) {
+  const heute = berlinDateStr(0);
+  const s = (e.start_local || "").slice(0, 10);
+  if (!s) return "spaeter";
+  const d = tageDifferenz(s, heute);
+  if (d < 0) {
+    const en = ((e.ende_local && e.ende_local.slice(0, 10)) || s);
+    return tageDifferenz(en, heute) >= 0 ? "heute" : "spaeter";
+  }
+  if (d === 0) return "heute";
+  if (d === 1) return "morgen";
+  if (d === 2) return "uebermorgen";
+  if (d <= 6) return "woche";
+  return "spaeter";
+}
 
 function zeitChip(opt) {
   const b = document.createElement("button");
@@ -128,7 +162,7 @@ function chip(id, label, key) {
 
 function resetFilters() {
   state.bezirk = []; state.altersband = []; state.uhrzeit = [];
-  state.kostenlos = false; state.von = ""; state.bis = ""; state.zeitraum = "heute";
+  state.kostenlos = false; state.von = ""; state.bis = ""; state.zeitraum = "demnächst";
   $$("#bezirk-list input").forEach((i) => (i.checked = false));
   $$(".chips button").forEach((b) => b.classList.remove("on"));
   $("#kostenlos").checked = false;
@@ -157,7 +191,7 @@ function readUrl() {
   state.uhrzeit = (p.get("uhrzeit") || "").split(",").filter(Boolean);
   state.kostenlos = p.get("kostenlos") === "true";
   const zr = p.get("zeitraum");
-  state.zeitraum = ZEITRAUM_IDS.includes(zr) ? zr : (p.get("von") || p.get("bis") ? "benutzerdefiniert" : "heute");
+  state.zeitraum = ZEITRAUM_IDS.includes(zr) ? zr : (p.get("von") || p.get("bis") ? "benutzerdefiniert" : "demnächst");
   state.von = p.get("von") || ""; state.bis = p.get("bis") || "";
 }
 
@@ -167,6 +201,7 @@ L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom: 18,
   attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
 }).addTo(map);
+legendeEinrichten();
 let cluster = null;
 let markers = [];
 
@@ -202,7 +237,11 @@ function renderGeo(gj) {
   cluster = useCluster ? L.markerClusterGroup({ chunkedLoading: true }) : null;
   gj.features.forEach((f) => {
     const p = f.properties;
-    const m = L.marker([f.geometry.coordinates[1], f.geometry.coordinates[0]]);
+    const st = ZEIT_STUFEN[zeitStufe(p)];
+    const m = L.circleMarker([f.geometry.coordinates[1], f.geometry.coordinates[0]], {
+      radius: 8, stroke: true, color: "#101a24", weight: 1.5,
+      fillColor: st.farbe, fillOpacity: st.op,
+    });
     m.bindPopup(popupHtml(p));
     m._ev = p;
     if (cluster) cluster.addLayer(m); else m.addTo(map);
@@ -215,6 +254,23 @@ function renderGeo(gj) {
   } else if (withPos === 1 && markers.length === 1) {
     map.setView(markers[0].getLatLng(), 14);
   }
+}
+
+/* Karten-Legende: erklärt die Zeit-Farben der Marker. */
+function legendeEinrichten() {
+  const ctrl = L.control({ position: "bottomleft" });
+  ctrl.onAdd = () => {
+    const div = L.DomUtil.create("div", "map-legende");
+    const zeilen = ZEIT_STUFEN_REIHENFOLGE.map((k) => {
+      const s = ZEIT_STUFEN[k];
+      return `<div class="map-legende__zeile">
+        <span class="map-legende__punkt" style="background:${s.farbe};opacity:${s.op}"></span>
+        <span>${s.label}</span></div>`;
+    }).join("");
+    div.innerHTML = `<div class="map-legende__titel">Wann?</div>${zeilen}`;
+    return div;
+  };
+  ctrl.addTo(map);
 }
 
 /* ---------- Detail-Ansicht ---------- */
@@ -270,6 +326,7 @@ function renderList(gj) {
   all.sort((a, b) => a.start_local.localeCompare(b.start_local));
   all.forEach((e) => {
     const li = document.createElement("li");
+    li.className = "tz-" + zeitStufe(e);
     const badges = [];
     if (e.kostenlos) badges.push('<span class="badge free">kostenlos</span>');
     const age = alterLabel(e);
@@ -331,7 +388,7 @@ function apply() {
 function updateFilterCount() {
   const el = $("#filter-count");
   let n = state.bezirk.length + state.altersband.length + state.uhrzeit.length;
-  if (state.zeitraum !== "heute") n += 1;
+  if (!["heute", "demnächst"].includes(state.zeitraum)) n += 1;
   if (state.kostenlos) n += 1;
   el.textContent = `${n} aktiv`;
   el.classList.toggle("hidden", n === 0);
