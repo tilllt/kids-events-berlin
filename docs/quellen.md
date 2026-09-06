@@ -11,9 +11,9 @@
 | berlinmitkind.de (HIMBEER) | WordPress + Events Manager | **aufnehmen (Stufe 2)** | Event-Liste AJAX (`em-events-search`); Detailseiten JSON-LD `@type:Event`; `/termine/rss` = Blog-Feed, kein Event-Feed (geprüft) |
 | familienportal.berlin.de/veranstaltungen | offiziell (Land) | **aufnehmen (Stufe 2)** | erreichbar (200, 103 KB); Datumsangaben + h3-Artikelstruktur; Feed: keiner gefunden |
 | tip-berlin.de/veranstaltungen | Stadtmagazin (kommerziell-redaktionell), WordPress | **aufnehmen (Stufe 2, mit Kinder-Filter-Pflicht)** | serverseitige Event-Teaser `.card-teaser` (Kategorie/Titel/Venue/Datum/Link `/event/<slug>/`), robots offen; Familien-Rubrik `/stadt/familie/` ist redaktionell (28 Artikel, 3 Events) → nicht als Listing |
+| Museumsportal Berlin (museumsportal-berlin.de) | öffentlich (Land Berlin), Ionic/Angular + SSR | **aufnehmen (Stufe 2)** | `/de/veranstaltungen/` serverseitig gerendert: `mp-card`-Karten (Titel/Datum `06.09.26 \| 20:00`/Link `/de/veranstaltungen/<slug>/`); robots `search=yes, use=reference` (explizit erlaubt), AI-Crawler geblockt; Fixture vorhanden |
 | kinderkulturkalender-berlin.de | LKJ Berlin, Drupal | **nicht aufnehmen** | Einträge laufen über die jup!-Datenbasis → Duplikat; kein Doppel-Scrape |
 | FEZ Berlin | TYPO3 | offen | Programm-URL noch zu klären |
-| Museumsportal Berlin | Angular-SPA | beobachten | API-Reverse nötig (Folgeaufwand) |
 | Grips/Parkaue-Spielpläne | SPA/API | später | |
 | Kindaling, berlinfamily.de, rausgegangen | kommerziell/parked | **verwerfen** | |
 
@@ -57,8 +57,11 @@
 ### FEZ Berlin — offen
 - TYPO3; Programm-URL (früher `/programm` → 404) noch zu klären; robots offen.
 
-### Museumsportal Berlin — beobachten
-- Angular-SPA; Events per API (Reverse-Engineering nötig); robots offen, AI-Crawler geblockt.
+### Museumsportal Berlin — Stufe 2, aufnehmen
+- `/de/veranstaltungen/` → 200 (165 KB), **serverseitig gerenderte Event-Karten** (`mp-card`-System: `mp-card-type`, `mp-card-location`, `mp-card-content__info`); Titel im `<h3>`, Datum+Uhrzeit im Text (`06.09.26 | 20:00`, JJ.MM.TT), Detail-Link `/de/veranstaltungen/<slug>/`. Ionic/Angular-Bundles (Filter `?page&event_type=…`), aber Liste kommt als HTML — kein SPA-API-Reverse nötig (Fingerprint 2026-09-06, Fixture `tests/fixtures/museumsportal/`).
+- **robots (2026-09-06):** `Allow: /` + `Content-Signal: search=yes, ai-train=no, use=reference` → Such-Index/Referenz-Aggregation ausdrücklich erlaubt; nur AI-Crawler (GPTBot, ClaudeBot …) disallowed — passt zur LLM-freien Laufzeit.
+- Kinder-Relevanz: hoher Familienanteil („Familienworkshop“, 44 Kind-/Familien-Marker auf der Listenseite); Enrichment greift.
+- Feed: keiner gefunden → Stufe 2.
 
 ### Theater (Grips, Parkaue) — später
 - JS-SPA bzw. „spiritec“-API; deterministisch nur mit API-Reverse — spätere Phase.
