@@ -14,6 +14,7 @@ import re
 import time
 import unicodedata
 import urllib.parse
+from datetime import datetime
 
 import httpx
 
@@ -198,12 +199,17 @@ def bezirk_from_latlon(store, lat: float, lon: float, client: httpx.Client | Non
     key = f"{lat:.5f},{lon:.5f}"
     cached = store.get_venue_cache(key)
     if cached:
-        return cached["bezirk"] or None
+        # None-Treffer mit city=Berlin stammen vom alten Bug (kein
+        # addressdetails → address immer leer) → neu auflösen; echte
+        # Nicht-Berlin-Treffer (Brandenburg) bleiben negativ gecacht.
+        if cached["bezirk"] or cached.get("adresse") != "Berlin":
+            return cached["bezirk"] or None
     if client is None:
         return None  # offline: kein Netz, kein Raten
     try:
         r = client.get(NOMINATIM, params={
-            "format": "jsonv2", "lat": lat, "lon": lon, "zoom": 10,
+            "format": "jsonv2", "lat": lat, "lon": lon, "zoom": 14,
+            "addressdetails": 1,
         })
         r.raise_for_status()
         addr = r.json().get("address", {})
@@ -235,50 +241,68 @@ def ort_koordinaten(store, ort: str, client: httpx.Client | None = None,
     key = ort_key(ort)
     cached = store.get_ort_geo(key)
     if cached:
-        if not cached["gefunden"]:
+        if cached["gefunden"]:
+            return {"lat": cached["lat"], "lon": cached["lon"],
+                    "bezirk": cached["bezirk"], "adresse": cached["adresse"]}
+        # Negativ-Treffer nur 14 Tage respektieren — danach erneut versuchen
+        # (ältere Negativ-Einträge stammen von der reinen „, Berlin“-Suche,
+        # die Potsdam-Umland-Orte nie finden konnte).
+        try:
+            alt = (time.time()
+                   - datetime.fromisoformat(cached["aktualisiert_am"]).timestamp())
+        except (KeyError, ValueError, TypeError):
+            alt = 0.0
+        if alt < 14 * 24 * 3600:
             return None
-        return {"lat": cached["lat"], "lon": cached["lon"],
-                "bezirk": cached["bezirk"], "adresse": cached["adresse"]}
     if client is None:
         return None  # offline
-    try:
-        r = client.get(NOMINATIM_SEARCH, params={
-            "q": f"{ort}, Berlin", "format": "jsonv2", "limit": 1,
-            "countrycodes": "de", "addressdetails": 1,
-        })
-        r.raise_for_status()
-        treffer = r.json()
-    except Exception:
-        return None  # Netz/API-Fehler: nicht negativ cachen (transient)
-    if not treffer:
+    # Zweistufige Suche: erst „<Ort>, Berlin“ (präzise, Bezirk), bei
+    # Fehlschlag pur (deutschlandweit — Potsdam-Umland, Pfaueninsel …).
+    if ort.lower().endswith("berlin") or "," in ort:
+        queries = [ort]
+    else:
+        queries = [f"{ort}, Berlin", ort]
+    bezirk = lat = lon = adresse = None
+    for q in queries:
+        try:
+            r = client.get(NOMINATIM_SEARCH, params={
+                "q": q, "format": "jsonv2", "limit": 1,
+                "countrycodes": "de", "addressdetails": 1,
+            })
+            r.raise_for_status()
+            treffer = r.json()
+        except Exception:
+            return None  # Netz/API-Fehler: nicht negativ cachen (transient)
+        if not treffer:
+            continue
+        t = treffer[0]
+        try:
+            lat = float(t["lat"])
+            lon = float(t["lon"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        addr = t.get("address", {})
+        for k in ("borough", "city_district", "suburb", "county"):
+            cand = addr.get(k)
+            if cand and cand in _LABEL_SLUG:
+                bezirk = _LABEL_SLUG[cand]
+                break
+        if not bezirk:
+            # Nominatim-address ist uneinheitlich → Bezirks-Label im Anzeigenamen
+            anzeige_low = (t.get("display_name") or "").lower()
+            for label, slug in _LABEL_SLUG.items():
+                if label.lower() in anzeige_low:
+                    bezirk = slug
+                    break
+        # Adresse = Anzeigename, gekürzt um das Länder-Suffix („…, Deutschland“)
+        anzeige = t.get("display_name") or ""
+        adresse = re.sub(r",\s*Deutschland\s*$", "", anzeige) if anzeige else None
+        break
+    if lat is None:
         store.set_ort_geo(key, ort, None, None, None, None, gefunden=False)
         if sleep_s:
             time.sleep(sleep_s)
         return None
-    t = treffer[0]
-    try:
-        lat = float(t["lat"])
-        lon = float(t["lon"])
-    except (KeyError, TypeError, ValueError):
-        store.set_ort_geo(key, ort, None, None, None, None, gefunden=False)
-        return None
-    addr = t.get("address", {})
-    bezirk = None
-    for k in ("borough", "city_district", "suburb", "county"):
-        cand = addr.get(k)
-        if cand and cand in _LABEL_SLUG:
-            bezirk = _LABEL_SLUG[cand]
-            break
-    if not bezirk:
-        # Nominatim-address ist uneinheitlich → Bezirks-Label im Anzeigenamen
-        anzeige_low = (t.get("display_name") or "").lower()
-        for label, slug in _LABEL_SLUG.items():
-            if label.lower() in anzeige_low:
-                bezirk = slug
-                break
-    # Adresse = Anzeigename, gekürzt um das Länder-Suffix („…, Deutschland“)
-    anzeige = t.get("display_name") or ""
-    adresse = re.sub(r",\s*Deutschland\s*$", "", anzeige) if anzeige else None
     store.set_ort_geo(key, ort, lat, lon, bezirk, adresse, gefunden=True)
     if sleep_s:
         time.sleep(sleep_s)

@@ -54,8 +54,10 @@ def test_ort_koordinaten_negativ_cache(tmp_path):
         return httpx.Response(200, json=[])
     client = httpx.Client(transport=httpx.MockTransport(handler))
     assert ort_koordinaten(store, "AGB | Wiese", client, sleep_s=0) is None
+    n1 = len(calls)
+    assert n1 == 2, "zweistufige Suche (Berlin + pur) pro Fehlversuch"
     assert ort_koordinaten(store, "AGB | Wiese", client, sleep_s=0) is None
-    assert len(calls) == 1, "Negativ-Cache: kein zweiter Netz-Request"
+    assert len(calls) == n1, "Negativ-Cache: kein zweiter Netz-Request"
     client.close()
 
 
