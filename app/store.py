@@ -75,6 +75,13 @@ CREATE TABLE IF NOT EXISTS venues_cache (
     venue_key TEXT PRIMARY KEY,
     lat REAL, lon REAL, bezirk TEXT, adresse TEXT, geholt_am TEXT
 );
+CREATE TABLE IF NOT EXISTS ort_geo (
+    ort_key TEXT PRIMARY KEY,
+    ort TEXT NOT NULL,
+    lat REAL, lon REAL, bezirk TEXT, adresse TEXT,
+    gefunden INTEGER NOT NULL DEFAULT 1,
+    aktualisiert_am TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS sources (
     quelle TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -375,6 +382,25 @@ class Store:
                 """INSERT OR REPLACE INTO venues_cache(venue_key, lat, lon, bezirk, adresse, geholt_am)
                    VALUES (?,?,?,?,?,?)""",
                 (key, lat, lon, bezirk, adresse, iso_utc(datetime.now(TZ_BERLIN))),
+            )
+            self._conn.commit()
+
+    def get_ort_geo(self, ort_key: str) -> dict | None:
+        with self._lock:
+            r = self._conn.execute(
+                "SELECT * FROM ort_geo WHERE ort_key=?", (ort_key,)
+            ).fetchone()
+        return dict(r) if r else None
+
+    def set_ort_geo(self, ort_key: str, ort: str, lat, lon, bezirk, adresse,
+                    gefunden: bool):
+        with self._lock:
+            self._conn.execute(
+                """INSERT OR REPLACE INTO ort_geo
+                   (ort_key, ort, lat, lon, bezirk, adresse, gefunden, aktualisiert_am)
+                   VALUES (?,?,?,?,?,?,?,?)""",
+                (ort_key, ort, lat, lon, bezirk, adresse, int(gefunden),
+                 iso_utc(datetime.now(TZ_BERLIN))),
             )
             self._conn.commit()
 

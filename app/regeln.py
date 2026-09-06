@@ -64,9 +64,10 @@ def _css_ok(selektor: str) -> str | None:
 
 
 # Feld-Optionen: css (parsel) und/oder jsonld (extruct-Pfad).
-# Zusätzlich: attr (href aus css-Element), regex (erster Treffer im Text),
-# format (strptime auf extrahiertem Text), join (Textliste verbinden).
-_FELD_OPTIONEN = {"css", "jsonld", "attr", "regex", "format", "join"}
+# Zusätzlich: xpath (relativ zum Item statt css), attr (href aus css-Element),
+# regex (erster Treffer im Text), format (strptime auf extrahiertem Text),
+# join (Textliste verbinden).
+_FELD_OPTIONEN = {"css", "jsonld", "xpath", "attr", "regex", "format", "join"}
 
 
 def _pruefe_feld(feldname: str, regeln: dict, pfad: str) -> list[str]:
@@ -74,10 +75,16 @@ def _pruefe_feld(feldname: str, regeln: dict, pfad: str) -> list[str]:
     if not isinstance(regeln, dict):
         return [f"{pfad}: Feld-Regel für '{feldname}' ist kein Mapping."]
     keys = set(regeln)
-    if "css" in keys and "jsonld" in keys:
-        fehler.append(f"{pfad}/{feldname}: 'css' und 'jsonld' schließen sich aus.")
-    if "css" not in keys and "jsonld" not in keys:
-        fehler.append(f"{pfad}/{feldname}: braucht 'css' oder 'jsonld'.")
+    quelle = [k for k in ("css", "jsonld", "xpath") if k in keys]
+    if len(quelle) > 1:
+        fehler.append(f"{pfad}/{feldname}: 'css', 'jsonld' und 'xpath' schließen sich aus.")
+    if not quelle:
+        fehler.append(f"{pfad}/{feldname}: braucht 'css', 'jsonld' oder 'xpath'.")
+    if "xpath" in regeln:
+        try:
+            parsel.Selector(text="<a><b/></a>").xpath(str(regeln["xpath"]))
+        except Exception as e:
+            fehler.append(f"{pfad}/{feldname}.xpath: XPath ungültig: {e}")
     if "css" in regeln:
         msg = _css_ok(str(regeln["css"]))
         if msg:

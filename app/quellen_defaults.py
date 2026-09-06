@@ -28,10 +28,17 @@ listing:
   item_css: "mp-card.mp-card-program"
   felder:
     titel: {css: "h2"}
+    url: {xpath: "ancestor::hylo-router-link[1]/@href"}
     start: {css: ".mp-card-content__info time", regex: "([0-9]{2}[.][0-9]{2}[.][0-9]{2})", format: "%d.%m.%y"}
     zeit: {css: ".mp-card-content__info time", regex: "([0-9]{1,2}:[0-9]{2})", format: "%H:%M"}
     ort: {css: ".mp-card-location"}
     beschreibung_kurz: {css: "h3"}
+detail:
+  jsonld: true
+  felder:
+    beschreibung_kurz: {jsonld: "$.description"}
+    ort: {jsonld: "$.location.name"}
+    adresse: {jsonld: "$.location.address.streetAddress"}
 """
 
 DEFAULT_REGELN: dict[str, str] = {

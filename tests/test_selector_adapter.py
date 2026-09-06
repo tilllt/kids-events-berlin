@@ -58,6 +58,7 @@ def test_museumsportal_regeln_validieren():
 
 def test_museumsportal_listing_offline(fixture_dir_museumsportal):
     adapter = SelectorAdapter("museumsportal", regel_yaml=MUSEUMS_REGELN)
+    assert adapter.braucht_detail is True  # Detail-JSON-LD wird angereichert
     html = (fixture_dir_museumsportal / "listing.html").read_text(encoding="utf-8")
     rows = adapter.parse_listing(html)
     warn = adapter.drain_warnungen()
@@ -67,14 +68,24 @@ def test_museumsportal_listing_offline(fixture_dir_museumsportal):
     assert r0["start"].year == 2026
     assert r0["ort"]
     assert r0["start"].hour >= 0
-    # Keine Detail-URL in der Liste → slug = Hash, url leer
-    assert not r0["url"]
+    # Event-Link aus dem umschließenden hylo-router-link (statt nur Listing-URL)
+    assert r0["url"] and r0["url"].startswith("https://www.museumsportal-berlin.de/de/veranstaltungen/")
+    assert r0["slug"] == r0["url"].rstrip("/").rsplit("/", 1)[-1]
+    adapter.close()
+
+
+def test_museumsportal_detail_jsonld_offline(fixture_dir_museumsportal):
+    """Detailseite: Event-JSON-LD liefert Beschreibung, Ort und Adresse."""
+    adapter = SelectorAdapter("museumsportal", regel_yaml=MUSEUMS_REGELN)
+    html = (fixture_dir_museumsportal / "detail.html").read_text(encoding="utf-8")
+    d = adapter.parse_detail(html)
+    assert d.get("beschreibung_kurz"), "description fehlt im JSON-LD-Detail"
+    assert d.get("ort") == "Botanischer Garten und Botanisches Museum Berlin"
     adapter.close()
 
 
 def test_museumsportal_zu_event(fixture_dir_museumsportal):
-    """Ohne Event-Links: source_url fällt auf die Listing-Seite zurück,
-    Events bleiben valide und eindeutig (Slug = Hash aus Titel+Start)."""
+    """source_url zeigt auf die Event-Seite (nicht die Listing-Übersicht)."""
     from app.validate import validate_event
     adapter = SelectorAdapter("museumsportal", regel_yaml=MUSEUMS_REGELN)
     html = (fixture_dir_museumsportal / "listing.html").read_text(encoding="utf-8")
@@ -83,9 +94,13 @@ def test_museumsportal_zu_event(fixture_dir_museumsportal):
     slugs = {r["slug"] for r in rows}
     assert len(slugs) == len(rows), "Slug-Kollision: Events würden sich überschreiben"
     ev0 = adapter.zu_event(rows[0], {}, jetzt)
-    assert ev0["source_url"] == "https://www.museumsportal-berlin.de/de/veranstaltungen"
+    assert ev0["source_url"].startswith("https://www.museumsportal-berlin.de/de/veranstaltungen/")
     assert ev0["id"] and ev0["titel"]
     assert validate_event(ev0, jetzt) == [], validate_event(ev0, jetzt)
+    # mit Detail-JSON-LD: Adresse fließt ins Event
+    dhtml = (fixture_dir_museumsportal / "detail.html").read_text(encoding="utf-8")
+    ev1 = adapter.zu_event(rows[0], adapter.parse_detail(dhtml), jetzt)
+    assert ev1.get("adresse"), "Adresse aus Detail-JSON-LD fehlt"
     adapter.close()
 
 

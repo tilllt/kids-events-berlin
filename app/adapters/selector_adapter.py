@@ -34,7 +34,21 @@ def _lade_regeln(regel_yaml: str | None, quelle: str) -> dict:
 
 
 def _feld_wert(el: parsel.Selector, regel: dict) -> str | None:
-    """Extrahiert Text/Attribut aus einem Item-Element (parsel)."""
+    """Extrahiert Text/Attribut aus einem Item-Element (parsel).
+
+    Optionen: 'css' (+ 'attr'), oder 'xpath' (relativ zum Item, z. B.
+    'ancestor::hylo-router-link[1]/@href' für Links, die das Item umschließen).
+    """
+    xp = regel.get("xpath")
+    if xp:
+        gefunden = el.xpath(xp)
+        if not gefunden:
+            return None
+        for g in gefunden:
+            v = g.get()
+            if v:
+                return v.strip()
+        return None
     css = regel.get("css")
     if not css:
         return None
