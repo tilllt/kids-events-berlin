@@ -146,6 +146,28 @@ class Store:
             cur = self._conn.execute("SELECT * FROM events WHERE id = ?", (ev["id"],))
             old = cur.fetchone()
             if old is None:
+                # ID-Schema-Wechsel (z. B. Quelle bekommt später Event-URLs):
+                # gleicher Inhalt (Quelle+Titel+Start+Ort) unter anderer ID wäre
+                # ein Duplikat → alten Zwilling übernehmen (löschen + neu schreiben).
+                zwi = self._conn.execute(
+                    """SELECT id FROM events
+                       WHERE quelle=? AND titel=? AND start_iso=?
+                         AND COALESCE(ort,'')=COALESCE(?,'') AND id != ?
+                       ORDER BY id LIMIT 1""",
+                    (ev["quelle"], ev["titel"], ev["start_iso"], ev.get("ort"), ev["id"]),
+                ).fetchone()
+                if zwi is not None:
+                    self._conn.execute("DELETE FROM events WHERE id=?", (zwi["id"],))
+                    self._conn.execute(
+                        """INSERT INTO events (id, titel, beschreibung_kurz, start_iso, ende_iso,
+                           start_local, ende_local, ganztags, ort, adresse, bezirk, lat, lon,
+                           altersband_min, altersband_max, alters_familie, kategorien, kostenlos,
+                           quelle, source_event_id, source_url, geholt_am, status)
+                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        self._ev_tuple(ev),
+                    )
+                    self._conn.commit()
+                    return False, True
                 self._conn.execute(
                     """INSERT INTO events (id, titel, beschreibung_kurz, start_iso, ende_iso,
                        start_local, ende_local, ganztags, ort, adresse, bezirk, lat, lon,
