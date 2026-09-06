@@ -316,19 +316,32 @@ class SelectorAdapter:
     def parse_detail(self, html: str) -> dict:
         if not html.strip():
             return {}  # kein Detail vorhanden (Listing ohne URL)
-        if not self._detail_cfg.get("jsonld"):
-            return {}
+        out: dict[str, Any] = {}
+        # CSS-Felder (Quellen ohne JSON-LD, z. B. familienportal): Selektoren
+        # wie „#contact li.name“ (Venue) / „#contact li.address.loc“ (Adresse).
+        css_felder = {k: v for k, v in (self._detail_cfg.get("felder") or {}).items()
+                      if v.get("css")}
+        if css_felder:
+            sel_css = parsel.Selector(text=html)
+            for feldname, regel in css_felder.items():
+                txt = " ".join(sel_css.css(regel["css"]).css("::text").getall())
+                txt = re.sub(r"\s+", " ", txt).strip()
+                if txt:
+                    out[feldname] = txt
+        jsonld_felder = {k: v for k, v in (self._detail_cfg.get("felder") or {}).items()
+                         if v.get("jsonld")}
+        if jsonld_felder and not self._detail_cfg.get("jsonld"):
+            return out  # Quelle ohne JSON-LD-Detail → nur CSS-Felder
         try:
             from extruct.jsonld import JsonLdExtractor
         except ImportError:  # pragma: no cover
             self._warnungen.append("extruct nicht installiert — Detail-JSON-LD übersprungen")
-            return {}
-        out: dict[str, Any] = {}
+            return out
         try:
             daten = JsonLdExtractor().extract(html)
         except Exception as e:  # pragma: no cover
             self._warnungen.append(f"JSON-LD-Extraktion fehlgeschlagen: {e}")
-            return {}
+            return out
         event = None
         for d in daten:
             if isinstance(d, dict) and d.get("@type") == "Event":

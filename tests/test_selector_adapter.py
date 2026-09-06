@@ -133,7 +133,7 @@ def test_familienportal_regeln_validieren():
 def test_familienportal_listing_offline(fixture_dir_familienportal):
     from app.quellen_defaults import FAMILIENPORTAL_REGELN
     adapter = SelectorAdapter("familienportal", regel_yaml=FAMILIENPORTAL_REGELN)
-    assert adapter.braucht_detail is False
+    assert adapter.braucht_detail is True, "Detail-Regeln aktiv (Venue/Adresse)"
     html = (fixture_dir_familienportal / "listing.html").read_text(encoding="utf-8")
     rows = adapter.parse_listing(html)
     warn = adapter.drain_warnungen()
@@ -229,4 +229,35 @@ def test_museumsportal_zu_events_serie_expandiert(fixture_dir_museumsportal):
         assert e["quelle"] == "museumsportal"
         assert e["start_local"]
         assert validate_event(e, jetzt) == [], validate_event(e, jetzt)
+    adapter.close()
+
+
+def test_familienportal_detail_css_felder(fixture_dir_familienportal):
+    """Termin-Detailseite (kein JSON-LD): Venue + Adresse per CSS (#contact)."""
+    from app.quellen_defaults import FAMILIENPORTAL_REGELN
+    adapter = SelectorAdapter("familienportal", regel_yaml=FAMILIENPORTAL_REGELN)
+    html = (fixture_dir_familienportal / "detail.html").read_text(encoding="utf-8")
+    d = adapter.parse_detail(html)
+    assert d.get("ort") == "Eisbahn im Sportforum Hohenschönhausen", d
+    adr = d.get("adresse") or ""
+    assert "Konrad-Wolf-Str. 39" in adr and "13055 Berlin" in adr, adr
+    adapter.close()
+
+
+def test_familienportal_zu_events_mit_detail(fixture_dir_familienportal):
+    """zu_events übernimmt Detail-Venue+Adresse in jedes Serien-Event."""
+    from app.quellen_defaults import FAMILIENPORTAL_REGELN
+    from app.validate import validate_event
+    adapter = SelectorAdapter("familienportal", regel_yaml=FAMILIENPORTAL_REGELN)
+    lhtml = (fixture_dir_familienportal / "listing.html").read_text(encoding="utf-8")
+    rows = adapter.parse_listing(lhtml)
+    assert rows, "Listing-Fixture ohne Rows"
+    dhtml = (fixture_dir_familienportal / "detail.html").read_text(encoding="utf-8")
+    det = adapter.parse_detail(dhtml)
+    jetzt = datetime.now(TZ_BERLIN)
+    evs = adapter.zu_events(rows[0], det, jetzt)
+    ev = evs[0]
+    assert ev["ort"] == "Eisbahn im Sportforum Hohenschönhausen"
+    assert "13055 Berlin" in (ev.get("adresse") or "")
+    assert validate_event(ev, jetzt) == [], validate_event(ev, jetzt)
     adapter.close()

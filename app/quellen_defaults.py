@@ -64,6 +64,12 @@ listing:
     zeit: {css: '.teaser__meta .text--meta', regex: '([0-9]{1,2}:[0-9]{2})\\s*Uhr', format: '%H:%M'}
     bezirk: {css: '.teaser__meta .text--meta', regex: '\\|\\s*([^|]+)$'}
     beschreibung_kurz: {css: '.inner .text', regex: '(.*?)\\s*Mehr\\s*$'}
+detail:
+  # Venue + Adresse stehen erst auf der Termin-Detailseite (kein JSON-LD):
+  # „#contact li.name“ = Einrichtung, „li.address.loc“ = Straße, PLZ Berlin.
+  felder:
+    ort: {css: '#contact li.name'}
+    adresse: {css: '#contact li.address.loc'}
 """
 
 DEFAULT_REGELN: dict[str, str] = {

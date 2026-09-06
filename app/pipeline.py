@@ -13,9 +13,12 @@ from zoneinfo import ZoneInfo
 from .adapters import aktive_quellen, build_adapter
 from .enrich import classify_alter, classify_kategorien, classify_kostenlos
 from .geo import adresse_amtlich, bezirk_from_latlon, ort_aufloesen, ort_koordinaten
-from .model import BEZIRK_BERLINWEIT, TZ_BERLIN
+from .model import BEZIRK_BERLINWEIT, BEZIRK_LABELS, TZ_BERLIN
 from .store import Store
 from .validate import validate_event
+
+# Ortsnamen, die nur Bezirksnamen sind (z. B. „Pankow“) → keine Geokodierung.
+_BEZIRKS_LABEL_KEYS = {v.lower() for v in BEZIRK_LABELS.values()}
 
 
 def scrape(store: Store, quelle: str = "jup-berlin", *, online: bool = True,
@@ -192,21 +195,29 @@ def _scrape_mit_adapter(store, adapter, quelle, *, online, geo,
                   ev["bezirk"] = bz
           # Ort ohne Koordinaten → erst amtliche Adress-Geokodierung (Straße +
           # Hausnummer + PLZ, WFS Adressen Berlin), dann Venue-Name über
-          # Nominatim („Neue Nationalgalerie“). Bezirk aus der Quelle schützt
-          # vor wertlosem Lookup reiner Bezirksnamen.
-          if (geo_client and (ev.get("lat") is None or ev.get("lon") is None)
-                  and not ev.get("bezirk")):
+          # Nominatim („Neue Nationalgalerie“). Läuft AUCH mit Bezirk aus der
+          # Quelle — der Bezirk allein gibt keine Kartenposition. Nur Orte
+          # ohne echten Venue (Bezirksname, „Ohne Angabe“, „Berlin“) werden
+          # nicht geokodiert (Koordinaten wären wertlos).
+          if geo_client and (ev.get("lat") is None or ev.get("lon") is None):
+            ort_klar_ = (ev.get("ort") or "").strip()
+            ort_low = ort_klar_.lower()
+            ist_bezirksname = ort_low in _BEZIRKS_LABEL_KEYS
+            if (ort_klar_ and ort_low not in ("ohne angabe", "berlinweit",
+                                              "ganz berlin", "berlin")
+                    and not ist_bezirksname):
               treffer = None
               if (ev.get("adresse") or "").strip():
-                  treffer = adresse_amtlich(store, ev["adresse"], geo_client)
-              if not treffer and (ev.get("ort") or "").strip() and ev["ort"] != "Ohne Angabe":
-                  treffer = ort_koordinaten(store, ev["ort"], geo_client)
+                treffer = adresse_amtlich(store, ev["adresse"], geo_client)
+              if not treffer:
+                treffer = ort_koordinaten(store, ev["ort"], geo_client)
               if treffer:
-                  ev["lat"] = treffer["lat"]
-                  ev["lon"] = treffer["lon"]
-                  ev["bezirk"] = treffer["bezirk"] or ev.get("bezirk")
-                  if not ev.get("adresse") and treffer.get("adresse"):
-                      ev["adresse"] = treffer["adresse"]
+                ev["lat"] = treffer["lat"]
+                ev["lon"] = treffer["lon"]
+                if not ev.get("bezirk") and treffer.get("bezirk"):
+                  ev["bezirk"] = treffer["bezirk"]
+                if not ev.get("adresse") and treffer.get("adresse"):
+                  ev["adresse"] = treffer["adresse"]
           fehler = validate_event(ev, jetzt)
           if fehler:
               n_fehler += 1

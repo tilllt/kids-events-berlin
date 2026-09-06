@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html  lang="de" prefix="og: http://ogp.me/ns#">
+<head>
+    <meta charset="utf-8">
+
+<!-- 
+	Created by: ressourcenmangel GmbH, https://www.ressourcenmangel.de, Tel.: +49 (0)30 590037 450
+
+	This website is powered by TYPO3 - inspiring people to share!
+	TYPO3 is a free open source Content Management Framework initially created by Kasper Skaarhoj and licensed under GNU/GPL.
+	TYPO3 is copyright 1998-2026 of Kasper Skaarhoj. Extensions are copyright of their respective owners.
+	Information and contribution at https://typo3.org/
+-->
+
+
+<title>Familiensportfest - Lichtenberg - Veranstaltungen </title>
+<meta name="generator" content="TYPO3 CMS">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=0, minimum-scale=1.0, maximum-scale=1.0">
+<meta name="robots" content="index,follow">
+<meta name="twitter:card" content="summary">
+
+<link href="/_assets/261d86cbd1eb8b5cf0c75e0f12071210/Scripts/MapLibre/maplibre-gl_4.1.0.css?1787901087" rel="stylesheet" >
+<link rel="stylesheet" href="/_assets/261d86cbd1eb8b5cf0c75e0f12071210/Styles/main.min.css?1787901087" media="all">
+<link rel="stylesheet" href="/_assets/bfa2c2186fd7a266438b0b120d5580e7/StyleSheets/app.css?1787901111" media="all">
+<link rel="stylesheet" href="/_assets/e799cca3073eabb617dfebf5f7cabc53/StyleSheets/Frontend/results.css?1787901093" media="all">
+<link rel="stylesheet" href="/_assets/e799cca3073eabb617dfebf5f7cabc53/StyleSheets/Frontend/loader.css?1787901093" media="all">
+<style>
+		.tx_pb_famport_events_detail_date {
+			display: flex;
+			border-top: 1px solid #dddddd;
+			border-bottom: 1px solid #dddddd;
+			padding: 0.5rem 0;
+		}
+		@media only screen and (max-width: 639px) {
+			.tx_pb_famport_events_detail_date {
+				flex-direction: column;
+			}
+		}
+		.tx_pb_famport_events_detail_date_left {
+			flex: 1 1 auto;
+		}
+		.tx_pb_famport_events_detail_date_left h2 {
+			margin: 0 0 0.25rem;
+		}
+		.tx_pb_famport_events_detail_date_left p {
+			margin: 0;
+		}
+		.tx_pb_famport_events_detail_date_right {
+			align-self: flex-end;
+			border-left: 1px solid #dddddd;
+			padding: 0.5rem 0 0.5rem 2rem;
+		}
+		@media only screen and (max-width: 639px) {
+			.tx_pb_famport_events_detail_date_right {
+				padding-left: 0;
+				align-self: flex-start;
+				border: 0;
+			}
+		}
+	</style>
+<style>
+		.maplibregl-popup-close-button {
+		line-height: 0.875!important;
+		font-size: 2em!important;
+		}
+		.maplibregl-marker {
+		cursor: pointer;
+		}
+		.tx_pb_famport_map {
+		position: relative;
+		}
+		.tx_pb_famport_map_loading {
+		height: 100%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		opacity: 0.5;
+		font-size: 1.5rem;
+		font-weight: bold;
+		}
+		@keyframes tx_pb_famport_map_loading {
+			0%, 100% { opacity: 1; transform: scale(1);}
+			50%       { opacity: 0.25; transform: scale(0.8);}
+		}
+		.tx_pb_famport_map_loading div {
+			animation: tx_pb_famport_map_loading 3s ease-in-out infinite;
+		}
+		.tx_pb_famport_map_popup_events {
+		font-family: Arial, sans-serif;
+		font-size: 1rem;
+		line-height: 1.5;
+		width: 400px;
+		max-width: 90%;
+		height: 100%;
+		transform: none !important;
+		}
+
+		.tx_pb_famport_map_popup_events .maplibregl-popup-tip {
+		display: none!important;
+		}
+		.tx_pb_famport_map_popup_events .popup_text {
+		max-height: 530px;
+		overflow-y: auto;
+		padding: 0 10px 0 0;
+		}
+		.tx_pb_famport_map_popup_events .maplibregl-popup-content {
+		height: 100%;
+		}
+
+		.tx_pb_famport_map_popup_events .popup_content_website + .popup_content_email:before {
+		display: inline-block;
+		content:"-";
+		padding: 0 5px;
+		}
+		.tx_pb_famport_map_popup_events .popup_content_accessibility img {
+		display: inline-block;
+		height: 24px;
+		width: auto;
+		padding: 2px 4px 2px 0;
+		}
+	</style>
+
+
+<script src="https://www.berlin.de/i9f/r1/bundle/jquery.min.js"></script>
+<script src="https://www.berlin.de/i9f/r1/bundle/berlin_identity.js" async="async"></script>
+<script src="/_assets/cc28db55a4b2340c9a29526841f8cc9e/JavaScript/autocomplete-location.js?1787901091"></script>
+
+
+<!-- Google Consent Mode -->
+<script data-cookieconsent="ignore">
+    window.dataLayer = window.dataLayer || [];
+    function gtag() {
+        dataLayer.push(arguments);
+    }
+    gtag("consent", "default", {
+        ad_storage: "denied",
+        analytics_storage: "denied",
+        functionality_storage: "denied",
+        personalization_storage: "denied",
+        security_storage: "granted",
+        wait_for_update: 500,
+    });
+    gtag("set", "ads_data_redaction", true);
+</script>
+<!-- Google Tag Manager -->
+
+<script data-cookieconsent="ignore">(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+
+})(window,document,'script','dataLayer','GTM-TZMFPQ8');</script>
+
+<!-- End Google Tag Manager -->
+<script id="Cookiebot" src="https://consent.cookiebot.com/uc.js" data-cbid="d69faf18-1414-49ca-83fb-761c21b578b0" data-blockingmode="auto" type="text/javascript" async></script>
+
+<link rel="icon" href="https://www.berlin.de/i9f/r1/images/favicon/favicon.ico" sizes="any">
+<link rel="icon" href="https://www.berlin.de/i9f/r1/images/favicon/Berlin_de.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" sizes="180x180" href="https://www.berlin.de/i9f/r1/images/favicon/apple-touch-icon.png" type="image/png">
+<link rel="manifest" href="https://www.berlin.de/i9f/r1/images/favicon/manifest.json">
+<link rel="mask-icon" href="https://www.berlin.de/i9f/r1/images/favicon/safari-pinned-tab.svg" color="#000000">
+<meta name="msapplication-TileColor" content="#2B5797">
+<meta name="msapplication-config" content="https://www.berlin.de/i9f/r1/images/favicon/browserconfig.xml">
+<meta name="theme-color" content="#FFFFFF">
+
+
+<meta name="google-site-verification" content="O61-rLsv5vigDbuljbyMGVYjZszS5-RNtZnVQ44qgwQ" />
+<style>
+#accordion_feedback-form {display:none !important}
+.tx-kesearch-pi1 .button--clear-input:before,
+.tx-kesearch-pi1 .button--clear-input:after {display: none!important;}
+</style><style>
+.fa-twitter:before {
+  content: '' !important;
+  display: inline-block;
+  width: 30px;
+  height: 30px;
+  margin-right: 0.5em;
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23d53a15"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>');
+  background-size: 20px 20px;
+  background-repeat: no-repeat;
+  background-position: center;
+  vertical-align: middle;
+}
+</style>   
+<link rel="canonical" href="https://familienportal.berlin.de/veranstaltungen-3/termin/familiensportfest-1-20260906-9">
+
+<script type="application/ld+json" id="ext-schema-jsonld">{"@context":"https://schema.org/","@type":"WebPage","breadcrumb":{"@type":"BreadcrumbList","itemListElement":{"@type":"ListItem","item":{"@type":"WebPage","@id":"https://familienportal.berlin.de/veranstaltungen"},"name":"Veranstaltungen","position":"1"}}}</script>
+</head>
+<body class="pb__page pb__page_id_4 pb__page_doktype_1">
+
+
+
+<!-- Google Tag Manager (noscript) --><noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-TZMFPQ8" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript><!-- End Google Tag Manager (noscript) --><header id="header" class="kiekma" aria-label="Header Berliner Familienportal"><div class="header__row-portalbrand"><div class="logo"><a href="https://www.berlin.de" title="Zur Startseite von Berlin.de"><img class="logo" alt="Berlin.de Logo" src="/_assets/261d86cbd1eb8b5cf0c75e0f12071210/images/logo_berlin_m_srgb.svg" width="64" height="64" /></a></div></div><div class="header__row-pageheader"><div class="pageheader__logo"><div class="logo"><a title="zur Startseite des Familienportals" href="/"><img class="logo" alt="Familienportal Logo" src="/_assets/261d86cbd1eb8b5cf0c75e0f12071210/images/Logo_Familienportal_RGB.svg" width="252" height="64" /></a></div></div><nav class="pageheader__quicklinks" aria-label="Bereichsnavigation"><ul><li><a href="/mein-kind" title="Mein Kind">
+                    Mein Kind
+                </a></li><li><a href="/meine-familie" title="Meine Familie">
+                    Meine Familie
+                </a></li><li><a href="/meine-themen" title="Meine Themen">
+                    Meine Themen
+                </a></li><li><a href="/veranstaltungen" title="Veranstaltungen">
+                    Veranstaltungen
+                </a></li><li><a href="/artikel/fuer-fachkraefte" title="Für Fachkräfte">
+                    Für Fachkräfte
+                </a></li></ul></nav><div class="pageheader__services"><div id="servicebuttonAccessibility" class="service-button-overlay js-service-button-overlay accessibility"><div class="service-button-overlay__button"><button type="button" class="icon-button js-button-overlay-open"><i class="icon fas fa-universal-access" aria-hidden="true"></i><span class="aural">
+                Öffnen: Barrierefreiheit
+              </span><span class="text">
+                Barrierefrei
+              </span></button></div><div class="service-button-overlay__overlay overlay js-overlay-container"  role="dialog" aria-modal="true" hidden="hidden"><div class="overlay__header"><h2 class="heading"><span>
+                Barrierefreiheit
+              </span></h2><button type="button" class="close-button js-button-overlay-close"><i class="fas fa-times" aria-hidden="true"></i><span class="aural">
+                  Schließen: Barrierefreiheit
+                </span></button></div><div class="overlay__body"><div id="c2" class="frame frame-default frame-type-text frame-layout-0"><p><a href="/barrierefreiheit/das-berliner-familienportal-in-deutscher-gebaerdensprache" class="link-icon-hands ">Deutsche Gebärdensprache (DGS)</a></p><p><a href="/barrierefreiheit/das-berliner-familienportal-in-leichter-sprache" class="link-icon-book">Das Familienportal in Leichter Sprache</a></p><h3>Wie barrierefrei ist diese Webseite?</h3><p><a href="/barrierefreiheit">Erklärung zur digitalen Barrierefreiheit</a></p><h3>Wen können Sie bei Anmerkungen oder Fragen zur digitalen Barrierefreiheit (Feedbackoption) kontaktieren?</h3><p>Kontakt zur Ansprechperson der öffentlichen Stelle:</p><p>Christina Ernst</p><p>E-Mail:&nbsp;<a href="http://online-redaktion@senbjf.berlin.de;" target="_blank" title="Mailadresse Onlineredaktion des Familienportals bei der Senatsverwaltung für Bildung Jugend und Familie Berlin" rel="noreferrer">online-redaktion(at)senbjf.berlin.de</a></p><p>Telefonnummer:&nbsp;<a href="tel:+4930902275000" title="Telefonnummer Infopoint der Senatsverwaltung für Bildung, Jugend und Familie">030 902 275 000</a></p><h3>Zusätzliche Informationen zur Barrierefreiheit im Land Berlin?</h3><p>Zusätliche Informationen zur Barrierefreiheit im Land Berlin finden Sie bei der <a href="https://www.berlin.de/sen/inneres/moderne-verwaltung/digitale-barrierefreiheit/landesbeauftragte/" target="_blank" title="Berliner Landesbeauftragte für digitale Barrierefreiheit" rel="noreferrer">Berliner Landesbeauftragen für digitale Barrierefreiheit</a>.&nbsp;</p></div></div></div></div><div id="servicebuttonSearch" class="service-button-overlay js-service-button-overlay search fullwidth"><div class="service-button-overlay__button"><button type="button" class="icon-button js-button-overlay-open" aria-label="Overlay Öffnen: Suche"><i class="icon fa fa-search 1234" aria-hidden="true"></i><span class="text">
+                Suchen
+              </span></button></div><div class="service-button-overlay__overlay overlay js-overlay-container" role="dialog" aria-modal="true" hidden="hidden"><div class="overlay__header"><h2 class="heading"><span class="aural">
+                Suchen
+              </span></h2><button type="button" class="close-button js-button-overlay-close" aria-label="Overlay Schließen: Suche"><i class="fas fa-times" aria-hidden="true"></i></button></div><div class="overlay__body"><div class="search-container"><form class="search-form" method="get" action="/suchergebnisse"><label for="searchFormInput_q">
+                    Suche im Familienportal
+                  </label><div class="form-group"><input name="tx_solr[q]" class="form-control" id="searchFormInput_q" placeholder="Suchbegriff" type="search"><button type="submit" class="button"><i class="fas fa-search" aria-hidden="true"></i><span>
+                        Suchen
+                      </span></button></div></form></div></div></div></div><div id="servicebuttonMenu" class="service-button-overlay js-service-button-overlay menu"><div class="service-button-overlay__button"><button type="button" class="icon-button js-button-overlay-open"><i class="icon fa fa-bars" aria-hidden="true"></i><span class="aural">
+                    Öffnen: Menü
+                  </span><span class="text">
+                    Menü
+                  </span></button></div><div class="service-button-overlay__overlay overlay js-overlay-container" role="dialog" aria-modal="true"
+              hidden="hidden"><div class="overlay__header"><h2 class="heading"><span>
+                    Menü
+                  </span></h2><button type="button" class="close-button js-button-overlay-close"><i class="fas fa-times" aria-hidden="true"></i><span class="aural">
+                        Schließen: Menü
+                      </span></button></div><div class="overlay__body"><nav id="navigation-primary" class="js-navigation-primary" aria-label="Seitennavigation"><div class="tree-wrapper js-navigation-tree-wrapper"><h3 class="aural">
+                          Seitennavigation
+                        </h3><ul class="navigation-tree"><li><a href="/mein-kind" title="Mein Kind">Mein Kind</a><ul class="navigation-tree"><li><a href="/mein-kind/baby" title="Baby">
+                                          Baby
+                                        </a></li><li><a href="/mein-kind/kleinkind" title="Kleinkind">
+                                          Kleinkind
+                                        </a></li><li><a href="/mein-kind/grundschulkind" title="Grundschulkind">
+                                          Grundschulkind
+                                        </a></li><li><a href="/mein-kind/jugendliche" title="Jugendliche">
+                                          Jugendliche
+                                        </a></li><li><a href="/mein-kind/18" title="18+">
+                                          18+
+                                        </a></li></ul></li><li><a href="/meine-familie" title="Meine Familie">Meine Familie</a><ul class="navigation-tree"><li><a href="/meine-familie/mutter-sein" title="Mutter sein">
+                                          Mutter sein
+                                        </a></li><li><a href="/meine-familie/vater-sein" title="Vater sein">
+                                          Vater sein
+                                        </a></li><li><a href="/meine-familie/alleinerziehend" title="Alleinerziehend">
+                                          Alleinerziehend
+                                        </a></li><li><a href="/meine-familie/patchworkfamilie" title="Patchworkfamilie">
+                                          Patchworkfamilie
+                                        </a></li><li><a href="/meine-familie/queere-familie" title="Queere Familie">
+                                          Queere Familie
+                                        </a></li><li><a href="/meine-familie/pflegeeltern" title="Pflegeeltern">
+                                          Pflegeeltern
+                                        </a></li><li><a href="/meine-familie/adoptiveltern" title="Adoptiveltern">
+                                          Adoptiveltern
+                                        </a></li><li><a href="/meine-familie/mehrkindfamilie" title="Mehrkindfamilie">
+                                          Mehrkindfamilie
+                                        </a></li><li><a href="/meine-familie/mehrgenerationenfamilie" title="Mehrgenerationenfamilie">
+                                          Mehrgenerationenfamilie
+                                        </a></li><li><a href="/meine-familie/grosseltern" title="Großeltern">
+                                          Großeltern
+                                        </a></li></ul></li><li><a href="/meine-themen" title="Meine Themen">Meine Themen</a><ul class="navigation-tree"><li><a href="/meine-themen/kinderwunsch" title="Kinderwunsch">
+                                          Kinderwunsch
+                                        </a></li><li><a href="/meine-themen/schwangerschaft-und-geburt" title="Schwangerschaft &amp; Geburt">
+                                          Schwangerschaft &amp; Geburt
+                                        </a></li><li><a href="/meine-themen/beziehung" title="Beziehung">
+                                          Beziehung
+                                        </a></li><li><a href="/meine-themen/trennung" title="Trennung">
+                                          Trennung
+                                        </a></li><li><a href="/meine-themen/arbeitsleben" title="Arbeitsleben">
+                                          Arbeitsleben
+                                        </a></li><li><a href="/meine-themen/freizeit" title="Freizeit">
+                                          Freizeit
+                                        </a></li><li><a href="/meine-themen/gesund-leben" title="Gesund leben">
+                                          Gesund leben
+                                        </a></li><li><a href="/meine-themen/krankheit-/-sucht" title="Krankheit / Sucht">
+                                          Krankheit / Sucht
+                                        </a></li><li><a href="/meine-themen/erziehung" title="Erziehung">
+                                          Erziehung
+                                        </a></li><li><a href="/meine-themen/kita" title="Kita">
+                                          Kita
+                                        </a></li><li><a href="/meine-themen/schule" title="Schule">
+                                          Schule
+                                        </a></li><li><a href="/meine-themen/leben-mit-behinderung" title="Leben mit Behinderung">
+                                          Leben mit Behinderung
+                                        </a></li><li><a href="/meine-themen/wohnen-und-nachbarschaft" title="Wohnen &amp; Nachbarschaft">
+                                          Wohnen &amp; Nachbarschaft
+                                        </a></li><li><a href="/meine-themen/zuwanderung-und-integration" title="Zuwanderung &amp; Integration">
+                                          Zuwanderung &amp; Integration
+                                        </a></li><li><a href="/meine-themen/finanzen" title="Finanzen">
+                                          Finanzen
+                                        </a></li><li><a href="/meine-themen/gewalt" title="Gewalt">
+                                          Gewalt
+                                        </a></li><li><a href="/meine-themen/rente-und-ruhestand" title="Rente &amp; Ruhestand">
+                                          Rente &amp; Ruhestand
+                                        </a></li><li><a href="/meine-themen/angehoerige-pflegen" title="Angehörige pflegen">
+                                          Angehörige pflegen
+                                        </a></li><li><a href="/meine-themen/rechtliches" title="Rechtliches">
+                                          Rechtliches
+                                        </a></li><li><a href="/meine-themen/tod-und-trauer" title="Tod &amp; Trauer">
+                                          Tod &amp; Trauer
+                                        </a></li></ul></li><li><a href="/veranstaltungen" title="Veranstaltungen">Veranstaltungen</a><ul class="navigation-tree"><li><a href="/login" title="Login">
+                                          Login
+                                        </a></li><li><a href="/veranstaltungen/registrierung-veranstaltungsanmeldung" title="Registrierung Veranstaltungsanmeldung">
+                                          Registrierung Veranstaltungsanmeldung
+                                        </a></li><li><a href="/veranstaltungen/veranstaltungsliste" title="Veranstaltungsliste">
+                                          Veranstaltungsliste
+                                        </a></li></ul></li><li><a href="/ueber-uns" title="Über uns">Über uns</a><ul class="navigation-tree"><li><a href="https://service.berlin.de/familie-partnerschaft-gleichstellung/" title="Berliner Servicelinks für Familien">
+                                          Berliner Servicelinks für Familien
+                                        </a></li></ul></li><li><a href="/suchergebnisse" title="Suchergebnisse">Suchergebnisse</a></li></ul><div class="navigation-meta"><h3 class="heading">Translations</h3><!-- Meta LanguageList.view --><ul><li><a href="/info/das-familienportal-in-ihrer-sprache" title="Das Berliner Familienportal in Ihrer Sprache">
+                                                  Das Berliner Familienportal in Ihrer Sprache
+                                              </a></li><li><a href="/info/the-berlin-family-portal-in-your-language" title="The Berlin Family Portal in your language">
+                                                  The Berlin Family Portal in your language
+                                              </a></li><li><a href="/le-portail-pour-les-familles-de-berlin-dans-votre-langue" title="Le Portail pour les familles de Berlin dans votre langue">
+                                                  Le Portail pour les familles de Berlin dans votre langue
+                                              </a></li><li><a href="/berlinski-portal-rodzinny-w-twoim-jezyku-1" title="Berliński Portal Rodzinny w Twoim języku">
+                                                  Berliński Portal Rodzinny w Twoim języku
+                                              </a></li><li><a href="/berlin-aile-portali-icerigini-kendi-dilinizde-okuyun" title="Berlin Aile Portalı içeriğini kendi dilinizde okuyun">
+                                                  Berlin Aile Portalı içeriğini kendi dilinizde okuyun
+                                              </a></li><li><a href="/berlinskii-semeinyi-portal-na-vashem-jazyke" title="Берлинский семейный портал на вашем языке">
+                                                  Берлинский семейный портал на вашем языке
+                                              </a></li><li><a href="/berlinskii-simeinii-portal-vashoju-movoju" title="Берлінський сімейний портал вашою мовою">
+                                                  Берлінський сімейний портал вашою мовою
+                                              </a></li><li><a href="/cong-thong-tin-gia-dinh-berlin-bang-ngon-ngu-cua-ban" title="Cổng thông tin gia đình Berlin bằng ngôn ngữ của bạn">
+                                                  Cổng thông tin gia đình Berlin bằng ngôn ngữ của bạn
+                                              </a></li><li><a href="/%D8%A8%D9%88%D8%A7%D8%A8%D8%A9-%D8%A7%D9%84%D8%B9%D8%A7%D8%A6%D9%84%D8%A9-%D9%81%D9%8A-%D8%A8%D8%B1%D9%84%D9%8A%D9%86-%D8%A8%D9%84%D8%BA%D8%AA%D9%83%D9%85" title="بوابة العائلة في برلين بلغتكم">
+                                                  بوابة العائلة في برلين بلغتكم
+                                              </a></li></ul><!-- /Meta LanguageList.view --></div></div></nav></div></div></div></div></div></header><main id="layout-grid" aria-label="Main"><div id="layout-grid__area--herounit" class="fullwidth"></div><div id="layout-grid__area--maincontent"><div class="message--success" role="alert" id="success" style="display: none;"><h2 class="title">Nachricht versendet</h2><p>Ihre Nachricht wurde erfolgreich versendet!</p></div><div id="c40" class="frame frame-default frame-type-list frame-layout-0"><div class="calendarize"><div class="block"><h1>
+			Familiensportfest - Lichtenberg - Veranstaltungen
+			
+		</h1><div class="tx_pb_famport_events_detail_date"><div class="tx_pb_famport_events_detail_date_left"><h2>Sun</h2><p>
+							06.09.2026
+							
+								&#124;
+								10:00 - 17:00
+								Uhr
+							
+						</p></div><div class="tx_pb_famport_events_detail_date_right"><a class="button button--download" title="Termin speichern (ICS)" href="/veranstaltungen-3/termin/familiensportfest-1-20260906-9.ics">Speichern</a></div></div><h2>Auf einen Blick</h2><div class="flexgrid grid--2" id="contact"><div><ul class="list--contact" aria-label="Kontaktinformationen"><li class="name">Eisbahn im Sportforum Hohenschönhausen</li><li class="address loc"><span class="street">Konrad-Wolf-Str. 39</span>,
+											
+											
+												<span class="city">13055 Berlin</span></li><li class="tel"><a title="Eisbahn im Sportforum Hohenschönhausen anrufen" href="phone:(030) 971 731 02">Tel.: (030) 971 731 02</a></li><li class="categories"><span class="sr-only">Kategorien: </span><span class="category c158"><i class="fa fa-tags"></i>&nbsp;Jugendliche </span></li><li><a class="link link--download"
+										   title="PDF speichern"
+										   href="javascript:if(window.print)window.print()">PDF speichern</a></li></ul></div><div></div></div></div><div class="block"><div class="modul-text_bild imagealignright"><div class="text"><p>Der Landessportbund Berlin lädt in diesem Jahr zum zentralen Familiensportfest ein – erstmals auf dem Gelände des Sportforums Berlin in Hohenschönhausen. Am 13. und 14. Juni 2026 präsentieren Berliner Vereine und Verbände von 10 bis 17 Uhr <strong>kostenlos </strong>ihre vielseitigen Angebote und laden Familien zum <strong>Ausprobieren und Mitmachen</strong> ein.</p><p>In Anlehnung an die „großen“ Finals werden gleichzeitig rund zehn Berliner Jugendmeisterschaften ausgetragen, unter anderem im Beachvolleyball, in der Leichtathletik, im Judo und im Fechten. Außerdem sorgen Musik- und Tanzauftritte auf der Bühne für gute Laune.</p><p>Das Familiensportfest bildet den sportlich-bunten Rahmen für die Nachwuchswettkämpfe und lädt Besucherinnen und Besucher dazu ein, auch bei den spannenden Jugendmeisterschaften vorbeizuschauen und mitzufiebern.</p><p>Ein Wochenende voller <strong>Bewegung, Spannung und Freude</strong> für die ganze Familie.</p><p><strong>Bitte benutzen Sie zur Anfahrt den ÖPNV, da nur begrenzt Parkplätze vorhanden sind.</strong></p></div><p>Bezirk: Lichtenberg</p></div></div><div style="display:none;">time</div><div class="dates" id="dates"><h2>Nächste Termine</h2><ul><li>
+						06.09.2026
+						
+							von
+							10:00 - 17:00
+							Uhr
+						
+					</li><li>
+						07.09.2026
+						
+							von
+							10:00 - 17:00
+							Uhr
+						
+					</li><li>
+						08.09.2026
+						
+							von
+							10:00 - 17:00
+							Uhr
+						
+					</li><li>
+						09.09.2026
+						
+							von
+							10:00 - 17:00
+							Uhr
+						
+					</li><li>
+						10.09.2026
+						
+							von
+							10:00 - 17:00
+							Uhr
+						
+					</li></ul></div><div class="block"><a title="Webseite von Eisbahn im Sportforum Hohenschönhausen in neuem Tab öffnen"
+			   href="https://jup.berlin/events/familiensportfest" class="button button--extern">Zur Veranstaltung</a></div><div data-event-location-uids="2306"></div><div class="modul-geomap" id="geomapId_819"><div class="geomap-main"><div id="geomapId_819_container" class="geomap-container"><div id="geomapId_819_map"
+					 class="geomap-map interactive-map tx_pb_famport_map"
+					 data-map-enable="1"
+					 data-map-type="events"
+					 data-map-popup-class="tx_pb_famport_map_popup_events"
+					 data-map-initial-zoom="10"
+					 data-map-data-url="/?type=1750076607"
+					 data-map-locale-windows="Verwenden Sie STRG + Scrollen zum Zoomen der Karte."
+					 data-map-locale-mac="Verwenden Sie ⌘ + Scrollen zum Zoomen der Karte."
+					 data-map-locale-mobile="Verschieben Sie die Karte mit zwei Fingern."
+					 style="height:600px;"><div class="tx_pb_famport_map_loading"><div>Loading Map....</div></div></div></div></div></div><div id="geomapId_819_skipmap"><p class="aural">Ende der Karte.</p></div><hr class="light"></div></div><!--
+	=====================
+		Partials/Shariff.html
+--><div id="share" class="shariff" data-button-style="icon" data-services='["whatsapp", "facebook", "twitter", "linkedin", "info"]'></div><!-- https://github.com/heiseonline/shariff#options-data-attributes --></div><div id="layout-grid__area--contentfooter"><!-- CONTENT FOOTER --><div id="content-footer" role="contentinfo"><h2 class="aural">Weitere Informationen zu diesem Auftritt</h2><div class="content-footer__brand"></div><a class="to-top" href="#top">
+          Zum Seitenanfang
+        </a><div class="content-footer__links"><ul class="js-collapse-palm"><li class="initial-open"><h3 class="heading js-trigger">Familienportal</h3><ul><li><a title="Impressum" href="/impressum">
+                    Impressum
+                  </a></li><li><a title="Datenschutz" href="/datenschutz">
+                    Datenschutz
+                  </a></li><li><a href="/barrierefreiheit">
+                    Barrierefreiheit
+                  </a></li><li><a title="Über uns" href="/ueber-uns">
+                    Über uns
+                  </a></li></ul></li><li><h3 class="heading js-trigger">Inhalte</h3><ul><li><a href="/mein-kind" title="Mein Kind">
+                        Mein Kind
+                      </a></li><li><a href="/meine-familie" title="Meine Familie">
+                        Meine Familie
+                      </a></li><li><a href="/meine-themen" title="Meine Themen">
+                        Meine Themen
+                      </a></li><li><a href="/veranstaltungen" title="Veranstaltungen">
+                        Veranstaltungen
+                      </a></li><li><a href="/artikel/fuer-fachkraefte" title="Für Fachkräfte">
+                        Für Fachkräfte
+                      </a></li></ul></li><li><h3 class="heading js-trigger">Allgemein</h3><ul><li>
+                  
+                    Suche im Familienportal
+                   
+                </li><li><a href="/sitemap" title="Sitemap">
+                    Sitemap                  
+                  </a></li><li></li></ul></li></ul></div></div><section class="modul-accordion js-accordion feedback-form" id="accordion_feedback-form" aria-label="Feedback"><h2 class="title title--right js-accordion__heading">
+          Feedback
+        </h2><div class="js-accordion__panel inner" role="region" style="display: none"><h2>Fragen und Feedback</h2><p>Schreiben Sie uns, wenn Sie Fragen oder Feedback für uns haben.</p><a class="Feedback" href="#" target="und" data-mailto-token="iwehpk6bwieheajlknpwhWbwieheajxaenwp9xanhej:za?oqxfayp=Bnwcaj" data-mailto-vector="-4" title="Familienportal">Kontakt aufnehmen</a></div></section></div></main><footer id="footer" aria-label="Footer Berliner Familienportal"><div class="footer__brand"><div class="image__image"><a href="https://www.berlin.de" title="Zur Startseite von Berlin.de" target="_blank"><img class="logo" alt="Berlin.de Logo" src="/_assets/261d86cbd1eb8b5cf0c75e0f12071210/images/logo_berlin_m_negativ.svg" width="64" height="64" /></a></div></div><nav class="footer__links" aria-label="Weitere Bereiche auf Berlin.de"><h2 class="aural">Weitere Informationen zu Berlin.de</h2><ul class="js-collapse-palm"><li><h3 class="heading js-trigger">Service</h3><ul><li><a href="https://service.berlin.de" target="_blank">Online-Dienstleistungen</a></li><li><a href="https://service.berlin.de/app/" target="_blank">Service-App</a></li><li><a href="https://service.berlin.de/terminvereinbarung/" target="_blank">Termin vereinbaren</a></li><li><a href="https://www.berlin.de/moderne-verwaltung/buergerservice/am-telefon/" target="_blank">Bürgertelefon 115</a></li><li><a href="https://www.berlin.de/polizei/service/so-erreichen-sie-uns/artikel.532842.php" target="_blank">Notdienste</a></li><li><a href="https://www.berlin.de/ea/" target="_blank">Gewerbeservice</a></li></ul></li><li><h3 class="heading js-trigger">Behörden</h3><ul><li><a href="https://service.berlin.de/behoerden/" target="_blank">Behörden A bis Z</a></li><li><a href="https://service.berlin.de/senatsverwaltungen/" target="_blank">Senatsverwaltungen</a></li><li><a href="https://service.berlin.de/bezirksaemter/" target="_blank">Bezirksämter</a></li><li><a href="https://service.berlin.de/standorte/buergeraemter/" target="_blank">Bürgerämter</a></li><li><a href="https://service.berlin.de/jobcenter/" target="_blank">Jobcenter</a></li><li><a href="https://berlin.de/einwanderung/" target="_blank">Einwanderungsamt</a></li></ul></li><li><h3 class="heading js-trigger">Politik &amp; Verwaltung</h3><ul><li><a href="https://www.berlin.de/rbmskzl/" target="_blank">Landesregierung</a></li><li><a href="https://berlin.de/karriereportal/" target="_blank">Karriere im Land Berlin</a></li><li><a href="https://mein.berlin.de" target="_blank">Bürgerbeteiligung</a></li><li><a href="https://daten.berlin.de" target="_blank">Open Data</a></li><li><a href="https://berlin.de/vergabeplattform/" target="_blank">Vergaben</a></li><li><a href="https://www.berlin.de/buergeraktiv/" target="_blank">Ehrenamt</a></li></ul></li><li><h3 class="heading js-trigger">Aktuelles</h3><ul><li><a href="https://berlin.de/ukraine/" target="_blank">Ukraine</a></li><li><a href="https://berlin.de/presse/" target="_blank">Pressemitteilungen</a></li><li><a href="https://berlin.de/polizei/polizeimeldungen/" target="_blank">Polizeimeldungen</a></li><li><a href="https://berlin.de/land/kalender/" target="_blank">Veranstaltungen</a></li></ul></li><li><h3 class="heading js-trigger">Themen</h3><ul><li><a href="https://gemeinsamdigital.berlin.de" target="_blank">Gemeinsam Digital</a></li><li><a href="https://berlin.de/grundsteuer/" target="_blank">Grundsteuer</a></li><li><a href="https://verkehrswende.berlin.de" target="_blank">Verkehrswende</a></li><li><a href="https://berlin.de/moderne-verwaltung/" target="_blank">Moderne Verwaltung</a></li><li><a href="https://www.berlin.de/mauer/" target="_blank">Berliner Mauer</a></li></ul></li><li><h3 class="heading js-trigger">Weitere Informationen</h3><ul><li><a href="https://berlin.de/kultur-und-tickets/" target="_blank">Kultur &amp; Ausgehen</a></li><li><a href="https://berlin.de/tourismus/" target="_blank">Tourismus</a></li><li><a href="https://berlin.de/wirtschaft/" target="_blank">Wirtschaft</a></li><li><a href="https://berlin.de/special/" target="_blank">Stadtleben</a></li><li><a href="https://berlin.de/adressen/" target="_blank">BerlinFinder</a></li><li><a href="https://berlin.de/stadtplan/" target="_blank">Stadtplan</a></li></ul></li></ul></nav><div class="footer__claim"><p>Berlin.de ist ein Angebot des Landes Berlin.</p></div></footer>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/twbs-pagination/1.4.2/jquery.twbsPagination.js" async="1"></script>
+<script src="/_assets/261d86cbd1eb8b5cf0c75e0f12071210/Scripts/Flatpickr/confirmDate.js?1787901087" async="1"></script>
+<script src="/_assets/261d86cbd1eb8b5cf0c75e0f12071210/Scripts/Flatpickr/shortcut-buttons-flatpickr.min.js?1787901087" async="1"></script>
+<script src="/_assets/261d86cbd1eb8b5cf0c75e0f12071210/Scripts/main.js?1787901087"></script>
+<script src="/_assets/e799cca3073eabb617dfebf5f7cabc53/JavaScript/JQuery/jquery.min.js?1787901093"></script>
+<script src="/_assets/14f6863797b7ad1655a95cb04ffd7e6b/JavaScript/JQuery/jquery.autocomplete.min.js?1787901091"></script>
+<script src="/_assets/14f6863797b7ad1655a95cb04ffd7e6b/JavaScript/suggest_controller.js"></script>
+<script src="/_assets/14f6863797b7ad1655a95cb04ffd7e6b/JavaScript/filter_search.js"></script>
+<script src="/_assets/bfa2c2186fd7a266438b0b120d5580e7/JavaScript/frontend/repeatable-container.js?1787901111"></script>
+<script src="/_assets/261d86cbd1eb8b5cf0c75e0f12071210/Scripts/MapLibre/maplibre-gl_4.1.0.js?1787901087"></script>
+<script src="/_assets/261d86cbd1eb8b5cf0c75e0f12071210/Scripts/MapLibre/Local/Src/function_4.1.0.js?1787901087"></script>
+<script async="async" src="/_assets/2a58d7833cb34b2a67d37f5b750aa297/JavaScript/default_frontend.js?1787901117"></script>
+
+<link rel="stylesheet" type="text/css" href="/_assets/d62557c271d06262fbb7ce0981266e2f/Css/auto-complete.css" media="all">
+</body>
+</html>
