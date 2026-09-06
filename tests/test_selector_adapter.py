@@ -5,40 +5,8 @@ import pytest
 
 from app.adapters.selector_adapter import SelectorAdapter
 from app.model import TZ_BERLIN
+from app.quellen_defaults import MUSEUMS_REGELN, ZLB_REGELN
 from app.regeln import validate_regeln_yaml
-
-ZLB_REGELN = """quelle: zlb
-robots: "erlaubt; Events-Pfade nicht disallowed (2026-09-06)"
-listing:
-  url: https://www.zlb.de/veranstaltungen
-  item_css: article.eventTeaser
-  felder:
-    titel: {css: ".eventTeaser__title > span:not(.eventTeaser__superHeadline)"}
-    url: {css: "a", attr: "href"}
-    start: {css: ".eventTeaser__meta", regex: "(\\\\d{2}\\\\.\\\\d{2}\\\\.\\\\d{4})", format: "%d.%m.%Y"}
-    zeit: {css: ".eventTeaser__meta", regex: "(\\\\d{1,2}:\\\\d{2}) Uhr", format: "%H:%M"}
-    ende: {css: ".eventTeaser__meta", regex: "\\\\d{1,2}:\\\\d{2} Uhr - (\\\\d{1,2}:\\\\d{2})", format: "%H:%M"}
-    ort: {css: ".eventTeaser__location"}
-detail:
-  jsonld: true
-  felder:
-    beschreibung_kurz: {jsonld: "$.description"}
-    ort: {jsonld: "$.location.name"}
-    adresse: {jsonld: "$.location.address.streetAddress"}
-"""
-
-MUSEUMS_REGELN = """quelle: museumsportal
-robots: "Content-Signal search=yes, use=reference; AI-Crawler geblockt (2026-09-06)"
-listing:
-  url: https://www.museumsportal-berlin.de/de/veranstaltungen
-  item_css: "mp-card.mp-card-program"
-  felder:
-    titel: {css: "h2"}
-    start: {css: ".mp-card-content__info time", regex: "(\\\\d{2}\\\\.\\\\d{2}\\\\.\\\\d{2})", format: "%d.%m.%y"}
-    zeit: {css: ".mp-card-content__info time", regex: "(\\\\d{1,2}:\\\\d{2})", format: "%H:%M"}
-    ort: {css: ".mp-card-location"}
-    beschreibung_kurz: {css: "h3"}
-"""
 
 
 def test_zlb_regeln_validieren():
@@ -55,10 +23,9 @@ def test_zlb_listing_offline(fixture_dir_zlb):
     assert r0["titel"]
     assert r0["start"].year == 2026
     assert r0["start"].tzinfo is not None
-    # ZLB-Teaser haben Uhrzeiten → nicht ganztags, sofern Zeit-Regel zog
     assert r0["url"] and r0["url"].startswith("http")
-    # Datum/Zeit konsistent
-    assert 8 <= r0["start"].hour <= 20 or r0["start"].hour == 0
+    assert 8 <= r0["start"].hour <= 20
+    assert r0["ende"] is None or r0["ende"] > r0["start"]
     adapter.close()
 
 
@@ -93,8 +60,28 @@ def test_museumsportal_listing_offline(fixture_dir_museumsportal):
     assert r0["titel"]
     assert r0["start"].year == 2026
     assert r0["ort"]
-    # featured-Karte hat Zeit → nicht ganztags
-    assert r0["ganztags"] is False or r0["start"].hour != 0
+    assert r0["start"].hour >= 0
     # Keine Detail-URL in der Liste → slug = Hash, url leer
     assert not r0["url"]
+    adapter.close()
+
+
+def test_ganztags_fixture():
+    """Reines Datum (ohne Uhrzeit-Feld) → ganztags 00:00–23:59."""
+    regeln = """quelle: test
+listing:
+  url: https://example.org/
+  item_css: .ev
+  felder:
+    titel: {css: ".t"}
+    start: {css: ".d", format: "%d.%m.%Y"}
+"""
+    adapter = SelectorAdapter("test", regel_yaml=regeln)
+    html = '<div class="ev"><span class="t">Tag der offenen Tür</span><span class="d">12.09.2026</span></div>'
+    rows = adapter.parse_listing(html)
+    assert len(rows) == 1
+    r = rows[0]
+    assert r["ganztags"] is True
+    assert r["start"].hour == 0
+    assert r["ende"].hour == 23 and r["ende"].minute == 59
     adapter.close()

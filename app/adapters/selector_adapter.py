@@ -180,35 +180,34 @@ class SelectorAdapter:
         # Zeit-/Ende-Extraktion (Konvention):
         #   'zeit' = Start-Uhrzeit (ersetzt Uhrzeit von start), 'ende' = Ende
         #   (Zeit oder Datum+Zeit; reine Zeit = gleicher Tag wie start).
+        # zeit und ende sind unabhängig — beide können existieren (z. B. ZLB).
         ende = None
         start_hat_zeit = "%H" in (sregel.get("format") or "")
         zeit_text = None
-        ende_regel = self._felder.get("ende")
         zeit_regel = self._felder.get("zeit")
+        ende_regel = self._felder.get("ende")
+
+        def _nur_zeit(regel: dict) -> bool:
+            fmt = regel.get("format") or ""
+            return "%H" in fmt and "%d" not in fmt
+
+        if zeit_regel:
+            zt = _regex_ziehen(f.get("zeit"), zeit_regel.get("regex"))
+            if zt:
+                try:
+                    zdt = _parse_zeit(zt, zeit_regel.get("format"), "zeit")
+                    zeit_text = f"{zdt.hour:02d}:{zdt.minute:02d}"
+                except ValueError:
+                    zeit_text = None
         if ende_regel:
-            eregel = ende_regel
-            et = _regex_ziehen(f.get("ende"), eregel.get("regex"))
-        elif zeit_regel:
-            eregel = zeit_regel
-            et = _regex_ziehen(f.get("zeit"), zeit_regel.get("regex"))
-        else:
-            eregel = None
-            et = None
-        if et and eregel:
-            try:
-                extra = _parse_zeit(et, eregel.get("format"), "ende/zeit")
-            except ValueError:
-                extra = None
-            if extra is not None:
-                nur_zeit = "%H" in (eregel.get("format") or "") \
-                    and "%d" not in (eregel.get("format") or "")
-                if nur_zeit:
-                    extra = extra.replace(year=start.year, month=start.month, day=start.day)
-                if eregel is ende_regel and ende_regel is not None:
-                    ende = extra
-                    zeit_text = f"{extra.hour:02d}:{extra.minute:02d}"
-                else:
-                    zeit_text = f"{extra.hour:02d}:{extra.minute:02d}"
+            et = _regex_ziehen(f.get("ende"), ende_regel.get("regex"))
+            if et:
+                try:
+                    ende = _parse_zeit(et, ende_regel.get("format"), "ende")
+                except ValueError:
+                    ende = None
+                if ende is not None and _nur_zeit(ende_regel):
+                    ende = ende.replace(year=start.year, month=start.month, day=start.day)
         if zeit_text and not start_hat_zeit:
             h, m = zeit_text.split(":")
             start = start.replace(hour=int(h), minute=int(m), second=0)
@@ -290,7 +289,9 @@ class SelectorAdapter:
         occ = start_local.strftime("%Y%m%dT%H%M")
         source_event_id = f"{row['slug']}#{occ}"
         url = row.get("url") or ""
-        ort = row.get("ort") or detail.get("ort") or (detail.get("adresse") and "Berlin") or None
+        ort = (row.get("ort") or detail.get("ort")
+               or (detail.get("adresse") and "Berlin")
+               or "Ohne Angabe")
         return {
             "id": make_event_id(self.name, source_event_id),
             "titel": row["titel"],
