@@ -155,8 +155,12 @@ def _scrape_mit_adapter(store, adapter, quelle, *, online, geo,
         det = details.get(slug, {})
         # Serien: Detailseite mit mehreren Terminen → ein Event pro Termin.
         # Das 3-Wochen-Fenster gilt auch für expandierte Termine (kein
-        # Scrapen über den Horizont hinaus).
-        for ev in adapter.zu_events(row, det, jetzt):
+        # Scrapen über den Horizont hinaus). Interne Adapter (jup) liefern
+        # nur zu_event → ein Event wie bisher.
+        zu_events = getattr(adapter, "zu_events", None)
+        evs_ = (zu_events(row, det, jetzt) if zu_events
+                else [adapter.zu_event(row, det, jetzt)])
+        for ev in evs_:
           if horizont:
             ev_start = datetime.fromisoformat(ev["start_iso"])
             if not _im_fenster(ev_start, von, bis):
