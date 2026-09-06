@@ -107,9 +107,8 @@ async function loadMeta() {
   $("#resetbtn").addEventListener("click", resetFilters);
   $("#retrybtn").addEventListener("click", () => { $("#errorbar").classList.add("hidden"); load(); });
   const note = $("#meta-note");
-  note.textContent = `Quelle: jup! Berlin · ${state.meta.events_gesamt} Events im Bestand` +
-    (state.meta.runs["jup-berlin"] && state.meta.runs["jup-berlin"][0]
-      ? ` · letzter Lauf: ${state.meta.runs["jup-berlin"][0].status}` : "");
+  const nq = (state.meta.quellen || []).length;
+  note.textContent = `${nq} aktive Quellen · ${state.meta.events_gesamt} Events im Bestand · LLM-freie Auswertung`;
 }
 
 function chip(id, label, key) {
@@ -182,12 +181,13 @@ function popupHtml(e) {
   if (e.kostenlos) badges.push('<span class="badge free">kostenlos</span>');
   if (e.alters_familie || e.altersband_min != null || e.altersband_max != null)
     badges.push(`<span class="badge">${alterLabel(e)}</span>`);
-  badges.push(`<span class="badge src">${e.quelle}</span>`);
+  badges.push(`<span class="badge src">${escapeHtml(e.quelle)}</span>`);
   return `<strong>${escapeHtml(e.titel)}</strong><br/>
     <span>${fmtZeit(e)}</span><br/>
     <span>${escapeHtml(e.ort || "")}${e.bezirk_label && e.bezirk_label !== "Ohne Angabe" ? " · " + e.bezirk_label : ""}</span><br/>
     ${badges.join("")}<br/>
-    <a href="${e.source_url}" target="_blank" rel="noopener noreferrer">Zur Quelle ↗</a>`;
+    <button type="button" class="mapbtn popup-detail-btn" id="popup-detail">Details anzeigen</button>
+    <br/><a href="${escapeHtml(e.source_url)}" target="_blank" rel="noopener noreferrer">Zur Quelle ↗</a>`;
 }
 
 function escapeHtml(s) {
@@ -205,6 +205,10 @@ function renderGeo(gj) {
     const m = L.marker([f.geometry.coordinates[1], f.geometry.coordinates[0]]);
     m.bindPopup(popupHtml(p));
     m._ev = p;
+    m.on("popupopen", () => {
+      const b = document.getElementById("popup-detail");
+      if (b) b.addEventListener("click", () => { map.closePopup(); openDetail(p); });
+    });
     if (cluster) cluster.addLayer(m); else m.addTo(map);
     markers.push(m);
   });
@@ -215,6 +219,43 @@ function renderGeo(gj) {
   } else if (withPos === 1 && markers.length === 1) {
     map.setView(markers[0].getLatLng(), 14);
   }
+}
+
+/* ---------- Detail-Ansicht ---------- */
+function openDetail(e) {
+  const rows = [];
+  rows.push(`<div class="detail__row"><span class="k">Wann</span>${fmtZeit(e)}</div>`);
+  const wo = [escapeHtml(e.ort || ""), e.bezirk_label && e.bezirk_label !== "Ohne Angabe" ? e.bezirk_label : ""]
+    .filter(Boolean).join(" · ");
+  if (wo) rows.push(`<div class="detail__row"><span class="k">Wo</span>${wo}</div>`);
+  if (e.adresse) rows.push(`<div class="detail__row"><span class="k">Adresse</span>${escapeHtml(e.adresse)}</div>`);
+  const extras = [];
+  const age = alterLabel(e);
+  if (age) extras.push(`<span class="badge">${age}</span>`);
+  if (e.kostenlos) extras.push('<span class="badge free">kostenlos</span>');
+  else if (e.kostenlos === false) extras.push('<span class="badge">kostenpflichtig</span>');
+  extras.push(`<span class="badge src">${escapeHtml(e.quelle)}</span>`);
+  rows.push(`<div class="detail__row"><span class="k">Details</span><span class="badges" style="display:inline-flex">${extras.join("")}</span></div>`);
+  if (e.beschreibung_kurz) rows.push(`<div class="detail__desc">${escapeHtml(e.beschreibung_kurz)}</div>`);
+  const kannKarte = e.lat != null && e.lon != null;
+  rows.push(`<div class="detail__actions">
+    <a class="btn primary" href="${escapeHtml(e.source_url)}" target="_blank" rel="noopener noreferrer">Zur Quelle ↗</a>
+    ${kannKarte ? '<button type="button" class="btn" id="detail-karte">Auf der Karte zeigen</button>' : ""}
+  </div>`);
+  $("#detail-titel").textContent = e.titel;
+  $("#detail-body").innerHTML = rows.join("");
+  const kb = $("#detail-karte");
+  if (kb) kb.addEventListener("click", () => { closeDetail(); zeigeMarker(e.id); });
+  $("#detail").classList.remove("hidden");
+  document.body.style.overflow = "hidden";
+}
+function closeDetail() {
+  $("#detail").classList.add("hidden");
+  document.body.style.overflow = "";
+}
+function zeigeMarker(id) {
+  const target = markers.find((m) => m._ev && m._ev.id === id);
+  if (target) { map.flyTo(target.getLatLng(), Math.max(map.getZoom(), 14)); target.openPopup(); }
 }
 
 /* ---------- Liste ---------- */
@@ -237,15 +278,26 @@ function renderList(gj) {
     if (e.kostenlos) badges.push('<span class="badge free">kostenlos</span>');
     const age = alterLabel(e);
     if (age) badges.push(`<span class="badge">${age}</span>`);
-    li.innerHTML = `<h3>${escapeHtml(e.titel)}</h3>
+    const hatPos = e.lat != null && e.lon != null;
+    const main = document.createElement("div");
+    main.className = "li-main";
+    main.innerHTML = `<h3>${escapeHtml(e.titel)}</h3>
       <div class="when">${fmtZeit(e)}</div>
       <div class="where">${escapeHtml(e.ort || "")}${e.bezirk_label && e.bezirk_label !== "Ohne Angabe" ? " · " + e.bezirk_label : ""}</div>
       <div class="badges">${badges.join("")}</div>`;
-    li.title = "Auf der Karte zeigen";
-    li.addEventListener("click", () => {
-      const target = markers.find((m) => m._ev && m._ev.id === e.id);
-      if (target) { map.flyTo(target.getLatLng(), Math.max(map.getZoom(), 14)); target.openPopup(); }
-    });
+    const acts = document.createElement("div");
+    acts.className = "li-actions";
+    if (hatPos) {
+      const kb = document.createElement("button");
+      kb.type = "button"; kb.className = "mapbtn"; kb.textContent = "Karte";
+      kb.title = "Auf der Karte anzeigen";
+      kb.addEventListener("click", (ev) => { ev.stopPropagation(); zeigeMarker(e.id); });
+      acts.appendChild(kb);
+    }
+    li.appendChild(main);
+    li.appendChild(acts);
+    li.title = "Details anzeigen";
+    li.addEventListener("click", () => openDetail(e));
     ul.appendChild(li);
   });
 }
@@ -276,6 +328,9 @@ async function load() {
 function apply() { load(); }
 
 /* ---------- Init ---------- */
+$("#detail-close").addEventListener("click", closeDetail);
+$("#detail").addEventListener("click", (ev) => { if (ev.target === ev.currentTarget) closeDetail(); });
+document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") closeDetail(); });
 readUrl();
 loadMeta()
   .then(() => {

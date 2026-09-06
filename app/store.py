@@ -404,9 +404,10 @@ class Store:
                 )
                 self._conn.commit()
 
-    def list_sources(self) -> list[dict]:
+    def list_sources(self, aktiv_nur: bool = False) -> list[dict]:
         with self._lock:
-            rows = self._conn.execute("SELECT * FROM sources ORDER BY quelle").fetchall()
+            sql = "SELECT * FROM sources" + (" WHERE aktiv=1" if aktiv_nur else "") + " ORDER BY quelle"
+            rows = self._conn.execute(sql).fetchall()
         out = []
         for r in rows:
             d = dict(r)

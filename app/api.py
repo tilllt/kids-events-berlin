@@ -90,13 +90,16 @@ def health(request: Request):
 @router.get("/meta")
 def meta(request: Request):
     s = _store(request)
-    runs = {}
-    for q in s.recent_runs("jup-berlin", limit=3):
-        runs.setdefault(q["quelle"], []).append(
-            {"id": q["id"], "status": q["status"], "started_at": q["started_at"],
-             "n_events": q["n_events"], "n_neu": q["n_neu"], "n_fehler": q["n_fehler"],
-             "dauer_s": q["dauer_s"]})
+    quellen = []
+    for q in s.list_sources(aktiv_nur=True):
+        runs = s.recent_runs(q["quelle"], limit=1)
+        quellen.append({
+            "quelle": q["quelle"], "name": q.get("name") or q["quelle"],
+            "typ": q.get("typ"), "letzter_lauf": (runs[0] if runs else None),
+        })
     return {
+        "quellen": quellen,
+        "events_gesamt": s.count_events(),
         "bezirke": [{k: v} for k, v in BEZIRK_LABELS.items()
                     if k not in (BEZIRK_BERLINWEIT, "ausserhalb", "unbekannt")],
         "bezirk_berlinweit": BEZIRK_BERLINWEIT,
@@ -108,9 +111,6 @@ def meta(request: Request):
             {"id": "abend", "label": "Abend (ab 17 Uhr)"},
             {"id": "ganztags", "label": "Ganztags"},
         ],
-        "quellen": ["jup-berlin"],
-        "events_gesamt": s.count_events(),
-        "runs": runs,
     }
 
 

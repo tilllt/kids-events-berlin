@@ -54,11 +54,22 @@
     </aside>
 
     <section id="content">
-      <div id="map"></div>
       <div id="liststate" class="hidden"></div>
       <ul id="eventlist"></ul>
+      <div id="mapwrap">
+        <h2 id="maptitle" class="maptitle">Kartenansicht</h2>
+        <div id="map"></div>
+      </div>
     </section>
   </main>
+
+  <div id="detail" class="detail hidden" role="dialog" aria-modal="true" aria-labelledby="detail-titel">
+    <div class="detail__card">
+      <button id="detail-close" type="button" class="detail__close" aria-label="Schließen">✕</button>
+      <h2 id="detail-titel"></h2>
+      <div id="detail-body"></div>
+    </div>
+  </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>

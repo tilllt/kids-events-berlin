@@ -84,3 +84,8 @@ def test_meta_und_health(tmp_path):
     assert len(meta["bezirke"]) == 12
     assert any(b.get("neukoelln") for b in meta["bezirke"])
     assert {b["id"] for b in meta["altersbaender"]} >= {"0-3", "familie"}
+    # aktive Quellen (Store im Test ohne Seed → leer oder gefüllt, Struktur ok)
+    assert isinstance(meta["quellen"], list)
+    for q in meta["quellen"]:
+        assert q["quelle"] and q["name"]
+    assert meta["events_gesamt"] >= 3
