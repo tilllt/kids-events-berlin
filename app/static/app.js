@@ -7,7 +7,7 @@ const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
 
 const state = {
   bezirk: [], altersband: [], uhrzeit: [],
-  kostenlos: false, von: "", bis: "", zeitraum: "demnächst", meta: null,
+  kostenlos: false, von: "", bis: "", zeitraum: "demnächst", zeitstufe: null, meta: null,
 };
 
 function fmtDate(s) {
@@ -163,10 +163,12 @@ function chip(id, label, key) {
 function resetFilters() {
   state.bezirk = []; state.altersband = []; state.uhrzeit = [];
   state.kostenlos = false; state.von = ""; state.bis = ""; state.zeitraum = "demnächst";
+  state.zeitstufe = null;
   $$("#bezirk-list input").forEach((i) => (i.checked = false));
   $$(".chips button").forEach((b) => b.classList.remove("on"));
   $("#kostenlos").checked = false;
   syncZeitraumUI();
+  syncLegendeUI();
   apply();
 }
 
@@ -177,6 +179,7 @@ function queryParams() {
   if (state.uhrzeit.length) p.set("uhrzeit", state.uhrzeit.join(","));
   if (state.kostenlos) p.set("kostenlos", "true");
   if (ZEITRAUM_IDS.includes(state.zeitraum)) p.set("zeitraum", state.zeitraum);
+  if (state.zeitstufe) p.set("zeitstufe", state.zeitstufe);
   if (state.von) p.set("von", state.von);
   if (state.bis) p.set("bis", state.bis);
   const qs = p.toString();
@@ -187,6 +190,7 @@ function queryParams() {
 function readUrl() {
   const p = new URLSearchParams(location.search);
   state.bezirk = (p.get("bezirk") || "").split(",").filter(Boolean);
+  state.zeitstufe = p.get("zeitstufe") || null;
   state.altersband = (p.get("altersband") || "").split(",").filter(Boolean);
   state.uhrzeit = (p.get("uhrzeit") || "").split(",").filter(Boolean);
   state.kostenlos = p.get("kostenlos") === "true";
@@ -252,29 +256,44 @@ function renderGeo(gj) {
     markers.push(m);
   });
   if (cluster) map.addLayer(cluster);
-  if (withPos > 0 && markers.length === withPos && !useCluster) {
+  if (!state.zeitstufe && withPos > 0 && markers.length === withPos && !useCluster) {
     const b = L.latLngBounds(markers.map((m) => m.getLatLng()));
     if (b.isValid()) map.fitBounds(b.pad(0.15), { maxZoom: 13 });
-  } else if (withPos === 1 && markers.length === 1) {
+  } else if (!state.zeitstufe && withPos === 1 && markers.length === 1) {
     map.setView(markers[0].getLatLng(), 14);
   }
 }
 
-/* Karten-Legende: erklärt die Zeit-Farben der Marker. */
+/* Karten-Legende: erklärt die Zeit-Farben und filtert bei Klick auf die
+   gewünschte Stufe (erneuter Klick hebt den Filter auf). */
 function legendeEinrichten() {
   const ctrl = L.control({ position: "bottomleft" });
   ctrl.onAdd = () => {
     const div = L.DomUtil.create("div", "map-legende");
+    L.DomEvent.disableClickPropagation(div);
     const zeilen = ZEIT_STUFEN_REIHENFOLGE.map((k) => {
       const s = ZEIT_STUFEN[k];
-      return `<div class="map-legende__zeile">
+      return `<button type="button" class="map-legende__zeile" data-stufe="${k}"
+        title="Nur ${s.label.toLowerCase()} anzeigen — erneut klicken zum Aufheben">
         <span class="map-legende__punkt" style="background:${s.farbe};opacity:${s.op}"></span>
-        <span>${s.label}</span></div>`;
+        <span>${s.label}</span></button>`;
     }).join("");
-    div.innerHTML = `<div class="map-legende__titel">Wann?</div>${zeilen}`;
+    div.innerHTML = `<div class="map-legende__titel">Wann? — filtern</div>${zeilen}`;
+    div.querySelectorAll(".map-legende__zeile").forEach((z) =>
+      z.addEventListener("click", () => {
+        const k = z.dataset.stufe;
+        state.zeitstufe = state.zeitstufe === k ? null : k;
+        syncLegendeUI();
+        apply();
+      }));
     return div;
   };
   ctrl.addTo(map);
+}
+
+function syncLegendeUI() {
+  $$(".map-legende__zeile").forEach((z) =>
+    z.classList.toggle("on", z.dataset.stufe === state.zeitstufe));
 }
 
 /* ---------- Detail-Ansicht ---------- */
@@ -370,6 +389,14 @@ async function load() {
     const r = await fetch(`/api/events.geojson${qs ? "?" + qs : ""}`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const gj = await r.json();
+    /* Zeitstufen-Filter (Legenden-Klick): client-seitig nach der Stufe des
+       Starttags — wirkt auf Karte UND Liste. */
+    if (state.zeitstufe) {
+      const st = state.zeitstufe;
+      gj.features = gj.features.filter((f) => zeitStufe(f.properties) === st);
+      gj.ohne_position = (gj.ohne_position || []).filter((e) => zeitStufe(e) === st);
+      gj.anzahl = gj.features.length + (gj.ohne_position || []).length;
+    }
     renderGeo(gj);
     renderList(gj);
     $("#statusline").textContent = `Aktualisiert ${new Date().toLocaleTimeString("de-DE")} · ${gj.anzahl} Events`;
@@ -393,6 +420,7 @@ function updateFilterCount() {
   const el = $("#filter-count");
   let n = state.bezirk.length + state.altersband.length + state.uhrzeit.length;
   if (!["heute", "demnächst"].includes(state.zeitraum)) n += 1;
+  if (state.zeitstufe) n += 1;  // Legenden-Filter (Zeitstufe)
   if (state.kostenlos) n += 1;
   el.textContent = `${n} aktiv`;
   el.classList.toggle("hidden", n === 0);
@@ -427,6 +455,7 @@ loadMeta()
     });
     $("#kostenlos").checked = state.kostenlos;
     syncZeitraumUI();
+    syncLegendeUI();
     return load();
   })
   .catch((err) => {
