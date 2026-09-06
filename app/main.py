@@ -17,7 +17,6 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-
 from .admin_api import router as admin_router
 from .api import router as api_router
 from .model import TZ_BERLIN
@@ -119,9 +118,19 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="kids-events-berlin", lifespan=lifespan)
+class NoCacheStaticFiles(StaticFiles):
+    """Statische Assets immer per ETag revalidieren — nach einem Deploy darf
+    kein alter JS/CSS-Stand im Browser kleben (führte zu „filtert nach heute“,
+    weil ein offener Tab den alten Default behielt)."""
+    def file_response(self, *args, **kwargs):
+        resp = super().file_response(*args, **kwargs)
+        resp.headers.setdefault("Cache-Control", "no-cache")
+        return resp
+
+
 app.include_router(api_router)
 app.include_router(admin_router)
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+app.mount("/static", NoCacheStaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 @app.get("/", include_in_schema=False)
