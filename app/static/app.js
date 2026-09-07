@@ -373,8 +373,7 @@ function renderList(gj) {
     const main = document.createElement("div");
     main.className = "li-main";
     main.innerHTML = `<h3>${escapeHtml(e.titel)}</h3>
-      <div class="when">${fmtZeit(e)}</div>
-      <div class="where">${escapeHtml(e.ort || "")}${e.bezirk_label && e.bezirk_label !== "Ohne Angabe" ? " · " + e.bezirk_label : ""}</div>
+      <div class="li-meta"><span class="when">${fmtZeit(e)}</span>${e.ort || (e.bezirk_label && e.bezirk_label !== "Ohne Angabe") ? `<span class="where">${escapeHtml(e.ort || "")}${e.bezirk_label && e.bezirk_label !== "Ohne Angabe" ? " · " + e.bezirk_label : ""}</span>` : ""}</div>
       <div class="badges">${badges.join("")}</div>`;
     const acts = document.createElement("div");
     acts.className = "li-actions";

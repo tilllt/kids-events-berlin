@@ -105,14 +105,16 @@ main { flex: 1; display: grid; grid-template-columns: 300px 1fr; min-height: 0; 
   border: 2px solid #101a24; box-sizing: border-box;
 }
 #eventlist li {
-  padding: 9px 14px; border-bottom: 1px solid var(--border); cursor: pointer;
-  display: flex; gap: 10px; align-items: flex-start;
+  position: relative;
+  padding: 7px 14px; border-bottom: 1px solid var(--border); cursor: pointer;
+  display: flex; gap: 8px; align-items: center; min-height: 38px;
 }
 #eventlist li::before {
-  content: ""; width: 10px; height: 10px; border-radius: 50%;
-  flex: 0 0 auto; margin-top: 4px;
+  content: ""; position: absolute; left: 4px; top: 50%; transform: translateY(-50%);
+  width: 6px; height: 6px; border-radius: 50%;
   background: var(--muted); opacity: 0.35;
 }
+#eventlist li .li-main { padding-left: 8px; }
 /* Zeit-Farbkodierung der Liste (deckungsgleich mit den Karten-Markern) */
 #eventlist li.tz-heute::before { background: #3b82f6; opacity: 1; }
 #eventlist li.tz-morgen::before { background: #157a3e; opacity: 0.7; }
@@ -125,9 +127,12 @@ main { flex: 1; display: grid; grid-template-columns: 300px 1fr; min-height: 0; 
 #eventlist li:hover { background: var(--panel2); }
 #eventlist li .li-main { flex: 1; min-width: 0; }
 #eventlist li .li-actions { display: flex; flex-direction: column; gap: 6px; }
-#eventlist h3 { margin: 0 0 2px; font-size: 14px; }
-#eventlist .when { color: var(--accent); font-size: 12.5px; }
-#eventlist .where { color: var(--muted); font-size: 12.5px; }
+#eventlist h3 { margin: 0; font-size: 14px; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#eventlist .li-meta { display: flex; gap: 5px; align-items: baseline; font-size: 12px; margin-top: 1px; }
+#eventlist .when { color: var(--accent); white-space: nowrap; }
+#eventlist .where { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#eventlist .badges { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 2px; }
+.badge { font-size: 10.5px; border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: 0 6px; line-height: 15px; white-space: nowrap; }
 .mapbtn {
   background: var(--panel2); color: var(--muted); border: 1px solid var(--border);
   border-radius: 6px; padding: 3px 8px; font-size: 11.5px; cursor: pointer; white-space: nowrap;
@@ -135,8 +140,8 @@ main { flex: 1; display: grid; grid-template-columns: 300px 1fr; min-height: 0; 
 .mapbtn:hover { color: var(--accent); border-color: var(--accent); }
 .mapbtn:disabled { opacity: .4; cursor: default; }
 .mapbtn:disabled:hover { color: var(--muted); border-color: var(--border); }
-.badges { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 4px; }
-.badge { font-size: 11px; border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: 0 7px; }
+.badges { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 2px; }
+.badge { font-size: 10.5px; border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: 0 6px; line-height: 15px; white-space: nowrap; }
 .badge.free { color: var(--ok); border-color: var(--ok); }
 .badge.src { color: var(--muted); }
 #liststate { padding: 14px; color: var(--muted); }
