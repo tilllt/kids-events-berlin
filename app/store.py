@@ -943,6 +943,20 @@ class Store:
                 pass
 
     # --- Manuelle Termine ---------------------------------------------------
+    def titel_vorschlaege(self, limit: int = 25) -> list[str]:
+        """Häufigste bisherige Termin-Titel (für Auto-Complete im Formular):
+        manuell gepflegte Termine + gespiegelte Schul-Events (quelle=manuell)."""
+        sql = """
+            SELECT titel, COUNT(*) n FROM (
+                SELECT titel FROM termine_manuell
+                UNION ALL
+                SELECT titel FROM events WHERE quelle = 'manuell'
+            ) GROUP BY titel ORDER BY n DESC, titel LIMIT ?
+        """
+        with self._lock:
+            rows = self._conn.execute(sql, (int(limit),)).fetchall()
+        return [r["titel"] for r in rows]
+
     def list_termine_manuell(self, schule_bsn: str | None = None,
                              status: str | None = None) -> list[dict]:
         where, args = [], []

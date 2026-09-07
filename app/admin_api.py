@@ -508,6 +508,12 @@ def event_admin_update(ev_id: str, body: dict, request: Request):
     return ev
 
 
+@router.get("/termine/vorschlaege")
+def termin_titel_vorschlaege(request: Request, limit: int = 25):
+    """Häufigste bisherige Termin-Titel für das Auto-Complete im Formular."""
+    return _store(request).titel_vorschlaege(limit=min(int(limit), 100))
+
+
 @router.get("/termine")
 def termine_list(request: Request, schule: str | None = None,
                  status: str | None = None):

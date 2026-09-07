@@ -25,9 +25,10 @@ def _tag(kid="eigen", name="Eigener Tag"):
     return {"id": kid, "name": name, "farbe": "#2ea043", "sort": 1}
 
 
-def _termin(schule_bsn="1001", status="ungeprueft", kategorie_id=None):
+def _termin(schule_bsn="1001", status="ungeprueft", kategorie_id=None, titel=None,
+            start_datum="15.10.2026"):
     return {"schule_bsn": schule_bsn, "kategorie_id": kategorie_id,
-            "titel": "Tag der offenen Tür 2026", "start_datum": "15.10.2026",
+            "titel": titel or "Tag der offenen Tür 2026", "start_datum": start_datum,
             "start_zeit": "16:00", "ort": "Aula", "status": status}
 
 
@@ -78,6 +79,31 @@ def test_tags_crud_api(tmp_path):
 
 
 # --- Termine ----------------------------------------------------------------
+def test_titel_vorschlaege(tmp_path):
+    """Auto-Complete: häufige Titel aus termine_manuell + gespiegelten Events."""
+    from fastapi.testclient import TestClient
+
+    store = Store(tmp_path / "vorschlaege.db")
+    store.seed_default_sources()
+    from app.main import app
+    app.state.store = store
+    c = TestClient(app)
+
+    store.upsert_schule(_schule())
+    for datum in ("15.10.2026", "16.10.2026", "17.10.2026"):
+        store.upsert_termin_manuell(_termin(titel="Tag der offenen Tür", start_datum=datum))
+    store.upsert_termin_manuell(_termin(titel="Infoabend"))
+    store.upsert_tag(_tag())  # nur damit der Seed-Tag existiert (kein Muss)
+
+    # API liefert alle; „Tag der offenen Tür“ 3× → Rang 1 (Häufigkeit), Infoabend darin
+    r = c.get("/api/admin/termine/vorschlaege?limit=10")
+    assert r.status_code == 200
+    titel = r.json()
+    assert "Infoabend" in titel
+    assert titel[0] == "Tag der offenen Tür"
+    store.close()
+
+
 def test_termine_crud_und_spiegel_api(tmp_path):
     c, _ = _client(tmp_path)
     c.post("/api/admin/schulen", json=_schule())

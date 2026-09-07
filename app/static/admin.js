@@ -542,25 +542,35 @@ function schuleDetailZeigen(s) {
     $("#schuleUebersicht").classList.remove("hidden");
     loadSchulen();
   };
-  $("#neuTerminBtn").onclick = () => terminFormularZeigen(s);
+  $("#neuTerminBtn").onclick = () => { terminFormularZeigen(s); };
   const mf = $("#mailFensterBtn");
   if (mf) mf.onclick = () => mailFormularZeigen(s);
 }
 
-function terminFormularZeigen(s, t = null) {
+async function terminFormularZeigen(s, t = null) {
   const p = $("#terminForm");
   p.classList.remove("hidden");
+  if (!window._titelVorschlaege) {
+    try { window._titelVorschlaege = await api("/api/admin/termine/vorschlaege"); }
+    catch { window._titelVorschlaege = []; }
+  }
+  const vorschlaege = (window._titelVorschlaege || [])
+    .map((x) => `<option value="${esc(x)}"></option>`).join("");
+  const datumIso = t && t.start_datum ? deNachIso(t.start_datum) : "";
+  const endeIso = t && t.ende_datum ? deNachIso(t.ende_datum) : "";
   p.innerHTML = `
     <h3>${t ? "Termin bearbeiten" : "Neuer Termin"}</h3>
     <div class="formgrid">
-      <label>Titel<input id="t_titel" value="${esc(t ? t.titel : "")}" placeholder="z. B. Tag der offenen Tür" /></label>
-      <label>Datum (TT.MM.JJJJ)<input id="t_datum" value="${esc(t ? t.start_datum : "")}" placeholder="15.10.2026" /></label>
-      <label>Uhrzeit (optional)<input id="t_zeit" value="${esc(t ? t.start_zeit || "" : "")}" placeholder="16:00" /></label>
-      <label>Ende-Datum (optional, mehrjährig)<input id="t_endedatum" value="${esc(t ? t.ende_datum || "" : "")}" /></label>
+      <label>Titel<input id="t_titel" list="titelVorschlaege" value="${esc(t ? t.titel : "")}" placeholder="z. B. Tag der offenen Tür" /></label>
+      <label>Datum<input id="t_datum" type="date" value="${datumIso}" /></label>
+      <label>Uhrzeit (Start, optional)<input id="t_zeit" type="time" value="${esc(t ? t.start_zeit || "" : "")}" /></label>
+      <label>Ende-Datum (optional, mehrtägig)<input id="t_endedatum" type="date" value="${endeIso}" /></label>
+      <label>End-Uhrzeit (optional)<input id="t_endezeit" type="time" value="${esc(t ? t.ende_zeit || "" : "")}" /></label>
       <label>Ort<input id="t_ort" value="${esc(t ? t.ort || "" : "")}" placeholder="z. B. Aula" /></label>
       <label>Link (Fund-/Detailseite)<input id="t_url" value="${esc(t ? t.url || "" : "")}" placeholder="https://…" /></label>
       <label style="flex-direction:row;align-items:center;gap:6px"><input id="t_ganztags" type="checkbox" ${t && t.ganztags ? "checked" : ""}/> Ganztägig</label>
     </div>
+    <datalist id="titelVorschlaege">${vorschlaege}</datalist>
     <label style="margin-top:8px">Beschreibung / Notiz
       <textarea id="t_beschreibung" style="min-height:70px">${esc(t ? t.beschreibung || "" : "")}</textarea>
     </label>
@@ -569,18 +579,27 @@ function terminFormularZeigen(s, t = null) {
       <button id="t_abort" type="button" class="ghost">Abbrechen</button>
     </div>
     <div id="t_msg"></div>`;
+  const ganztagsBox = $("#t_ganztags");
+  const zeitFelder = [$("#t_zeit"), $("#t_endezeit"), $("#t_endedatum")];
+  const setzeZeitSperre = () => {
+    const an = ganztagsBox.checked;
+    zeitFelder.forEach((f) => { if (f) f.disabled = an; });
+  };
+  ganztagsBox.addEventListener("change", setzeZeitSperre);
+  setzeZeitSperre();
   $("#t_abort").onclick = () => { p.classList.add("hidden"); };
   $("#t_save").onclick = async () => {
     const msg = $("#t_msg");
     const body = {
       titel: $("#t_titel").value.trim(),
-      start_datum: $("#t_datum").value.trim(),
+      start_datum: isoNachDe($("#t_datum").value),
       start_zeit: $("#t_zeit").value.trim() || null,
-      ende_datum: $("#t_endedatum").value.trim() || null,
+      ende_datum: isoNachDe($("#t_endedatum").value),
+      ende_zeit: $("#t_endezeit").value.trim() || null,
       ort: $("#t_ort").value.trim() || null,
       url: $("#t_url").value.trim() || null,
       beschreibung: $("#t_beschreibung").value.trim() || null,
-      ganztags: $("#t_ganztags").checked ? 1 : 0,
+      ganztags: ganztagsBox.checked ? 1 : 0,
     };
     try {
       if (t) await api(`/api/admin/termine/${t.id}`, { method: "PUT", body: JSON.stringify(body) });
@@ -590,6 +609,16 @@ function terminFormularZeigen(s, t = null) {
       schuleDetailZeigen(await api(`/api/admin/schulen/${encodeURIComponent(s.bsn)}?mit_termine=1`));
     } catch (e) { meldung(msg, e.message, false); }
   };
+}
+
+/* Datums-Helfer: Formular (TT.MM.JJJJ) ↔ date-input (JJJJ-MM-TT) */
+function deNachIso(de) {
+  const m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec((de || "").trim());
+  return m ? `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}` : "";
+}
+function isoNachDe(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec((iso || "").trim());
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : "";
 }
 
 function mailFormularZeigen(s) {
@@ -682,7 +711,7 @@ $("#schuleDetailInhalt").addEventListener("click", async (ev) => {
     } else if (act === "edit") {
       const t = await api(`/api/admin/termine/${tid}`);
       const schule = await api(`/api/admin/schulen/${encodeURIComponent(t.schule_bsn)}`);
-      terminFormularZeigen(schule, t);
+      await terminFormularZeigen(schule, t);
       return; // Detail nicht neu laden (Formular bleibt offen)
     }
     // Nach Aktion: Detail der Schule neu laden (Termin-Liste aktualisiert)
@@ -793,6 +822,12 @@ let eventFormularOffen = false;
 async function eventFormularZeigen(ev) {
   eventFormularOffen = true;
   if (!tagListe.length) await ladeTags();
+  if (!window._titelVorschlaege) {
+    try { window._titelVorschlaege = await api("/api/admin/termine/vorschlaege"); }
+    catch { window._titelVorschlaege = []; }
+  }
+  const vorschlaege = (window._titelVorschlaege || [])
+    .map((x) => `<option value="${esc(x)}"></option>`).join("");
   const panel = $("#eventPanel") || document.createElement("div");
   panel.id = "eventPanel";
   panel.className = "panel";
@@ -804,11 +839,10 @@ async function eventFormularZeigen(ev) {
     return `<button type="button" class="tagbtn${an ? " aktiv" : ""}" data-tagname="${esc(t.name)}"
        style="border-color:${esc(t.farbe || "#888")};color:${esc(t.farbe || "#ccc")}">${esc(t.name)}</button>`;
   }).join("");
-  const [datum, zeit] = (() => {
+  const [datumIso, zeit] = (() => {
     const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})?/.exec(ev.start_local || "");
     if (!m) return ["", ""];
-    const d = m[1].split("-");
-    return [`${d[2]}.${d[1]}.${d[0]}`, m[2] || ""];
+    return [m[1], m[2] || ""];
   })();
   panel.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
@@ -818,9 +852,9 @@ async function eventFormularZeigen(ev) {
     <div class="muted" style="margin:6px 0">Nach dem Speichern gilt der Termin als <b>manuell gepflegt</b> —
       ein Scrape überschreibt deine Änderungen nicht mehr.</div>
     <div class="formgrid">
-      <label style="grid-column:1/-1">Titel<input id="ev_titel" value="${esc(ev.titel)}" /></label>
-      <label>Datum (TT.MM.JJJJ)<input id="ev_datum" value="${datum}" placeholder="12.09.2026" /></label>
-      <label>Uhrzeit (HH:MM, leer = ganztags)<input id="ev_zeit" value="${zeit}" placeholder="18:00" /></label>
+      <label style="grid-column:1/-1">Titel<input id="ev_titel" list="titelVorschlaegeEv" value="${esc(ev.titel)}" /></label>
+      <label>Datum<input id="ev_datum" type="date" value="${datumIso}" /></label>
+      <label>Uhrzeit (HH:MM, leer = ganztags)<input id="ev_zeit" type="time" value="${zeit}" /></label>
       <label>Ort<input id="ev_ort" value="${esc(ev.ort || "")}" /></label>
       <label>Bezirk<input id="ev_bezirk" value="${esc(ev.bezirk || "")}" /></label>
       <label style="grid-column:1/-1">Kurzbeschreibung
@@ -829,6 +863,7 @@ async function eventFormularZeigen(ev) {
         <div class="tagwahl" id="ev_tags"></div></label>
       <label style="flex-direction:row;align-items:center;gap:8px"><input id="ev_kostenlos" type="checkbox" ${ev.kostenlos ? "checked" : ""} /> Kostenlos</label>
     </div>
+    <datalist id="titelVorschlaegeEv">${vorschlaege}</datalist>
     <div class="btnrow" style="margin-top:12px">
       <button id="ev_save" type="button" class="primary">Speichern</button>
       <button id="ev_abort" type="button" class="ghost">Abbrechen</button>
@@ -846,24 +881,23 @@ async function eventFormularZeigen(ev) {
   $("#ev_abort").onclick = schliessen;
   $("#ev_save").onclick = async () => {
     const msg = $("#ev_msg");
-    const datumRaw = $("#ev_datum").value.trim();
-    const mDatum = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(datumRaw);
-    if (!mDatum) { meldung(msg, "Datum bitte als TT.MM.JJJJ eingeben.", false); return; }
+    const datumIso = $("#ev_datum").value.trim();
+    const mDatum = /^(\d{4})-(\d{2})-(\d{2})$/.exec(datumIso);
+    if (!mDatum) { meldung(msg, "Bitte ein Datum wählen.", false); return; }
     const zeitRaw = $("#ev_zeit").value.trim();
-    if (zeitRaw && !/^\d{1,2}:\d{2}$/.test(zeitRaw)) { meldung(msg, "Uhrzeit bitte als HH:MM.", false); return; }
     const aktiv = Array.from(chipContainer.querySelectorAll(".tagbtn.aktiv")).map((b) => b.dataset.tagname);
     // Kanonische Form: bekannte Tags als id (Kurzform), unbekannte als Name
     const kanonisch = aktiv.map((name) => {
       const tag = tagListe.find((t) => t.name === name || t.id === name);
       return tag ? tag.id : name;
     });
-    const startLocal = `${mDatum[3]}-${mDatum[2].padStart(2, "0")}-${mDatum[1].padStart(2, "0")}T${zeitRaw || "00:00"}:00`;
+    const startLocal = `${mDatum[1]}-${mDatum[2]}-${mDatum[3]}T${zeitRaw || "00:00"}:00`;
     const body = {
       titel: $("#ev_titel").value.trim(),
       start_local: startLocal,
-      ort: $("ev_ort") ? $("#ev_ort").value.trim() : null,
-      bezirk: $("ev_bezirk") ? $("#ev_bezirk").value.trim() : null,
-      beschreibung_kurz: $("ev_beschreibung") ? $("#ev_beschreibung").value.trim() : null,
+      ort: $("#ev_ort") ? $("#ev_ort").value.trim() : null,
+      bezirk: $("#ev_bezirk") ? $("#ev_bezirk").value.trim() : null,
+      beschreibung_kurz: $("#ev_beschreibung") ? $("#ev_beschreibung").value.trim() : null,
       kategorien: kanonisch,
       kostenlos: $("#ev_kostenlos") ? $("#ev_kostenlos").checked : false,
     };
@@ -872,7 +906,7 @@ async function eventFormularZeigen(ev) {
         // Spiegel eines termine_manuell → über dessen API (syncen selbst)
         await api(`/api/admin/termine/${ev.source_event_id}`, {
           method: "PUT",
-          body: JSON.stringify({ titel: body.titel, start_datum: datumRaw,
+          body: JSON.stringify({ titel: body.titel, start_datum: `${mDatum[3]}.${mDatum[2]}.${mDatum[1]}`,
             start_zeit: zeitRaw || null, ort: body.ort, beschreibung: body.beschreibung_kurz,
             kategorie_id: null }),
         });
