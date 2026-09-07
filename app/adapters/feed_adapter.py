@@ -112,6 +112,8 @@ class FeedAdapter:
     # --- Listing-Parsing ----------------------------------------------------
     def parse_listing(self, xml: str) -> list[dict]:
         """→ [{slug, titel, start, ende, ganztags, url, beschreibung_kurz}]."""
+        if not (xml or "").strip():
+            return []  # leere Seite = Paginations-Ende, keine Strukturwarnung
         d = feedparser.parse(xml)
         if d.bozo and not d.entries:
             self._warnungen.append(f"Feed nicht parsebar: {getattr(d, 'bozo_exception', '?')}")
