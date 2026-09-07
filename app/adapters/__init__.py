@@ -7,6 +7,7 @@ Adapter werden aus der Quellen-Konfiguration (DB, Admin-GUI) gebaut:
 """
 from __future__ import annotations
 
+from .feed_adapter import FeedAdapter
 from .jup_berlin import JupBerlinAdapter
 from .selector_adapter import SelectorAdapter
 
@@ -26,8 +27,10 @@ def build_adapter(store, quelle: str):
         return SelectorAdapter(quelle, regel_yaml=regel_yaml,
                                base_url=s.get("url"))
     if s["typ"] == "feed":
-        raise ValueError(f"Quelle '{quelle}' ist vom Typ feed: der Feed-Adapter "
-                         "folgt, sobald die erste Feed-Quelle aufgenommen wird.")
+        return FeedAdapter(quelle,
+                           url=s.get("url"),
+                           horizont_tage=s.get("horizont_tage") or 0,
+                           min_interval_s=s.get("rate_limit_s"))
     raise ValueError(f"Unbekannter Quellen-Typ: {s['typ']}")
 
 

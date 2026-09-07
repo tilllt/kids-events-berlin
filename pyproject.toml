@@ -11,6 +11,7 @@ dependencies = [
     "extruct>=0.16",
     "jsonpath-ng>=1.6",
     "PyYAML>=6.0",
+    "feedparser>=6.0",
 ]
 
 [project.optional-dependencies]
