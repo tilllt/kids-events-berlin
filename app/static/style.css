@@ -24,6 +24,9 @@ body {
   display: flex; flex-direction: column;
 }
 header { padding: 12px 16px 8px; border-bottom: 1px solid var(--border); background: var(--panel); }
+header .brand { display: flex; align-items: center; gap: 12px; }
+header .brand h1 { font-size: 18px; margin: 0; }
+.logo { height: 40px; width: auto; display: block; }
 h1 { font-size: 18px; margin: 0; }
 .sub { color: var(--muted); font-size: 12px; margin: 2px 0 4px; }
 .statusline { font-size: 12px; color: var(--muted); min-height: 16px; }
@@ -50,6 +53,12 @@ main { flex: 1; display: grid; grid-template-columns: 300px 1fr; min-height: 0; 
   background: var(--panel2); color: var(--text); border: 1px solid var(--border);
   border-radius: 4px; padding: 3px 6px; color-scheme: dark;
 }
+#suche {
+  background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 6px 10px; font-size: 13px; width: 100%; box-sizing: border-box;
+  color-scheme: dark;
+}
+#suche::placeholder { color: var(--muted); }
 .switch { display: flex; gap: 6px; align-items: center; cursor: pointer; font-size: 13px; }
 .switch input { accent-color: var(--accent); }
 .ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; cursor: pointer; }

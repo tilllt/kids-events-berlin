@@ -8,6 +8,7 @@ const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
 const state = {
   bezirk: [], altersband: [], uhrzeit: [],
   kostenlos: false, von: "", bis: "", zeitraum: "demnächst", zeitstufe: null, meta: null,
+  q: "",
 };
 
 function fmtDate(s) {
@@ -173,10 +174,12 @@ function chip(id, label, key) {
 function resetFilters() {
   state.bezirk = []; state.altersband = []; state.uhrzeit = [];
   state.kostenlos = false; state.von = ""; state.bis = ""; state.zeitraum = "demnächst";
-  state.zeitstufe = null;
+  state.q = ""; state.zeitstufe = null;
   $$("#bezirk-list input").forEach((i) => (i.checked = false));
   $$(".chips button").forEach((b) => b.classList.remove("on"));
   $("#kostenlos").checked = false;
+  const suche = $("#suche");
+  if (suche) suche.value = "";
   syncZeitraumUI();
   syncLegendeUI();
   apply();
@@ -188,6 +191,7 @@ function queryParams() {
   if (state.altersband.length) p.set("altersband", state.altersband.join(","));
   if (state.uhrzeit.length) p.set("uhrzeit", state.uhrzeit.join(","));
   if (state.kostenlos) p.set("kostenlos", "true");
+  if (state.q) p.set("q", state.q);
   if (ZEITRAUM_IDS.includes(state.zeitraum)) p.set("zeitraum", state.zeitraum);
   if (state.zeitstufe) p.set("zeitstufe", state.zeitstufe);
   if (state.von) p.set("von", state.von);
@@ -204,6 +208,7 @@ function readUrl() {
   state.altersband = (p.get("altersband") || "").split(",").filter(Boolean);
   state.uhrzeit = (p.get("uhrzeit") || "").split(",").filter(Boolean);
   state.kostenlos = p.get("kostenlos") === "true";
+  state.q = p.get("q") || "";
   const zr = p.get("zeitraum");
   state.zeitraum = ZEITRAUM_IDS.includes(zr) ? zr : (p.get("von") || p.get("bis") ? "benutzerdefiniert" : "demnächst");
   state.von = p.get("von") || ""; state.bis = p.get("bis") || "";
@@ -432,6 +437,7 @@ function updateFilterCount() {
   if (!["heute", "demnächst"].includes(state.zeitraum)) n += 1;
   if (state.zeitstufe) n += 1;  // Legenden-Filter (Zeitstufe)
   if (state.kostenlos) n += 1;
+  if (state.q) n += 1;
   el.textContent = `${n} aktiv`;
   el.classList.toggle("hidden", n === 0);
 }
@@ -464,6 +470,7 @@ loadMeta()
       b.classList.toggle("on", state[key].includes(b.dataset.id));
     });
     $("#kostenlos").checked = state.kostenlos;
+    if (state.q) $("#suche").value = state.q;
     syncZeitraumUI();
     syncLegendeUI();
     return load();
@@ -472,3 +479,11 @@ loadMeta()
     $("#errortext").textContent = `Meta nicht erreichbar: ${err.message}`;
     $("#errorbar").classList.remove("hidden");
   });
+
+// Volltextsuche: debounced, Filter-Zähler aktualisieren
+let sucheTimer = null;
+$("#suche").addEventListener("input", (ev) => {
+  state.q = ev.target.value.trim();
+  clearTimeout(sucheTimer);
+  sucheTimer = setTimeout(() => { updateFilterCount(); apply(); }, 350);
+});

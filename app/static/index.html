@@ -11,8 +11,13 @@
 </head>
 <body>
   <header>
-    <h1>Kinder-Events Berlin</h1>
-    <div class="sub">Veranstaltungen mit Kindern — gesammelt aus mehreren Quellen, ohne KI zur Laufzeit.</div>
+    <div class="brand">
+      <a href="/"><img src="/static/cia-logo.svg" alt="CIA Spandau — Medienzentrum für Kinder und Jugendliche" class="logo" /></a>
+      <div>
+        <h1>Kinder-Events Berlin</h1>
+        <div class="sub">Veranstaltungen für Kinder und Familien.</div>
+      </div>
+    </div>
     <div id="statusline" class="statusline">Lade…</div>
   </header>
 
@@ -28,6 +33,10 @@
         <span id="filter-count" class="filter-count hidden"></span>
       </button>
       <div id="filter-body">
+      <section>
+        <label for="suche" class="visually-hidden">Volltextsuche</label>
+        <input type="search" id="suche" placeholder="Suchen… (z. B. Tag der offenen Tür, Workshop)" autocomplete="off" />
+      </section>
       <section>
         <h2>Bezirk</h2>
         <div id="bezirk-list" class="checkgrid"></div>
