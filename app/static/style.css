@@ -10,6 +10,12 @@
   --warn: #d29922;
   --err: #f85149;
 }
+/* Links: helles Akzent-Blau statt Browser-Default (dunkelblau wäre auf
+   dem dunklen Grund kaum lesbar — User-Report 2026-09: Homepage-/E-Mail-
+   Links im Admin schlecht lesbar). */
+a { color: var(--accent); }
+a:visited { color: #8cb8ff; }
+a:hover { color: #79b8ff; text-decoration: underline; }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
 body {
