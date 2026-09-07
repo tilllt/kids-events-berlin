@@ -46,7 +46,8 @@ CREATE TABLE IF NOT EXISTS events (
     source_event_id TEXT NOT NULL,
     source_url TEXT NOT NULL,
     geholt_am TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'auto'
+    status TEXT NOT NULL DEFAULT 'auto',
+    manuell INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_events_start ON events(start_iso);
 CREATE INDEX IF NOT EXISTS idx_events_start_local ON events(start_local);
@@ -128,17 +129,18 @@ CREATE TABLE IF NOT EXISTS schulen (
     notiz TEXT,
     zuletzt_geaendert TEXT
 );
-CREATE TABLE IF NOT EXISTS termin_kategorien (
+CREATE TABLE IF NOT EXISTS tags (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     farbe TEXT,
     sort INTEGER NOT NULL DEFAULT 0,
+    template INTEGER NOT NULL DEFAULT 0,
     zuletzt_geaendert TEXT
 );
 CREATE TABLE IF NOT EXISTS termine_manuell (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     schule_bsn TEXT NOT NULL REFERENCES schulen(bsn) ON DELETE CASCADE,
-    kategorie_id TEXT REFERENCES termin_kategorien(id) ON DELETE SET NULL,
+    kategorie_id TEXT REFERENCES tags(id) ON DELETE SET NULL,
     titel TEXT NOT NULL,
     start_datum TEXT NOT NULL,
     start_zeit TEXT,
@@ -175,6 +177,10 @@ class Store:
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
+        # Migration VOR executescript: legt der Schema-String zuerst eine leere
+        # tags-Tabelle an, greift der termin_kategorien→tags-Rename nie (Bedingung
+        # 'tags not in tabs' wäre False). Frische DBs: nichts zu migrieren.
+        self._migriere_alt_db()
         self._conn.executescript(SCHEMA)
         self._conn.execute(
             "INSERT OR IGNORE INTO meta(key, value) VALUES('schema_version', ?)",
@@ -186,12 +192,46 @@ class Store:
         with self._lock:
             self._conn.close()
 
+    def _migriere_alt_db(self):
+        """Alt-DB (vor Change-005-Redesign): events.manuell + termin_kategorien → tags.
+
+        Bestehende DBs wurden mit dem alten Schema erzeugt (kein `manuell`-Flag,
+        Tabelle `termin_kategorien`). Idempotent — jeder Aufruf prüft, was fehlt.
+        """
+        try:
+            ev_cols = {r["name"] for r in self._conn.execute(
+                "PRAGMA table_info(events)").fetchall()}
+            if "manuell" not in ev_cols:
+                self._conn.execute(
+                    "ALTER TABLE events ADD COLUMN manuell INTEGER NOT NULL DEFAULT 0")
+            # termin_kategorien (Alt) existiert → Daten nach tags übernehmen
+            tabs = {r["name"] for r in self._conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+            if "termin_kategorien" in tabs and "tags" not in tabs:
+                self._conn.execute(
+                    "ALTER TABLE termin_kategorien RENAME TO tags")
+                self._conn.execute(
+                    "ALTER TABLE tags ADD COLUMN template INTEGER NOT NULL DEFAULT 0")
+            # termine_manuell.kategorie_id zeigt ggf. noch auf termin_kategorien
+            # (FK-Name ist nur Doku in SQLite — kein Umbau nötig, id bleibt id)
+            self._conn.commit()
+        except sqlite3.OperationalError:
+            self._conn.rollback()  # z. B. ALTER doppelt in Rennbedingungen
+
     # --- Events -----------------------------------------------------------
-    def upsert_event(self, ev: dict) -> tuple[bool, bool]:
-        """(neu, geaendert) — idempotent, nur echte Änderungen schreiben."""
+    def upsert_event(self, ev: dict, *, manuell_schutz: bool = True) -> tuple[bool, bool]:
+        """(neu, geaendert) — idempotent, nur echte Änderungen schreiben.
+
+        manuell_schutz: Ein in der DB vorhandenes Event mit manuell=1 (vom Admin
+        bearbeitet) wird von einem Scrape-Update NICHT überschrieben — die
+        Admin-Bearbeitung gewinnt (User-Entscheidung 2026-09-07). Wer das Event
+        bewusst aktualisieren will (Admin-Edit, Spiegel-Sync), ruft mit
+        manuell_schutz=False bzw. setzt ev['manuell']=1.
+        """
         # Kanonische Vergleichs-/Schreibform: kategorien immer als JSON-String.
         ev = dict(ev)
         ev["kategorien"] = json.dumps(ev.get("kategorien") or [], ensure_ascii=False)
+        ev["manuell"] = int(bool(ev.get("manuell")))
         with self._lock:
             cur = self._conn.execute("SELECT * FROM events WHERE id = ?", (ev["id"],))
             old = cur.fetchone()
@@ -199,10 +239,12 @@ class Store:
                 # ID-Schema-Wechsel (z. B. Quelle bekommt später Event-URLs):
                 # gleicher Inhalt (Quelle+Titel+Start+Ort) unter anderer ID wäre
                 # ein Duplikat → alten Zwilling übernehmen (löschen + neu schreiben).
+                # Manuell gepflegte Events (manuell=1) nie als Zwilling löschen.
                 zwi = self._conn.execute(
                     """SELECT id FROM events
                        WHERE quelle=? AND titel=? AND start_iso=?
                          AND COALESCE(ort,'')=COALESCE(?,'') AND id != ?
+                         AND manuell = 0
                        ORDER BY id LIMIT 1""",
                     (ev["quelle"], ev["titel"], ev["start_iso"], ev.get("ort"), ev["id"]),
                 ).fetchone()
@@ -212,8 +254,8 @@ class Store:
                         """INSERT INTO events (id, titel, beschreibung_kurz, start_iso, ende_iso,
                            start_local, ende_local, ganztags, ort, adresse, bezirk, lat, lon,
                            altersband_min, altersband_max, alters_familie, kategorien, kostenlos,
-                           quelle, source_event_id, source_url, geholt_am, status)
-                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                           quelle, source_event_id, source_url, geholt_am, status, manuell)
+                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                         self._ev_tuple(ev),
                     )
                     self._conn.commit()
@@ -222,13 +264,17 @@ class Store:
                     """INSERT INTO events (id, titel, beschreibung_kurz, start_iso, ende_iso,
                        start_local, ende_local, ganztags, ort, adresse, bezirk, lat, lon,
                        altersband_min, altersband_max, alters_familie, kategorien, kostenlos,
-                       quelle, source_event_id, source_url, geholt_am, status)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                       quelle, source_event_id, source_url, geholt_am, status, manuell)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     self._ev_tuple(ev),
                 )
                 self._conn.commit()
                 return True, False
             old_row = dict(old)
+            # Manuell gepflegtes Event: Scrape-Update (ev ohne manuell=1) darf
+            # es nicht überschreiben. Admin-Edits/Spiegel-Sync setzen manuell=1.
+            if manuell_schutz and old_row.get("manuell") and not ev.get("manuell"):
+                return False, False
             # Altlast-Bereinigung auch im Update-Pfad: Wenn dieselbe Quelle
             # dasselbe Event (Titel+Start+Ort) unter einer ANDEREN id führt
             # (ID-Schema-Wechsel, z. B. Quelle bekam später Event-URLs), ist
@@ -237,6 +283,7 @@ class Store:
                 """SELECT id FROM events
                    WHERE quelle=? AND titel=? AND start_iso=?
                      AND COALESCE(ort,'')=COALESCE(?,'') AND id != ? AND id != ?
+                     AND manuell = 0
                    ORDER BY id LIMIT 1""",
                 (ev["quelle"], ev["titel"], ev["start_iso"], ev.get("ort"),
                  old_row["id"], ev["id"]),
@@ -270,6 +317,7 @@ class Store:
             int(ev.get("alters_familie", False)), ev["kategorien"],
             ev.get("kostenlos"), ev["quelle"], ev["source_event_id"],
             ev["source_url"], ev["geholt_am"], ev.get("status", "auto"),
+            int(ev.get("manuell", 0)),
         )
 
     def query_events(self, filters: dict) -> list[dict]:
@@ -554,6 +602,9 @@ class Store:
                     (self._jetzt(),),
                 )
                 self._conn.commit()
+        # Template-Tags bei jedem Start sicherstellen (idempotent) — außerhalb
+        # des Locks, upsert_tag nimmt ihn selbst (Lock ist nicht reentrant).
+        self.seed_template_tags()
 
     def list_sources(self, aktiv_nur: bool = False) -> list[dict]:
         with self._lock:
@@ -725,46 +776,87 @@ class Store:
                 (wert, self._jetzt(), bsn))
             self._conn.commit()
 
-    # --- Kategorien ---------------------------------------------------------
-    def list_kategorien(self) -> list[dict]:
+    # --- Tags (für ALLE Termine; Template + eigene) -------------------------
+    def list_tags(self, nur_template: bool = False) -> list[dict]:
+        sql = "SELECT * FROM tags" + (" WHERE template = 1" if nur_template else "")
         with self._lock:
-            rows = self._conn.execute(
-                "SELECT * FROM termin_kategorien ORDER BY sort, name").fetchall()
+            rows = self._conn.execute(sql + " ORDER BY template DESC, sort, name").fetchall()
         return [dict(r) for r in rows]
 
-    def get_kategorie(self, kid: str) -> dict | None:
+    def get_tag(self, tid: str) -> dict | None:
         with self._lock:
-            r = self._conn.execute("SELECT * FROM termin_kategorien WHERE id=?", (kid,)).fetchone()
+            r = self._conn.execute("SELECT * FROM tags WHERE id=?", (tid,)).fetchone()
         return dict(r) if r else None
 
-    def upsert_kategorie(self, kat: dict) -> None:
-        kid = str(kat.get("id") or "").strip()
-        name = str(kat.get("name") or "").strip()
+    def upsert_tag(self, tag: dict) -> None:
+        kid = str(tag.get("id") or "").strip()
+        name = str(tag.get("name") or "").strip()
         if not kid or not name:
-            raise ValueError("id und name sind Pflichtfelder für eine Kategorie.")
-        farbe = (kat.get("farbe") or "").strip() or None
+            raise ValueError("id und name sind Pflichtfelder für einen Tag.")
+        farbe = (tag.get("farbe") or "").strip() or None
         try:
-            sort = int(kat.get("sort", 0) or 0)
+            sort = int(tag.get("sort", 0) or 0)
         except (TypeError, ValueError):
             sort = 0
+        template = int(bool(tag.get("template")))
         with self._lock:
             try:
                 self._conn.execute(
-                    "INSERT INTO termin_kategorien(id, name, farbe, sort, zuletzt_geaendert) "
-                    "VALUES (?,?,?,?,?)", (kid, name, farbe, sort, self._jetzt()))
+                    "INSERT INTO tags(id, name, farbe, sort, template, zuletzt_geaendert) "
+                    "VALUES (?,?,?,?,?,?)", (kid, name, farbe, sort, template, self._jetzt()))
             except sqlite3.IntegrityError:
                 self._conn.execute(
-                    "UPDATE termin_kategorien SET name=?, farbe=?, sort=?, "
-                    "zuletzt_geaendert=? WHERE id=?",
+                    "UPDATE tags SET name=?, farbe=?, sort=?, zuletzt_geaendert=? WHERE id=?",
                     (name, farbe, sort, self._jetzt(), kid))
             self._conn.commit()
 
-    def delete_kategorie(self, kid: str) -> None:
+    def delete_tag(self, kid: str) -> None:
         with self._lock:
-            cur = self._conn.execute("DELETE FROM termin_kategorien WHERE id=?", (kid,))
+            cur = self._conn.execute("DELETE FROM tags WHERE id=?", (kid,))
             self._conn.commit()
         if cur.rowcount == 0:
-            raise ValueError(f"Unbekannte Kategorie: {kid}")
+            raise ValueError(f"Unbekannter Tag: {kid}")
+
+    def tag_namen(self) -> dict[str, str]:
+        """id → Name für die Tag-Auflösung an Events."""
+        with self._lock:
+            rows = self._conn.execute("SELECT id, name FROM tags").fetchall()
+        return {r["id"]: r["name"] for r in rows}
+
+    def seed_template_tags(self) -> None:
+        """Template-Tags anlegen (nur wenn id noch fehlt — nie überschreiben,
+        sonst verlöre der User Anpassungen an Template-Tags bei jedem Start)."""
+        template = [
+            # Schul-Termine (User-Vorgabe)
+            ("tdot", "Tag der offenen Tür", "#2ea043", 10),
+            ("infoabend", "Infoabend", "#58a6ff", 20),
+            ("schnuppertag", "Schnuppertag", "#d29922", 30),
+            ("anmeldung", "Anmeldezeitraum", "#f85149", 40),
+            # Übliche Veranstaltungsarten (aus Quellen-Kategorien aggregiert)
+            ("workshop", "Workshop", "#8b5cf6", 100),
+            ("museum", "Museum & Ausstellung", "#0d9488", 110),
+            ("spiel", "Spiel & Spaß", "#ec4899", 120),
+            ("natur", "Natur & Draußen", "#22c55e", 130),
+            ("theater", "Theater", "#a855f7", 140),
+            ("musik", "Musik & Konzert", "#f59e0b", 150),
+            ("sport", "Sport", "#ef4444", 160),
+            ("bibliothek", "Bibliothek & Lesen", "#3b82f6", 170),
+            ("fest", "Fest & Feier", "#f97316", 180),
+            ("ferien", "Ferienangebot", "#06b6d4", 190),
+            ("lesung", "Lesung", "#6366f1", 200),
+            ("film", "Film & Kino", "#e11d48", 210),
+            ("fuehrung", "Führung", "#14b8a6", 220),
+            ("markt", "Markt & Börse", "#84cc16", 230),
+            ("familie", "Familienangebot", "#f472b6", 240),
+        ]
+        for kid, name, farbe, sort in template:
+            if self.get_tag(kid) is not None:
+                continue  # existiert bereits — User-Anpassung nicht überschreiben
+            try:
+                self.upsert_tag({"id": kid, "name": name, "farbe": farbe,
+                                 "sort": sort, "template": 1})
+            except ValueError:
+                pass
 
     # --- Manuelle Termine ---------------------------------------------------
     def list_termine_manuell(self, schule_bsn: str | None = None,
@@ -780,7 +872,7 @@ class Store:
                "k.name AS kategorie_name, k.farbe AS kategorie_farbe "
                "FROM termine_manuell t "
                "LEFT JOIN schulen s ON s.bsn = t.schule_bsn "
-               "LEFT JOIN termin_kategorien k ON k.id = t.kategorie_id"
+               "LEFT JOIN tags k ON k.id = t.kategorie_id"
                + (f" WHERE {' AND '.join(where)}" if where else "")
                + " ORDER BY t.start_datum, t.start_zeit")
         with self._lock:
@@ -794,7 +886,7 @@ class Store:
                    k.name AS kategorie_name
                    FROM termine_manuell t
                    LEFT JOIN schulen s ON s.bsn = t.schule_bsn
-                   LEFT JOIN termin_kategorien k ON k.id = t.kategorie_id
+                   LEFT JOIN tags k ON k.id = t.kategorie_id
                    WHERE t.id=?""", (tid,)).fetchone()
         return dict(r) if r else None
 
@@ -923,6 +1015,7 @@ class Store:
             "source_url": t.get("url") or "",
             "geholt_am": iso_utc(datetime.now(TZ_BERLIN)),
             "status": "manuell",
+            "manuell": 1,  # Admin-gepflegt — Scrape überschreibt nie
         }
         return ev
 

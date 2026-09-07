@@ -21,7 +21,7 @@ def _schule(bsn="1001", name="Grundschule Muster"):
             "website": "https://beispiel-schule.de"}
 
 
-def _kategorie(kid="tdot", name="Tag der offenen Tür"):
+def _tag(kid="eigen", name="Eigener Tag"):
     return {"id": kid, "name": name, "farbe": "#2ea043", "sort": 1}
 
 
@@ -55,26 +55,33 @@ def test_schulen_crud_api(tmp_path):
     assert c.delete("/api/admin/schulen/1001").status_code == 404
 
 
-# --- Kategorien -------------------------------------------------------------
-def test_kategorien_crud_api(tmp_path):
+# --- Tags -----------------------------------------------------------------
+def test_tags_crud_api(tmp_path):
     c, _ = _client(tmp_path)
-    assert c.get("/api/admin/kategorien").json() == []
-    assert c.post("/api/admin/kategorien", json=_kategorie()).status_code == 201
-    assert c.get("/api/admin/kategorien").json()[0]["name"] == "Tag der offenen Tür"
-    r = c.put("/api/admin/kategorien/tdot", json={"name": "Infoabend"})
-    assert r.status_code == 200 and r.json()["name"] == "Infoabend"
-    assert c.post("/api/admin/kategorien", json=_kategorie()).status_code == 409
-    assert c.post("/api/admin/kategorien", json={"id": "x"}).status_code == 422
-    assert c.put("/api/admin/kategorien/unbekannt", json={"name": "x"}).status_code == 404
-    assert c.delete("/api/admin/kategorien/tdot").status_code == 204
-    assert c.delete("/api/admin/kategorien/tdot").status_code == 404
+    # Seed legt Template-Tags an (tdot existiert) → eigenes Tag mit anderer id
+    assert any(t["template"] for t in c.get("/api/admin/tags").json())
+    r = c.post("/api/admin/tags", json=_tag("eigen", "Eigener Tag"))
+    assert r.status_code == 201, r.text
+    names = [t["name"] for t in c.get("/api/admin/tags").json()]
+    assert "Eigener Tag" in names
+    r = c.put("/api/admin/tags/eigen", json={"name": "Umbenannt"})
+    assert r.status_code == 200 and r.json()["name"] == "Umbenannt"
+    assert c.post("/api/admin/tags", json=_tag("eigen", "nochmal")).status_code == 409
+    assert c.post("/api/admin/tags", json={"id": "x"}).status_code == 422
+    assert c.put("/api/admin/tags/unbekannt", json={"name": "x"}).status_code == 404
+    # Template-Tag (vom Seed) löschen geht; Template-Flag ist gesetzt
+    tdot = [t for t in c.get("/api/admin/tags").json() if t["id"] == "tdot"][0]
+    assert tdot["template"] == 1
+    assert c.delete("/api/admin/tags/eigen").status_code == 204
+    assert c.put("/api/admin/tags/eigen", json={"name": "x"}).status_code == 404
+    assert c.delete("/api/admin/tags/eigen").status_code == 404
 
 
 # --- Termine ----------------------------------------------------------------
 def test_termine_crud_und_spiegel_api(tmp_path):
     c, _ = _client(tmp_path)
     c.post("/api/admin/schulen", json=_schule())
-    c.post("/api/admin/kategorien", json=_kategorie())
+    c.post("/api/admin/tags", json=_tag())
     # ungeprueft anlegen → kein öffentliches Event
     r = c.post("/api/admin/termine", json=_termin())
     assert r.status_code == 201, r.text

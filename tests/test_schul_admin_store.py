@@ -16,7 +16,7 @@ def _schule(bsn="1001", name="Grundschule Muster"):
             "website": "https://beispiel-schule.de"}
 
 
-def _kategorie(kid="tdot", name="Tag der offenen Tür"):
+def _tag(kid="tdot", name="Tag der offenen Tür"):
     return {"id": kid, "name": name, "farbe": "#2ea043", "sort": 1}
 
 
@@ -80,23 +80,23 @@ def test_schule_angefragt(tmp_path):
     s.close()
 
 
-# --- Kategorien -------------------------------------------------------------
-def test_kategorie_crud(tmp_path):
+# --- Tags -------------------------------------------------------------
+def test_tag_crud(tmp_path):
     s = _store(tmp_path)
-    s.upsert_kategorie(_kategorie())
-    kat = s.get_kategorie("tdot")
+    s.upsert_tag(_tag())
+    kat = s.get_tag("tdot")
     assert kat["name"] == "Tag der offenen Tür" and kat["farbe"] == "#2ea043"
-    s.upsert_kategorie({**_kategorie(), "name": "Infoabend"})
-    assert s.get_kategorie("tdot")["name"] == "Infoabend"
+    s.upsert_tag({**_tag(), "name": "Infoabend"})
+    assert s.get_tag("tdot")["name"] == "Infoabend"
     try:
-        s.upsert_kategorie({"id": "x"})
+        s.upsert_tag({"id": "x"})
         assert False
     except ValueError:
         pass
-    s.delete_kategorie("tdot")
-    assert s.get_kategorie("tdot") is None
+    s.delete_tag("tdot")
+    assert s.get_tag("tdot") is None
     try:
-        s.delete_kategorie("tdot")
+        s.delete_tag("tdot")
         assert False
     except ValueError:
         pass
@@ -107,7 +107,7 @@ def test_kategorie_crud(tmp_path):
 def test_termin_crud_ungeprueft_kein_spiegel(tmp_path):
     s = _store(tmp_path)
     s.upsert_schule(_schule())
-    s.upsert_kategorie(_kategorie())
+    s.upsert_tag(_tag())
     tid = s.upsert_termin_manuell(_termin(kategorie_id="tdot"))
     t = s.get_termin_manuell(tid)
     assert t["titel"] == "Tag der offenen Tür 2026"

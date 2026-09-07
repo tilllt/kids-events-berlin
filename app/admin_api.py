@@ -210,7 +210,15 @@ def errors_list(request: Request, quelle: str | None = None, limit: int = Query(
 # --- Einstellungen ---------------------------------------------------------
 @router.get("/settings")
 def settings_get(request: Request):
-    return _store(request).all_settings()
+    """Liefert die gespeicherten Einstellungen. Fehlt mail_vorlage, wird der
+    Standardtext (DEFAULT_MAIL_VORLAGE) als Beispieltext mitgeliefert, damit
+    die GUI immer einen sichtbaren Ausgangstext zeigt (User-Vorgabe 2026-09)."""
+    store = _store(request)
+    s = store.all_settings()
+    if not (s.get("mail_vorlage") or "").strip():
+        s["mail_vorlage"] = DEFAULT_MAIL_VORLAGE
+        s["mail_vorlage_ist_default"] = True
+    return s
 
 
 @router.put("/settings")
@@ -218,7 +226,7 @@ def settings_put(body: dict, request: Request):
     store = _store(request)
     erlaubt = {"scrape_interval_h", "admin_hinweis", "scrape_at",
                "smtp_host", "smtp_port", "smtp_user", "smtp_pass", "smtp_from",
-               "mail_vorlage"}
+               "smtp_reply_to", "mail_vorlage"}
     unbekannt = set(body) - erlaubt
     fehler = []
     for k in sorted(unbekannt):
@@ -417,6 +425,9 @@ def _sende_mail(store, empfaenger: str, betreff: str, nachricht: str) -> None:
     msg["Subject"] = betreff
     msg["From"] = von
     msg["To"] = empfaenger
+    reply_to = (store.get_setting("smtp_reply_to") or "").strip()
+    if reply_to:
+        msg["Reply-To"] = reply_to
     msg.set_content(nachricht)
     try:
         with smtplib.SMTP(host, port, timeout=30) as smtp:
@@ -430,46 +441,46 @@ def _sende_mail(store, empfaenger: str, betreff: str, nachricht: str) -> None:
         raise HTTPException(502, {"fehler": [f"Mail-Versand fehlgeschlagen: {e}"]}) from e
 
 
-@router.get("/kategorien")
-def kategorien_list(request: Request):
-    return _store(request).list_kategorien()
+@router.get("/tags")
+def tags_list(request: Request, template: bool | None = Query(None)):
+    return _store(request).list_tags(nur_template=bool(template))
 
 
-@router.post("/kategorien", status_code=201)
-def kategorie_create(body: dict, request: Request):
+@router.post("/tags", status_code=201)
+def tag_create(body: dict, request: Request):
     store = _store(request)
     kid = str(body.get("id") or "").strip()
-    if store.get_kategorie(kid):
-        raise HTTPException(409, {"fehler": [f"Kategorie existiert bereits: {kid}"]})
+    if store.get_tag(kid):
+        raise HTTPException(409, {"fehler": [f"Tag existiert bereits: {kid}"]})
     try:
-        store.upsert_kategorie(body)
+        store.upsert_tag(body)
     except ValueError as e:
         raise HTTPException(422, {"fehler": [str(e)]}) from None
-    return store.get_kategorie(kid)
+    return store.get_tag(kid)
 
 
-@router.put("/kategorien/{kid}")
-def kategorie_update(kid: str, body: dict, request: Request):
+@router.put("/tags/{kid}")
+def tag_update(kid: str, body: dict, request: Request):
     store = _store(request)
-    alt = store.get_kategorie(kid)
+    alt = store.get_tag(kid)
     if not alt:
-        raise HTTPException(404, f"Unbekannte Kategorie: {kid}")
-    neu = {k: alt.get(k) for k in ("id", "name", "farbe", "sort")}
+        raise HTTPException(404, f"Unbekannter Tag: {kid}")
+    neu = {k: alt.get(k) for k in ("id", "name", "farbe", "sort", "template")}
     for k, v in body.items():
         if k in neu:
             neu[k] = v
     neu["id"] = kid
     try:
-        store.upsert_kategorie(neu)
+        store.upsert_tag(neu)
     except ValueError as e:
         raise HTTPException(422, {"fehler": [str(e)]}) from None
-    return store.get_kategorie(kid)
+    return store.get_tag(kid)
 
 
-@router.delete("/kategorien/{kid}", status_code=204)
-def kategorie_delete(kid: str, request: Request):
+@router.delete("/tags/{kid}", status_code=204)
+def tag_delete(kid: str, request: Request):
     try:
-        _store(request).delete_kategorie(kid)
+        _store(request).delete_tag(kid)
     except ValueError as e:
         raise HTTPException(404, str(e)) from None
 

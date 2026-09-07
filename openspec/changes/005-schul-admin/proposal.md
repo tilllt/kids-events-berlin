@@ -69,6 +69,29 @@ Bearbeitungsmöglichkeit.
   konservativ: nur parsebares Datum, nur zukünftig, nur wenn ein
   Datums-Kontext im Text steht; Rest bleibt für die Mail-Anfrage (Stufe C).
 
+## Redesign-Entscheidungen (User 2026-09-07) — ARCHITEKTUR-KORREKTUR
+
+Schulen SIND Quellen — das bisherige UI-Modell (eigener Schulen-Tab neben
+Quellen) ist verworfen. Ziel: EINE GUI für ALLE Terminarten.
+
+1. **Quellen = Obertab mit Unter-Tabs:** je Quelle ein Unter-Tab
+   (familienportal, jup-berlin, museumsportal, zlb, **schulen** = manuelle
+   Quelle) + „Übersicht". Jede Quelle zeigt ihre Termine; Schulen zusätzlich
+   Adresse/Kontakt/Mail-Anfrage.
+2. **Termine-Tab: ALLE Termine editierbar** (auch gescrapte). Wer einen
+   gescrapten Termin editiert, markiert ihn als **manuell gepflegt** — der
+   Scrape-Lauf überschreibt ihn danach nicht mehr (Edit gewinnt,
+   User-Entscheidung).
+3. **Keine Kategorien — Tags** (für ALLE Terminarten): Template-Liste wird
+   mitgeliefert (Schul-Tags: Tag der offenen Tür, Infoabend, Schnuppertag,
+   Anmeldezeitraum; übliche Veranstaltungsarten: Lesung, Konzert, … — vom
+   Agenten recherchiert), erweiterbar um eigene Tags **in den Einstellungen**.
+   Events tragen Tags in der bestehenden `kategorien`-JSON-Spalte; die
+   `termin_kategorien`-Tabelle wird zu `tags` (id/name/farbe/sort).
+4. **Mail-Vorlage:** braucht Betreffszeile UND **Reply-To**; im
+   Settings-Backend liegt ein Beispieltext (der GET liefert den Default,
+   wenn nichts gespeichert ist — aktuell leer = kein Beispiel sichtbar).
+
 ## Specs-Delta
 
 - `ADDED specs/schul-admin/spec.md` — Admin-Termin-/Schul-/Kategorien-
