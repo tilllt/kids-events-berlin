@@ -94,7 +94,7 @@ class FeedAdapter:
     # --- Fetch --------------------------------------------------------------
     def fetch_listing_page(self, page: int = 0) -> str:
         if page > 0:
-            raise ValueError("Feed-Quellen haben keine Pagination.")
+            return ""  # Feed hat eine Seite; Pipeline bricht über 0 Rows ab
         r = self._client.get(self._feed_url)
         r.raise_for_status()
         return r.text
