@@ -125,6 +125,7 @@ CREATE TABLE IF NOT EXISTS schulen (
     strasse TEXT,
     email TEXT,
     website TEXT,
+    schulzweig_id TEXT,
     angefragt_am TEXT,
     notiz TEXT,
     zuletzt_geaendert TEXT
@@ -204,6 +205,12 @@ class Store:
             if "manuell" not in ev_cols:
                 self._conn.execute(
                     "ALTER TABLE events ADD COLUMN manuell INTEGER NOT NULL DEFAULT 0")
+            # schulen.schulzweig_id (Link auf das offizielle Schulportrait)
+            sc_cols = {r["name"] for r in self._conn.execute(
+                "PRAGMA table_info(schulen)").fetchall()}
+            if sc_cols and "schulzweig_id" not in sc_cols:
+                self._conn.execute(
+                    "ALTER TABLE schulen ADD COLUMN schulzweig_id TEXT")
             # termin_kategorien (Alt) existiert → Daten nach tags übernehmen
             tabs = {r["name"] for r in self._conn.execute(
                 "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
@@ -820,23 +827,27 @@ class Store:
     def upsert_schule(self, sch: dict) -> None:
         """Anlegen oder aktualisieren (bsn = Schlüssel)."""
         f = {k: sch.get(k) for k in ("bsn", "name", "schulform", "bezirk", "ortsteil",
-                                     "plz", "strasse", "email", "website", "notiz")}
+                                     "plz", "strasse", "email", "website",
+                                     "schulzweig_id", "notiz")}
         if not f.get("bsn") or not f.get("name"):
             raise ValueError("bsn und name sind Pflichtfelder für eine Schule.")
         f["zuletzt_geaendert"] = self._jetzt()
         f["bsn"] = str(f["bsn"]).strip()
         f["name"] = str(f["name"]).strip()
+        for k in ("email", "website", "schulzweig_id", "notiz"):
+            f[k] = (str(f[k]).strip() if f.get(k) not in (None, "") else None)
         with self._lock:
             try:
                 self._conn.execute(
                     """INSERT INTO schulen(bsn, name, schulform, bezirk, ortsteil, plz,
-                       strasse, email, website, notiz, zuletzt_geaendert)
+                       strasse, email, website, schulzweig_id, notiz, zuletzt_geaendert)
                        VALUES (:bsn,:name,:schulform,:bezirk,:ortsteil,:plz,:strasse,
-                               :email,:website,:notiz,:zuletzt_geaendert)""", f)
+                               :email,:website,:schulzweig_id,:notiz,:zuletzt_geaendert)""", f)
             except sqlite3.IntegrityError:
                 sets = ", ".join(f"{k}=:{k}" for k in
                                  ("name", "schulform", "bezirk", "ortsteil", "plz",
-                                  "strasse", "email", "website", "notiz", "zuletzt_geaendert"))
+                                  "strasse", "email", "website", "schulzweig_id",
+                                  "notiz", "zuletzt_geaendert"))
                 self._conn.execute(
                     f"UPDATE schulen SET {sets} WHERE bsn=:bsn", f)
             self._conn.commit()

@@ -128,6 +128,30 @@ def import_schulen(store, geo_json_pfad: str) -> dict:
             "allgemeinbildend_im_dump": n_ges, "uebersprungen": n_uebersprungen}
 
 
+def import_schulzweig_ids(store, mapping_json_pfad: str) -> dict:
+    """Mapping {bsn: id_schulzweig} → schulen.schulzweig_id (Schulportrait-Link).
+
+    Das Mapping stammt aus app/bsn_schulzweig_map.py (Redirect-Abgriff des
+    Berliner Schulverzeichnisses). Nur BSNs aktualisieren, die in der DB
+    existieren; idempotent."""
+    with open(mapping_json_pfad, encoding="utf-8") as f:
+        mapping = json.load(f)
+    n_ges = n_ok = n_unbekannt = 0
+    for bsn, szid in mapping.items():
+        n_ges += 1
+        sch = store.get_schule(str(bsn))
+        if not sch:
+            n_unbekannt += 1
+            continue
+        if str(sch.get("schulzweig_id") or "") == str(szid):
+            continue
+        sch["schulzweig_id"] = str(szid)
+        store.upsert_schule(sch)
+        n_ok += 1
+    return {"mapping_eintraege": n_ges, "aktualisiert": n_ok,
+            "bsn_unbekannt": n_unbekannt}
+
+
 # --- Crawl-Termine -----------------------------------------------------------
 
 _DATUM_RE = re.compile(

@@ -38,6 +38,13 @@ def main(argv: list[str] | None = None) -> int:
                      help="Pfad zum Crawl-Ergebnis (strato_termin_out.json)")
     itc.set_defaults(fn=cmd_import_termine)
 
+    isz = sub.add_parser("import-schulzweig",
+                         help="Mapping {bsn: IDSchulzweig} → schulen.schulzweig_id")
+    isz.add_argument("--db", default="data/events.db")
+    isz.add_argument("--json", required=True,
+                     help="Pfad zum Mapping (bsn_schulzweig.json)")
+    isz.set_defaults(fn=cmd_import_schulzweig)
+
     args = p.parse_args(argv)
     return args.fn(args)
 
@@ -86,6 +93,20 @@ def cmd_import_termine(args) -> int:
         print(f"Termin-Import: {erg['importiert']} importiert (ungeprueft), "
               f"{erg['duplikate']} Duplikate, {erg['verworfen_alt_oder_rauschen']} "
               f"verworfen (alt/Rauschen), {erg['schulen_mit_funden']} Schulen mit Funden")
+        return 0
+    finally:
+        s.close()
+
+
+def cmd_import_schulzweig(args) -> int:
+    from .schul_import import import_schulzweig_ids
+    from .store import Store
+    s = Store(args.db)
+    try:
+        erg = import_schulzweig_ids(s, args.json)
+        print(f"Schulzweig-Import: {erg['aktualisiert']} aktualisiert "
+              f"({erg['mapping_eintraege']} Mapping-Einträge, "
+              f"{erg['bsn_unbekannt']} BSN nicht in DB)")
         return 0
     finally:
         s.close()

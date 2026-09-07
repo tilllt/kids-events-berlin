@@ -524,6 +524,7 @@ function schuleDetailZeigen(s) {
         <div>
           ${s.email ? `<div>✉ <a href="mailto:${esc(s.email)}">${esc(s.email)}</a></div>` : ""}
           ${s.website ? `<div style="margin-top:4px">🌐 <a href="${esc(s.website)}" target="_blank" rel="noopener">${esc(s.website.replace(/^https?:\/\//, ""))} ↗</a> <span class="klein">(Homepage — Termin gegenprüfen)</span></div>` : ""}
+          ${s.schulzweig_id ? `<div style="margin-top:4px">📋 <a href="https://www.bildung.berlin.de/Schulverzeichnis/Schulportrait.aspx?IDSchulzweig=${encodeURIComponent(s.schulzweig_id)}" target="_blank" rel="noopener">Schulportrait ↗</a> <span class="klein">(offizielles Profil)</span></div>` : ""}
           ${s.angefragt_am ? `<div class="klein" style="margin-top:4px">Anfrage gesendet: ${fmtZeit(s.angefragt_am)}</div>` : ""}
           ${s.notiz ? `<div class="klein" style="margin-top:4px">${esc(s.notiz)}</div>` : ""}
         </div>

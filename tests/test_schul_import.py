@@ -145,3 +145,24 @@ def test_import_crawl_zeit_fallback_nicht_datum(tmp_path):
     assert t["start_datum"] == "12.09.2026"
     assert t["start_zeit"] is None
     s.close()
+
+
+def test_import_schulzweig_ids(tmp_path):
+    """Mapping {bsn: IDSchulzweig} → schulen.schulzweig_id (Schulportrait-Link)."""
+    from app.schul_import import import_schulzweig_ids
+
+    s = _store(tmp_path)
+    s.upsert_schule({"bsn": "01G01", "name": "Test-Grundschule"})
+    s.upsert_schule({"bsn": "03Y01", "name": "Test-Gymnasium"})
+    p = tmp_path / "mapping.json"
+    p.write_text(json.dumps({"01G01": "31345", "03Y01": "30638",
+                             "99Z99": "12345"}), encoding="utf-8")
+    erg = import_schulzweig_ids(s, str(p))
+    assert erg["aktualisiert"] == 2
+    assert erg["bsn_unbekannt"] == 1  # 99Z99 nicht in DB
+    assert s.get_schule("01G01")["schulzweig_id"] == "31345"
+    assert s.get_schule("03Y01")["schulzweig_id"] == "30638"
+    # idempotent: zweiter Lauf aktualisiert nichts mehr
+    erg2 = import_schulzweig_ids(s, str(p))
+    assert erg2["aktualisiert"] == 0
+    s.close()
