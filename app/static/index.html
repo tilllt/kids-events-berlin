@@ -34,29 +34,30 @@
         <input type="search" id="suche" placeholder="Suchen… (z. B. Tag der offenen Tür, Workshop)" autocomplete="off" />
       </section>
 
-      <details class="filterklapp" open>
-        <summary>Bezirk</summary>
+      <!-- Filterkategorien als Tabs: spart vertikalen Platz, ein Panel je Kategorie -->
+      <div class="filter-tabs" role="tablist" aria-label="Filter">
+        <button type="button" class="filter-tab on" id="tab-bezirk" role="tab" aria-selected="true" aria-controls="panel-bezirk" data-panel="bezirk">Bezirk</button>
+        <button type="button" class="filter-tab" id="tab-alter" role="tab" aria-selected="false" aria-controls="panel-alter" data-panel="alter">Alter</button>
+        <button type="button" class="filter-tab" id="tab-uhrzeit" role="tab" aria-selected="false" aria-controls="panel-uhrzeit" data-panel="uhrzeit">Uhrzeit</button>
+        <button type="button" class="filter-tab" id="tab-wann" role="tab" aria-selected="false" aria-controls="panel-wann" data-panel="wann">Wann</button>
+      </div>
+
+      <div class="filter-panel" id="panel-bezirk" role="tabpanel" aria-labelledby="tab-bezirk">
         <div id="bezirk-list" class="checkgrid"></div>
-      </details>
-
-      <details class="filterklapp" open>
-        <summary>Alter</summary>
+      </div>
+      <div class="filter-panel hidden" id="panel-alter" role="tabpanel" aria-labelledby="tab-alter">
         <div id="alter-list" class="chips"></div>
-      </details>
-
-      <details class="filterklapp" open>
-        <summary>Uhrzeit</summary>
+      </div>
+      <div class="filter-panel hidden" id="panel-uhrzeit" role="tabpanel" aria-labelledby="tab-uhrzeit">
         <div id="uhrzeit-list" class="chips"></div>
-      </details>
-
-      <details class="filterklapp" open>
-        <summary>Wann</summary>
+      </div>
+      <div class="filter-panel hidden" id="panel-wann" role="tabpanel" aria-labelledby="tab-wann">
         <div id="zeitraum-list" class="chips"></div>
-        <div class="rowline" style="margin-top:8px">
+        <div class="rowline">
           <label for="von">Von</label><input type="date" id="von" />
           <label for="bis">Bis</label><input type="date" id="bis" />
         </div>
-      </details>
+      </div>
 
       <div class="filter-fuss">
         <label class="switch">

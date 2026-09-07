@@ -442,14 +442,29 @@ function updateFilterCount() {
 }
 
 /* ---------- Init ---------- */
-// Filter-Kategorien: auf Mobile (≤820px) initial zugeklappt — die Suche
-// oben bleibt immer sichtbar, jede Kategorie ist einzeln aufklappbar.
-// Auf Desktop sind alle Kategorien offen (open-Attribut im HTML).
-(function initFilterKategorien() {
-  if (window.matchMedia("(max-width: 820px)").matches) {
-    $$("#filters details.filterklapp").forEach((d) => d.removeAttribute("open"));
-  }
+// Filter-Tabs: auf Mobile (≤820px) starten alle Kategorien zugeklappt,
+// damit die Eventliste Platz bekommt — nur die Tab-Leiste + Suche sind
+// sichtbar. Auf Desktop ist „Bezirk" offen (Standard im HTML).
+(function initFilterTabs() {
+  if (!window.matchMedia("(max-width: 820px)").matches) return;
+  $$(".filter-tab").forEach((t) => {
+    t.classList.remove("on");
+    t.setAttribute("aria-selected", "false");
+  });
+  $$(".filter-panel").forEach((p) => p.classList.add("hidden"));
 })();
+document.addEventListener("click", (ev) => {
+  const tab = ev.target && ev.target.closest ? ev.target.closest(".filter-tab") : null;
+  if (!tab) return;
+  const panel = tab.dataset.panel;
+  const schliessen = tab.classList.contains("on"); // aktiven Tab erneut klicken = Panel zu
+  $$(".filter-tab").forEach((t) => {
+    const aktiv = !schliessen && t === tab;
+    t.classList.toggle("on", aktiv);
+    t.setAttribute("aria-selected", String(aktiv));
+  });
+  $$(".filter-panel").forEach((p) => p.classList.toggle("hidden", schliessen || p.id !== `panel-${panel}`));
+});
 $("#detail-close").addEventListener("click", closeDetail);
 $("#detail").addEventListener("click", (ev) => { if (ev.target === ev.currentTarget) closeDetail(); });
 document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") closeDetail(); });
