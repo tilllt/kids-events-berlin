@@ -50,11 +50,13 @@ def test_titel_termin_ohne_klammer():
 def test_parse_fixture_rows():
     a = FeedAdapter("berlin-senbjf-kalender", url="https://example.org/rss")
     rows = a.parse_listing(_fixture())
-    assert len(rows) == 4
+    # Die Quelle listet Jane-Addams doppelt (2 identische Einträge, andere
+    # Event-IDs) — der Adapter dedupliziert (Titel+Start) → 3 statt 4 Rows.
+    assert len(rows) == 3
     assert not a.drain_warnungen()
     titel = [r["titel"] for r in rows]
     assert any("Evangelischen Schule Neukölln" in t for t in titel)
-    assert any("Jane-Addams-Schule" in t for t in titel)
+    assert sum("Jane-Addams-Schule" in t for t in titel) == 1
     # Jede Zeile hat einen Termin + URL
     for r in rows:
         assert r["start"] is not None and r["url"].startswith("http")
@@ -100,7 +102,8 @@ def test_build_adapter_feed(tmp_path):
 
 
 def test_scrape_offline_feed(tmp_path):
-    """Pipeline-Lauf offline gegen das Fixture: 4 Events, idempotent."""
+    """Pipeline-Lauf offline gegen das Fixture: 3 Events (Quelle listet
+    Jane-Addams doppelt → Adapter-Dedup), idempotent ab Lauf 2."""
     from app.pipeline import scrape
     from app.model import TZ_BERLIN
 
@@ -111,17 +114,17 @@ def test_scrape_offline_feed(tmp_path):
     jetzt = datetime(2026, 9, 7, 12, 0, 0, tzinfo=TZ_BERLIN)
     res = scrape(s, "berlin-senbjf-kalender", online=False, geo=False,
                  listing_htmls=[_fixture()], jetzt=jetzt)
-    assert res["rows"] == 4, res
-    # Die Quelle listet Jane-Addams doppelt (2 identische Kalendereinträge) —
-    # die Zwilling-Dedup der Pipeline entfernt das Duplikat → 3 eindeutige
-    # (2. Jane-Addams zählt als „geändert“, nicht „neu“).
+    assert res["rows"] == 3, res
     assert res["n_neu"] == 3
     evs = s.query_events({"quelle": ["berlin-senbjf-kalender"]})
     assert len(evs) == 3
-    # Idempotenz: zweiter Lauf 0 neu
-    res2 = scrape(s, "berlin-senbjf-kalender", online=False, geo=False,
-                  listing_htmls=[_fixture()], jetzt=jetzt)
-    assert res2["n_neu"] == 0
+    # Idempotenz: zweiter + dritter Lauf 0 neu UND 0 geändert (kein
+    # Zwilling-Ping-Pong durch doppelte Quellen-IDs)
+    for _ in range(2):
+        res2 = scrape(s, "berlin-senbjf-kalender", online=False, geo=False,
+                      listing_htmls=[_fixture()], jetzt=jetzt)
+        assert res2["n_neu"] == 0
+        assert res2["n_geaendert"] == 0, res2
     assert s.list_events_admin(quelle="berlin-senbjf-kalender")[0]["titel"]
     s.close()
 

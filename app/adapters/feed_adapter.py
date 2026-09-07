@@ -118,14 +118,26 @@ class FeedAdapter:
         if d.bozo and not d.entries:
             self._warnungen.append(f"Feed nicht parsebar: {getattr(d, 'bozo_exception', '?')}")
         out = []
+        gesehen: set[tuple] = set()
         for e in d.entries:
             try:
                 row = self._item_zu_row(e)
             except ValueError as ex:
                 self._warnungen.append(f"Feed-Item: {ex}")
                 continue
-            if row:
-                out.append(row)
+            if not row:
+                continue
+            # Quellen listen dasselbe Event teils doppelt (gleicher Titel +
+            # gleicher Termin, andere Event-ID, z. B. SenBJF-Kalender). Nur die
+            # erste Variante übernehmen — sonst löscht/schreibt die
+            # Zwilling-Dedup der Pipeline die IDs bei jedem Lauf neu
+            # (ewiges n_geaendert, Ping-Pong).
+            schluessel = (row["titel"], row["start"].isoformat(),
+                          row.get("ganztags"))
+            if schluessel in gesehen:
+                continue
+            gesehen.add(schluessel)
+            out.append(row)
         if not out and not d.entries:
             self._warnungen.append("Feed liefert 0 Items (Struktur geändert?)")
         return out
