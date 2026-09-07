@@ -280,11 +280,19 @@ def schule_create(body: dict, request: Request):
 @router.put("/schulen/{bsn}")
 def schule_update(bsn: str, body: dict, request: Request):
     store = _store(request)
-    if not store.get_schule(bsn):
+    alt = store.get_schule(bsn)
+    if not alt:
         raise HTTPException(404, f"Unbekannte Schule: {bsn}")
-    body = {**body, "bsn": bsn}
+    # Teil-Update: nur gesendete Felder ändern — nie stille NULLs auf andere
+    # Felder schreiben (Voll-Replacement würde bezirk/plz/email etc. löschen).
+    neu = {k: alt.get(k) for k in ("bsn", "name", "schulform", "bezirk", "ortsteil",
+                                   "plz", "strasse", "email", "website", "notiz")}
+    for k, v in body.items():
+        if k in neu:
+            neu[k] = v
+    neu["bsn"] = bsn
     try:
-        store.upsert_schule(body)
+        store.upsert_schule(neu)
     except ValueError as e:
         raise HTTPException(422, {"fehler": [str(e)]}) from None
     return store.get_schule(bsn)
@@ -371,10 +379,16 @@ def kategorie_create(body: dict, request: Request):
 @router.put("/kategorien/{kid}")
 def kategorie_update(kid: str, body: dict, request: Request):
     store = _store(request)
-    if not store.get_kategorie(kid):
+    alt = store.get_kategorie(kid)
+    if not alt:
         raise HTTPException(404, f"Unbekannte Kategorie: {kid}")
+    neu = {k: alt.get(k) for k in ("id", "name", "farbe", "sort")}
+    for k, v in body.items():
+        if k in neu:
+            neu[k] = v
+    neu["id"] = kid
     try:
-        store.upsert_kategorie({**body, "id": kid})
+        store.upsert_kategorie(neu)
     except ValueError as e:
         raise HTTPException(422, {"fehler": [str(e)]}) from None
     return store.get_kategorie(kid)
@@ -417,12 +431,22 @@ def termin_create(body: dict, request: Request):
 @router.put("/termine/{tid}")
 def termin_update(tid: int, body: dict, request: Request):
     store = _store(request)
-    if not store.get_termin_manuell(tid):
+    alt = store.get_termin_manuell(tid)
+    if not alt:
         raise HTTPException(404, f"Unbekannter Termin: {tid}")
+    # Teil-Update wie bei schulen: nur gesendete Felder ändern, der Rest bleibt.
+    import copy
+    neu = copy.deepcopy(alt)
+    for k, v in body.items():
+        if k in ("id", "schulname", "schulbezirk", "kategorie_name", "kategorie_farbe"):
+            continue  # JOIN-Spalten / Schlüssel nie überschreiben
+        if k == "kategorie_id" and not v:
+            v = None  # Kategorie explizit entfernen ("" → NULL)
+        neu[k] = v
     if body.get("schule_bsn") and not store.get_schule(str(body["schule_bsn"])):
         raise HTTPException(422, {"fehler": [f"Unbekannte Schule: {body['schule_bsn']}"]})
     try:
-        store.upsert_termin_manuell({**body, "id": tid})
+        store.upsert_termin_manuell(neu)
     except ValueError as e:
         raise HTTPException(422, {"fehler": [str(e)]}) from None
     return store.get_termin_manuell(tid)
