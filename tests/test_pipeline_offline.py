@@ -19,13 +19,19 @@ def test_offline_scrape_idempotent(tmp_path, listing_p0, listing_p1,
         "familiensportfest": detail_fam,
         "raetselabenteuer-berlin-prenzlauer-berg": detail_raetsel,
     }
-    s1 = scrape(store, online=False, listing_htmls=listings, detail_html=details)
+    # Fixture-Snapshot vom 05.09.2026 (Events 05.–09.09.): festes "jetzt" injizieren,
+    # damit der Test nicht zeitabhängig wird (Fixture-Daten altern sonst aus dem
+    # Horizont-Fenster und der Lauf endet in n_fehler>0 — realer Befund 07.09.).
+    jetzt = datetime(2026, 9, 4, 12, 0, tzinfo=TZ_BERLIN)
+    s1 = scrape(store, online=False, listing_htmls=listings, detail_html=details,
+                jetzt=jetzt)
     assert s1["n_fehler"] == 0
     assert s1["n_neu"] > 0
     assert s1["rows"] > 0
     n1 = store.count_events()
 
-    s2 = scrape(store, online=False, listing_htmls=listings, detail_html=details)
+    s2 = scrape(store, online=False, listing_htmls=listings, detail_html=details,
+                jetzt=jetzt)
     assert s2["n_neu"] == 0
     assert s2["n_geaendert"] == 0
     assert store.count_events() == n1

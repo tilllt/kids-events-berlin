@@ -16,7 +16,8 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from .model import BEZIRK_BERLINWEIT, BEZIRK_UNBEKANNT, TZ_BERLIN, iso_utc
+from .model import (BEZIRK_BERLINWEIT, BEZIRK_UNBEKANNT, TZ_BERLIN, iso_utc,
+                    make_event_id)
 
 SCHEMA_VERSION = 1
 
@@ -113,6 +114,48 @@ CREATE TABLE IF NOT EXISTS detail_cache (
     geholt_am TEXT NOT NULL,
     PRIMARY KEY (quelle, url)
 );
+CREATE TABLE IF NOT EXISTS schulen (
+    bsn TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    schulform TEXT,
+    bezirk TEXT,
+    ortsteil TEXT,
+    plz TEXT,
+    strasse TEXT,
+    email TEXT,
+    website TEXT,
+    angefragt_am TEXT,
+    notiz TEXT,
+    zuletzt_geaendert TEXT
+);
+CREATE TABLE IF NOT EXISTS termin_kategorien (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    farbe TEXT,
+    sort INTEGER NOT NULL DEFAULT 0,
+    zuletzt_geaendert TEXT
+);
+CREATE TABLE IF NOT EXISTS termine_manuell (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    schule_bsn TEXT NOT NULL REFERENCES schulen(bsn) ON DELETE CASCADE,
+    kategorie_id TEXT REFERENCES termin_kategorien(id) ON DELETE SET NULL,
+    titel TEXT NOT NULL,
+    start_datum TEXT NOT NULL,
+    start_zeit TEXT,
+    ende_datum TEXT,
+    ende_zeit TEXT,
+    ganztags INTEGER NOT NULL DEFAULT 0,
+    ort TEXT,
+    adresse TEXT,
+    beschreibung TEXT,
+    url TEXT,
+    status TEXT NOT NULL DEFAULT 'ungeprueft',
+    quelle_hinweis TEXT,
+    erstellt_am TEXT,
+    zuletzt_geaendert TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_termine_manuell_schule ON termine_manuell(schule_bsn);
+CREATE INDEX IF NOT EXISTS idx_termine_manuell_status ON termine_manuell(status);
 """
 
 # Uhrzeit-Bänder (Ortszeit), für time()-Vergleich in SQL.
@@ -607,4 +650,291 @@ class Store:
                    ON CONFLICT(key) DO UPDATE SET wert=excluded.wert, geaendert=excluded.geaendert""",
                 (key, wert, self._jetzt()),
             )
+            self._conn.commit()
+
+    # --- Admin: Schulen / Kategorien / manuelle Termine ----------------------
+    def list_schulen(self, bezirk: str | None = None, q: str | None = None) -> list[dict]:
+        where, args = [], []
+        if bezirk:
+            where.append("bezirk = ?")
+            args.append(bezirk)
+        if q:
+            where.append("(name LIKE ? OR bsn LIKE ?)")
+            args.extend([f"%{q}%", f"%{q}%"])
+        sql = "SELECT * FROM schulen" + (f" WHERE {' AND '.join(where)}" if where else "") + " ORDER BY name"
+        with self._lock:
+            rows = self._conn.execute(sql, args).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["n_termine"] = int(self._conn.execute(
+                "SELECT COUNT(*) c FROM termine_manuell WHERE schule_bsn=?", (d["bsn"],)
+            ).fetchone()["c"])
+            out.append(d)
+        return out
+
+    def get_schule(self, bsn: str) -> dict | None:
+        with self._lock:
+            r = self._conn.execute("SELECT * FROM schulen WHERE bsn=?", (bsn,)).fetchone()
+        return dict(r) if r else None
+
+    def upsert_schule(self, sch: dict) -> None:
+        """Anlegen oder aktualisieren (bsn = Schlüssel)."""
+        f = {k: sch.get(k) for k in ("bsn", "name", "schulform", "bezirk", "ortsteil",
+                                     "plz", "strasse", "email", "website", "notiz")}
+        if not f.get("bsn") or not f.get("name"):
+            raise ValueError("bsn und name sind Pflichtfelder für eine Schule.")
+        f["zuletzt_geaendert"] = self._jetzt()
+        f["bsn"] = str(f["bsn"]).strip()
+        f["name"] = str(f["name"]).strip()
+        with self._lock:
+            try:
+                self._conn.execute(
+                    """INSERT INTO schulen(bsn, name, schulform, bezirk, ortsteil, plz,
+                       strasse, email, website, notiz, zuletzt_geaendert)
+                       VALUES (:bsn,:name,:schulform,:bezirk,:ortsteil,:plz,:strasse,
+                               :email,:website,:notiz,:zuletzt_geaendert)""", f)
+            except sqlite3.IntegrityError:
+                sets = ", ".join(f"{k}=:{k}" for k in
+                                 ("name", "schulform", "bezirk", "ortsteil", "plz",
+                                  "strasse", "email", "website", "notiz", "zuletzt_geaendert"))
+                self._conn.execute(
+                    f"UPDATE schulen SET {sets} WHERE bsn=:bsn", f)
+            self._conn.commit()
+
+    def delete_schule(self, bsn: str) -> None:
+        """Löscht Schule + deren manuelle Termine (FK CASCADE) + Events-Spiegel."""
+        with self._lock:
+            ids = [r["id"] for r in self._conn.execute(
+                "SELECT id FROM termine_manuell WHERE schule_bsn=?", (bsn,)).fetchall()]
+            cur = self._conn.execute("DELETE FROM schulen WHERE bsn=?", (bsn,))
+            self._conn.commit()
+        if cur.rowcount == 0:
+            raise ValueError(f"Unbekannte Schule: {bsn}")
+        for tid in ids:
+            self._unsync_manuelles_event(tid)
+
+    def set_schule_angefragt(self, bsn: str, wert: str) -> None:
+        with self._lock:
+            self._conn.execute(
+                "UPDATE schulen SET angefragt_am=?, zuletzt_geaendert=? WHERE bsn=?",
+                (wert, self._jetzt(), bsn))
+            self._conn.commit()
+
+    # --- Kategorien ---------------------------------------------------------
+    def list_kategorien(self) -> list[dict]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM termin_kategorien ORDER BY sort, name").fetchall()
+        return [dict(r) for r in rows]
+
+    def get_kategorie(self, kid: str) -> dict | None:
+        with self._lock:
+            r = self._conn.execute("SELECT * FROM termin_kategorien WHERE id=?", (kid,)).fetchone()
+        return dict(r) if r else None
+
+    def upsert_kategorie(self, kat: dict) -> None:
+        kid = str(kat.get("id") or "").strip()
+        name = str(kat.get("name") or "").strip()
+        if not kid or not name:
+            raise ValueError("id und name sind Pflichtfelder für eine Kategorie.")
+        farbe = (kat.get("farbe") or "").strip() or None
+        try:
+            sort = int(kat.get("sort", 0) or 0)
+        except (TypeError, ValueError):
+            sort = 0
+        with self._lock:
+            try:
+                self._conn.execute(
+                    "INSERT INTO termin_kategorien(id, name, farbe, sort, zuletzt_geaendert) "
+                    "VALUES (?,?,?,?,?)", (kid, name, farbe, sort, self._jetzt()))
+            except sqlite3.IntegrityError:
+                self._conn.execute(
+                    "UPDATE termin_kategorien SET name=?, farbe=?, sort=?, "
+                    "zuletzt_geaendert=? WHERE id=?",
+                    (name, farbe, sort, self._jetzt(), kid))
+            self._conn.commit()
+
+    def delete_kategorie(self, kid: str) -> None:
+        with self._lock:
+            cur = self._conn.execute("DELETE FROM termin_kategorien WHERE id=?", (kid,))
+            self._conn.commit()
+        if cur.rowcount == 0:
+            raise ValueError(f"Unbekannte Kategorie: {kid}")
+
+    # --- Manuelle Termine ---------------------------------------------------
+    def list_termine_manuell(self, schule_bsn: str | None = None,
+                             status: str | None = None) -> list[dict]:
+        where, args = [], []
+        if schule_bsn:
+            where.append("t.schule_bsn = ?")
+            args.append(schule_bsn)
+        if status:
+            where.append("t.status = ?")
+            args.append(status)
+        sql = ("SELECT t.*, s.name AS schulname, s.bezirk AS schulbezirk, "
+               "k.name AS kategorie_name, k.farbe AS kategorie_farbe "
+               "FROM termine_manuell t "
+               "LEFT JOIN schulen s ON s.bsn = t.schule_bsn "
+               "LEFT JOIN termin_kategorien k ON k.id = t.kategorie_id"
+               + (f" WHERE {' AND '.join(where)}" if where else "")
+               + " ORDER BY t.start_datum, t.start_zeit")
+        with self._lock:
+            rows = self._conn.execute(sql, args).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_termin_manuell(self, tid: int) -> dict | None:
+        with self._lock:
+            r = self._conn.execute(
+                """SELECT t.*, s.name AS schulname, s.bezirk AS schulbezirk,
+                   k.name AS kategorie_name
+                   FROM termine_manuell t
+                   LEFT JOIN schulen s ON s.bsn = t.schule_bsn
+                   LEFT JOIN termin_kategorien k ON k.id = t.kategorie_id
+                   WHERE t.id=?""", (tid,)).fetchone()
+        return dict(r) if r else None
+
+    def upsert_termin_manuell(self, t: dict) -> int:
+        """Anlegen (id None) oder aktualisieren. Pflicht: schule_bsn, titel,
+        start_datum. Bei status='bestaetigt' wird das Event nach events
+        gespiegelt (öffentliche Sichtbarkeit), sonst entfernt."""
+        if not t.get("schule_bsn") or not str(t.get("titel") or "").strip() \
+                or not str(t.get("start_datum") or "").strip():
+            raise ValueError("schule_bsn, titel und start_datum sind Pflichtfelder.")
+        tid = t.get("id")
+        if tid is not None:
+            tid = int(tid)
+        now = self._jetzt()
+        felder = dict(t)
+        felder["schule_bsn"] = str(felder["schule_bsn"]).strip()
+        felder["titel"] = str(felder["titel"]).strip()
+        felder["start_datum"] = str(felder["start_datum"]).strip()
+        for k in ("start_zeit", "ende_datum", "ende_zeit", "ort", "adresse",
+                  "beschreibung", "url", "quelle_hinweis"):
+            felder[k] = (str(felder[k]).strip() if felder.get(k) not in (None, "") else None)
+        felder["kategorie_id"] = (str(felder["kategorie_id"]).strip()
+                                  if felder.get("kategorie_id") else None)
+        felder["ganztags"] = int(bool(felder.get("ganztags")))
+        status = str(felder.get("status") or "ungeprueft").strip()
+        if status not in ("ungeprueft", "bestaetigt"):
+            raise ValueError(f"Unbekannter Status: {status}")
+        felder["status"] = status
+        if tid is None:
+            felder["erstellt_am"] = now
+            felder["zuletzt_geaendert"] = now
+            with self._lock:
+                cur = self._conn.execute(
+                    """INSERT INTO termine_manuell(schule_bsn, kategorie_id, titel,
+                       start_datum, start_zeit, ende_datum, ende_zeit, ganztags, ort,
+                       adresse, beschreibung, url, status, quelle_hinweis,
+                       erstellt_am, zuletzt_geaendert)
+                       VALUES (:schule_bsn,:kategorie_id,:titel,:start_datum,:start_zeit,
+                               :ende_datum,:ende_zeit,:ganztags,:ort,:adresse,:beschreibung,
+                               :url,:status,:quelle_hinweis,:erstellt_am,:zuletzt_geaendert)""",
+                    felder)
+                self._conn.commit()
+                tid = int(cur.lastrowid)
+        else:
+            felder["zuletzt_geaendert"] = now
+            sets = ", ".join(f"{k}=:{k}" for k in (
+                "schule_bsn", "kategorie_id", "titel", "start_datum", "start_zeit",
+                "ende_datum", "ende_zeit", "ganztags", "ort", "adresse", "beschreibung",
+                "url", "status", "quelle_hinweis", "zuletzt_geaendert"))
+            with self._lock:
+                cur = self._conn.execute(
+                    f"UPDATE termine_manuell SET {sets} WHERE id=:id",
+                    {**felder, "id": tid})
+                self._conn.commit()
+            if cur.rowcount == 0:
+                raise ValueError(f"Unbekannter Termin: {tid}")
+        if status == "bestaetigt":
+            self._sync_manuelles_event(tid)
+        else:
+            self._unsync_manuelles_event(tid)
+        return tid
+
+    def delete_termin_manuell(self, tid: int) -> None:
+        with self._lock:
+            cur = self._conn.execute("DELETE FROM termine_manuell WHERE id=?", (tid,))
+            self._conn.commit()
+        if cur.rowcount == 0:
+            raise ValueError(f"Unbekannter Termin: {tid}")
+        self._unsync_manuelles_event(tid)
+
+    def _termin_zu_event_dict(self, t: dict) -> dict | None:
+        """Baut aus einem manuellen Termin das öffentliche Event (quelle='manuell')."""
+        if t.get("status") != "bestaetigt":
+            return None
+        try:
+            start_dt = datetime.strptime(t["start_datum"], "%d.%m.%Y").replace(tzinfo=TZ_BERLIN)
+        except (ValueError, TypeError):
+            return None
+        zeit = (t.get("start_zeit") or "").strip()
+        ganztags = bool(t.get("ganztags"))
+        if zeit and not ganztags:
+            try:
+                hh, mm = zeit.split(":")
+                start_dt = start_dt.replace(hour=int(hh), minute=int(mm))
+            except (ValueError, AttributeError):
+                zeit = ""
+        if not zeit or ganztags:
+            start_dt = start_dt.replace(hour=0, minute=0)
+            ganztags = True
+        ende_dt = None
+        if t.get("ende_datum"):
+            try:
+                ende_dt = datetime.strptime(t["ende_datum"], "%d.%m.%Y").replace(tzinfo=TZ_BERLIN)
+                ezeit = (t.get("ende_zeit") or "").strip()
+                if ezeit and not ganztags:
+                    hh, mm = ezeit.split(":")
+                    ende_dt = ende_dt.replace(hour=int(hh), minute=int(mm))
+                else:
+                    ende_dt = ende_dt.replace(hour=23, minute=59)
+            except (ValueError, AttributeError):
+                ende_dt = None
+        elif not ganztags and zeit:
+            # Ende = Startzeit + 0 (eintägig, Zeit bekannt, kein separates Ende)
+            ende_dt = None  # eintägig: Ende bleibt None (Store-Semantik)
+        kategorien = [t["kategorie_name"]] if t.get("kategorie_name") else []
+        tid = int(t["id"])
+        ev = {
+            "id": make_event_id("manuell", str(tid)),
+            "titel": t["titel"],
+            "beschreibung_kurz": t.get("beschreibung") or None,
+            "start_iso": iso_utc(start_dt),
+            "ende_iso": iso_utc(ende_dt) if ende_dt else None,
+            "start_local": start_dt.astimezone(TZ_BERLIN).strftime("%Y-%m-%dT%H:%M:%S"),
+            "ende_local": (ende_dt.astimezone(TZ_BERLIN).strftime("%Y-%m-%dT%H:%M:%S")
+                           if ende_dt else None),
+            "ganztags": int(ganztags),
+            "ort": t.get("ort") or t.get("schulname"),
+            "adresse": t.get("adresse"),
+            "bezirk": t.get("schulbezirk"),
+            "lat": None, "lon": None,
+            "altersband_min": None, "altersband_max": None, "alters_familie": 0,
+            "kategorien": kategorien,
+            "kostenlos": 1,  # Schultermine (tdot/Infoabend) sind kostenlos
+            "quelle": "manuell",
+            "source_event_id": str(tid),
+            "source_url": t.get("url") or "",
+            "geholt_am": iso_utc(datetime.now(TZ_BERLIN)),
+            "status": "manuell",
+        }
+        return ev
+
+    def _sync_manuelles_event(self, tid: int) -> None:
+        t = self.get_termin_manuell(tid)
+        if not t:
+            return
+        ev = self._termin_zu_event_dict(t)
+        if not ev:
+            self._unsync_manuelles_event(tid)
+            return
+        self.upsert_event(ev)
+
+    def _unsync_manuelles_event(self, tid: int) -> None:
+        with self._lock:
+            self._conn.execute(
+                "DELETE FROM events WHERE quelle='manuell' AND source_event_id=?",
+                (str(tid),))
             self._conn.commit()

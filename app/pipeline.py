@@ -24,14 +24,21 @@ _BEZIRKS_LABEL_KEYS = {v.lower() for v in BEZIRK_LABELS.values()}
 def scrape(store: Store, quelle: str = "jup-berlin", *, online: bool = True,
            geo: bool = True, max_pages: int = 80, max_details: int | None = None,
            sleep_s: float | None = None, detail_html: dict[str, str] | None = None,
-           listing_htmls: list[str] | None = None) -> dict:
-    """Führt einen Lauf aus. offline: listing_htmls/detail_html statt Netz."""
+           listing_htmls: list[str] | None = None,
+           jetzt: datetime | None = None) -> dict:
+    """Führt einen Lauf aus. offline: listing_htmls/detail_html statt Netz.
+
+    jetzt: fester Referenzzeitpunkt (Europe/Berlin) für Fenster-/Horizont- und
+    Stale-Berechnung — Tests injizieren ein festes Datum, damit Fixture-Offline-
+    Tests nicht zeitabhängig werden (Fixture-Daten altern sonst aus dem Fenster).
+    """
+    jetzt = jetzt or datetime.now(TZ_BERLIN)
     adapter = build_adapter(store, quelle)
     try:
         return _scrape_mit_adapter(store, adapter, quelle, online=online, geo=geo,
                                    max_pages=max_pages, max_details=max_details,
                                    sleep_s=sleep_s, detail_html=detail_html,
-                                   listing_htmls=listing_htmls)
+                                   listing_htmls=listing_htmls, jetzt=jetzt)
     finally:
         try:
             adapter.close()
@@ -53,9 +60,9 @@ def _fenster_grenzen(jetzt: datetime, horizont_tage: int) -> tuple[datetime, dat
 
 
 def _scrape_mit_adapter(store, adapter, quelle, *, online, geo,
-                        max_pages, max_details, sleep_s, detail_html, listing_htmls) -> dict:
+                        max_pages, max_details, sleep_s, detail_html, listing_htmls,
+                        jetzt: datetime) -> dict:
     sleep_s = sleep_s if sleep_s is not None else getattr(adapter, "min_interval_s", 1.0)
-    jetzt = datetime.now(TZ_BERLIN)
     run_id = store.start_run(quelle)
 
     # Quellen mit Zeitraum-Abfrage (z. B. familienportal, horizont_tage=21):
@@ -254,7 +261,7 @@ def _scrape_mit_adapter(store, adapter, quelle, *, online, geo,
             geo_client.close()
 
     # Stale-Bereinigung: Events der Quelle, deren Start > 3 Tage zurückliegt
-    cutoff = (datetime.now(TZ_BERLIN) - timedelta(days=3)).astimezone(ZoneInfo("UTC")).isoformat()
+    cutoff = (jetzt - timedelta(days=3)).astimezone(ZoneInfo("UTC")).isoformat()
     store.prune_stale(quelle, cutoff)
 
     n_events = store.count_events()
