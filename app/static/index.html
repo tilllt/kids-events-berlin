@@ -27,45 +27,46 @@
   </div>
 
   <main>
-    <aside id="filters" class="filters-closed">
-      <button id="filter-toggle" type="button" class="filter-toggle" aria-expanded="false" aria-controls="filter-body">
-        <span>Filter</span>
-        <span id="filter-count" class="filter-count hidden"></span>
-      </button>
-      <div id="filter-body">
-      <section>
+    <aside id="filters">
+      <!-- Volltextsuche: immer sichtbar (nie mit eingeklappt) -->
+      <section class="suche-sektion">
         <label for="suche" class="visually-hidden">Volltextsuche</label>
         <input type="search" id="suche" placeholder="Suchen… (z. B. Tag der offenen Tür, Workshop)" autocomplete="off" />
       </section>
-      <section>
-        <h2>Bezirk</h2>
+
+      <details class="filterklapp" open>
+        <summary>Bezirk</summary>
         <div id="bezirk-list" class="checkgrid"></div>
-      </section>
-      <section>
-        <h2>Alter</h2>
+      </details>
+
+      <details class="filterklapp" open>
+        <summary>Alter</summary>
         <div id="alter-list" class="chips"></div>
-      </section>
-      <section>
-        <h2>Uhrzeit</h2>
+      </details>
+
+      <details class="filterklapp" open>
+        <summary>Uhrzeit</summary>
         <div id="uhrzeit-list" class="chips"></div>
-      </section>
-      <section>
-        <h2>Wann</h2>
+      </details>
+
+      <details class="filterklapp" open>
+        <summary>Wann</summary>
         <div id="zeitraum-list" class="chips"></div>
-      </section>
-      <section class="rowline">
-        <label for="von">Von</label><input type="date" id="von" />
-        <label for="bis">Bis</label><input type="date" id="bis" />
-      </section>
-      <section class="rowline">
+        <div class="rowline" style="margin-top:8px">
+          <label for="von">Von</label><input type="date" id="von" />
+          <label for="bis">Bis</label><input type="date" id="bis" />
+        </div>
+      </details>
+
+      <div class="filter-fuss">
         <label class="switch">
           <input type="checkbox" id="kostenlos" />
           <span>Nur kostenlos</span>
         </label>
+        <span id="filter-count" class="filter-count-txt hidden"></span>
         <button id="resetbtn" type="button" class="ghost">Filter zurücksetzen</button>
-      </section>
-      <div id="meta-note" class="metanote"></div>
       </div>
+      <div id="meta-note" class="metanote"></div>
     </aside>
 
     <section id="content">

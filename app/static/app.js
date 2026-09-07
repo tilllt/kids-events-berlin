@@ -429,8 +429,7 @@ function apply() {
   load();
 }
 
-/* Aktive Filter im Toggle-Button zählen (Mobile) — „Heute“ als Standard
-   zählt nicht als aktiver Filter. */
+/* Aktive Filter im Fuß-Badge zählen — „Heute“ als Standard zählt nicht. */
 function updateFilterCount() {
   const el = $("#filter-count");
   let n = state.bezirk.length + state.altersband.length + state.uhrzeit.length;
@@ -443,12 +442,14 @@ function updateFilterCount() {
 }
 
 /* ---------- Init ---------- */
-// Filter collapsible (Mobile): Toggle zwischen offen/zugeklappt
-$("#filter-toggle").addEventListener("click", () => {
-  const aside = $("#filters");
-  const zu = aside.classList.toggle("filters-closed");
-  $("#filter-toggle").setAttribute("aria-expanded", String(!zu));
-});
+// Filter-Kategorien: auf Mobile (≤820px) initial zugeklappt — die Suche
+// oben bleibt immer sichtbar, jede Kategorie ist einzeln aufklappbar.
+// Auf Desktop sind alle Kategorien offen (open-Attribut im HTML).
+(function initFilterKategorien() {
+  if (window.matchMedia("(max-width: 820px)").matches) {
+    $$("#filters details.filterklapp").forEach((d) => d.removeAttribute("open"));
+  }
+})();
 $("#detail-close").addEventListener("click", closeDetail);
 $("#detail").addEventListener("click", (ev) => { if (ev.target === ev.currentTarget) closeDetail(); });
 document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") closeDetail(); });
