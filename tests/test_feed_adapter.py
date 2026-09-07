@@ -140,4 +140,8 @@ def test_quelle_feed_validierung_api(tmp_path):
         "aktiv": 1, "horizont_tage": 365})
     assert r.status_code == 201, r.text
     assert r.json()["typ"] == "feed"
+    # Scrape-Trigger für feed-Quellen ist jetzt erlaubt (2022 statt 409) —
+    # der Lauf läuft im Hintergrund-Thread und scheitert online nur am Netz.
+    r2 = c.post("/api/admin/sources/berlin-senbjf-kalender/scrape", json={})
+    assert r2.status_code == 202, r2.text
     store.close()
