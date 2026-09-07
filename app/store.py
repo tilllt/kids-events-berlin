@@ -653,11 +653,15 @@ class Store:
             self._conn.commit()
 
     # --- Admin: Schulen / Kategorien / manuelle Termine ----------------------
-    def list_schulen(self, bezirk: str | None = None, q: str | None = None) -> list[dict]:
+    def list_schulen(self, bezirk: str | None = None, schulform: str | None = None,
+                     q: str | None = None) -> list[dict]:
         where, args = [], []
         if bezirk:
             where.append("bezirk = ?")
             args.append(bezirk)
+        if schulform:
+            where.append("schulform = ?")
+            args.append(schulform)
         if q:
             where.append("(name LIKE ? OR bsn LIKE ?)")
             args.extend([f"%{q}%", f"%{q}%"])

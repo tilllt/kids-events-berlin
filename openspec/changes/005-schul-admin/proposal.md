@@ -19,14 +19,30 @@ Bearbeitungsmöglichkeit.
   Auth — Schutz folgt später; weiterhin NICHT von der Startseite verlinkt).
 - **Neue Admin-Tabs** (Navigationsleiste statt Abschnitte untereinander):
   `Quellen` (bestehend), `Termine`, `Schulen`, `Kategorien`.
+- **Schulen-Tab = Arbeitsansicht für Schul-Termine (User-Spec 2026-09-07):**
+  1. **Liste ALLER Schulen** inkl. Adresse (bsn, schulform, bezirk, ortsteil,
+     strasse+hausnr, plz, email, website) — aus dem Schul-WFS-Stamm
+     (dl-de-zero-2.0), nur allgemeinbildende (Grundschule/ISS/Gymnasium/
+     Gemeinschaftsschule = 722 von 930), filterbar nach Bezirk/Schulform/Suche.
+  2. **Automatisch erkannte Termine je Schule** sichtbar: Crawl-Funde
+     (Strato-Crawl 2026-09-07, `strato_termin_out.json`) werden als
+     `termine_manuell` mit status=`ungeprueft` + Herkunfts-Vermerk
+     (`quelle_hinweis` = z. B. „automatisch erkannt: <url>“) importiert —
+     der Admin prüft sie, statt selbst zu suchen.
+  3. **Termin-CRUD je Schule**: editieren, löschen, manuell eintragen.
+  4. **Freigabe**: Status `ungeprueft` → `bestaetigt` (erscheint öffentlich
+     auf der Karte, quelle=`manuell`) und zurück.
+  5. **Link zur Homepage bzw. Kalender-Seite der Schule** — öffnet beim
+     Klick die Seite im neuen Tab, damit der Admin den Termin gegenprüfen
+     kann (website aus dem Stamm; erkannte Termine tragen ihre Fund-URL).
+  6. **E-Mail-Fenster an die zentrale Kontaktadresse** der Schule mit
+     Standardtext zur Nachfrage nach TdoT/Infoabenden (mail_vorlage.txt);
+     Versand über SMTP-Einstellungen, `angefragt_am` wird gesetzt.
 - **Termine-Tab:** Liste aller Termine, filterbar/gegruppert **pro
   Einrichtung** (Schule); CRUD: Termin anlegen, bearbeiten, löschen.
   Bestehende Scrape-Termine (Quellen) sind sichtbar, aber nur manuell
   gepflegte Schul-Termine editierbar (Scrape-Termine werden vom nächsten
   Lauf überschrieben — keine sinnlosen Edit-Felder).
-- **Schulen-Tab:** Liste der Berliner Schulen (aus Schul-WFS-Stamm,
-  bsn/schulname/schulform/bezirk/email/website) mit je Termin-Anzahl;
-  Schule = Einrichtung.
 - **Kategorien-Tab:** Terminkategorien verwalten (z. B. „Tag der offenen
   Tür“, „Infoabend“, „Schnuppertag“, „Ferienangebot“) — Name + Farbe.
 - **Mail-Versand aus dem Backend:** pro Schule (Einrichtung) eine
@@ -39,6 +55,19 @@ Bearbeitungsmöglichkeit.
   `termin_kategorien`, `termine_manuell` (manuell gepflegte Schul-Termine,
   Bezug auf schule + kategorie, Vertrauens-Status) — bestehende
   `events`-Tabelle bleibt unangetastet (Scrape-Bestand).
+
+## Import (einmalig + wiederholbar)
+
+- `schulen` aus dem WFS-Stamm befüllen (`/opt/data/schulen_all.json`,
+  dl-de-zero-2.0): Import-Skript `app/import_schulen.py` (oder CLI-Kommando)
+  — upsert, idempotent; nur allgemeinbildende Schularten.
+- Crawl-Termine als `ungeprueft` importieren (Skript/CLI): dedupliziert,
+  nur zukünftige Termine mit Datum + Fund-URL; Quelle-Hinweis dokumentiert
+  die Herkunft, damit der Admin die Seite öffnen und gegenprüfen kann.
+- Die Rohdaten (`strato_termin_out.json`) sind Text-Funde mit Rauschen
+  (News-Zeitstempel, JS-Artefakte, veraltete Jahre) — der Import filtert
+  konservativ: nur parsebares Datum, nur zukünftig, nur wenn ein
+  Datums-Kontext im Text steht; Rest bleibt für die Mail-Anfrage (Stufe C).
 
 ## Specs-Delta
 

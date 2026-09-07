@@ -18,6 +18,40 @@ from .regeln import validate_regeln_yaml
 
 router = APIRouter(prefix="/api/admin")
 
+# Standardtext für die Termin-Anfrage-Mail an Schulen (Vorlage aus der
+# Schul-Erkundung, User-Vorgabe). Platzhalter werden beim Senden ersetzt:
+# {schule}, {schulform}, {bezirk}, {jahr}.
+DEFAULT_MAIL_VORLAGE = """Betreff: Tage der offenen Tür {jahr} – Bitte um Terminmitteilung
+
+Sehr geehrte Damen und Herren,
+
+wir betreiben den Veranstaltungskalender „kinderkram“ (kinderkram.cia-spandau.de),
+auf dem Familien mit Kindern Veranstaltungen in Berlin finden – unter anderem
+die Tage der offenen Tür und Informationsveranstaltungen der Schulen.
+
+Für die {schulform} {schule} ({bezirk}) konnten wir im Internet keinen
+öffentlichen Terminkalender finden. Darf ich Sie bitten, uns die Termine
+für das laufende Schuljahr mitzuteilen:
+
+1. Tag der offenen Tür / Informationsnachmittag: Datum + Uhrzeit
+2. Ggf. Anmeldezeitraum / Schnuppertage
+3. Falls vorhanden: Link zu einer öffentlichen Terminübersicht
+
+Die Angaben werden kostenfrei und ohne weitere Verwendung Ihrer Inhalte
+(keine Texte, keine Bilder) als knappe Terminfakten mit Link auf Ihre
+Website veröffentlicht. Auf Wunsch nehmen wir die Schule selbstverständlich
+wieder aus dem Kalender.
+
+Vielen Dank und freundliche Grüße
+[Name / Einrichtung]
+[Kontakt]
+"""
+
+
+def _mail_vorlage(store) -> str:
+    v = (store.get_setting("mail_vorlage") or "").strip()
+    return v or DEFAULT_MAIL_VORLAGE
+
 
 class AnfrageBody(BaseModel):
     text: str = ""
@@ -183,7 +217,8 @@ def settings_get(request: Request):
 def settings_put(body: dict, request: Request):
     store = _store(request)
     erlaubt = {"scrape_interval_h", "admin_hinweis", "scrape_at",
-               "smtp_host", "smtp_port", "smtp_user", "smtp_pass", "smtp_from"}
+               "smtp_host", "smtp_port", "smtp_user", "smtp_pass", "smtp_from",
+               "mail_vorlage"}
     unbekannt = set(body) - erlaubt
     fehler = []
     for k in sorted(unbekannt):
@@ -251,15 +286,21 @@ def source_scrape(quelle: str, request: Request):
 
 # --- Schulen / Kategorien / manuelle Termine / Mail -------------------------
 @router.get("/schulen")
-def schulen_list(request: Request, bezirk: str | None = None, q: str | None = None):
-    return _store(request).list_schulen(bezirk=bezirk, q=q)
+def schulen_list(request: Request, bezirk: str | None = None,
+                 schulform: str | None = None, q: str | None = None):
+    return _store(request).list_schulen(bezirk=bezirk, schulform=schulform, q=q)
 
 
 @router.get("/schulen/{bsn}")
-def schule_get(bsn: str, request: Request):
-    s = _store(request).get_schule(bsn)
+def schule_get(bsn: str, request: Request,
+               mit_termine: bool = Query(False)):
+    store = _store(request)
+    s = store.get_schule(bsn)
     if not s:
         raise HTTPException(404, f"Unbekannte Schule: {bsn}")
+    if mit_termine:
+        s = dict(s)
+        s["termine"] = store.list_termine_manuell(schule_bsn=bsn)
     return s
 
 
@@ -309,7 +350,13 @@ def schule_delete(bsn: str, request: Request):
 @router.post("/schulen/{bsn}/anfrage", status_code=200)
 def schule_mail_anfrage(bsn: str, body: AnfrageBody, request: Request):
     """Sendet eine Termin-Anfrage-Mail an die Schule (SMTP aus Einstellungen).
-    Ohne konfigurierten SMTP oder ohne Schul-E-Mail → sichtbarer Fehler."""
+
+    text: voller Mail-Text. Optional mit erster Zeile 'Betreff: …' (wird als
+    Subject verwendet). Ohne text wird die Vorlage (Einstellung mail_vorlage,
+    Fallback DEFAULT_MAIL_VORLAGE) mit Platzhaltern gefüllt. Platzhalter
+    {schule}/{schulform}/{bezirk}/{jahr} werden ersetzt.
+    Ohne konfigurierten SMTP oder ohne Schul-E-Mail → sichtbarer Fehler.
+    """
     store = _store(request)
     sch = store.get_schule(bsn)
     if not sch:
@@ -317,16 +364,41 @@ def schule_mail_anfrage(bsn: str, body: AnfrageBody, request: Request):
     empfaenger = (sch.get("email") or "").strip()
     if not empfaenger:
         raise HTTPException(422, {"fehler": ["Schule hat keine E-Mail-Adresse hinterlegt."]})
-    text = (body.text or "").strip()
-    if not text:
-        raise HTTPException(422, {"fehler": ["text fehlt (Nachricht an die Schule)."]})
-    _sende_mail(store, empfaenger, sch.get("name") or bsn, text)
+    text = _mail_mit_platzhaltern(store, sch, (body.text or "").strip())
+    betreff, nachricht = _mail_betreff(text, sch.get("name") or bsn)
+    _sende_mail(store, empfaenger, betreff, nachricht)
     store.set_schule_angefragt(bsn, iso_utc(datetime.now(TZ_BERLIN)))
     return {"status": "gesendet", "schule": bsn, "an_": empfaenger,
+            "betreff": betreff,
             "angefragt_am": store.get_schule(bsn)["angefragt_am"]}
 
 
-def _sende_mail(store, empfaenger: str, schulname: str, text: str) -> None:
+def _mail_mit_platzhaltern(store, sch: dict, text: str) -> str:
+    """Leeren Text mit der Vorlage füllen; {schule}-Platzhalter ersetzen."""
+    if not text:
+        text = _mail_vorlage(store)
+    jahr = datetime.now(TZ_BERLIN).year
+    ersetzungen = {
+        "schule": sch.get("name") or "",
+        "schulform": sch.get("schulform") or "Schule",
+        "bezirk": sch.get("bezirk") or "",
+        "jahr": str(jahr),
+    }
+    for k, v in ersetzungen.items():
+        text = text.replace("{" + k + "}", v)
+    return text.strip()
+
+
+def _mail_betreff(text: str, schulname: str) -> tuple[str, str]:
+    """Erste 'Betreff: …'-Zeile als Subject, Rest als Nachricht."""
+    if text.startswith("Betreff:"):
+        erste, _, rest = text.partition("\n")
+        betreff = erste.split(":", 1)[1].strip()
+        return betreff, rest.strip()
+    return f"Termin-Anfrage: {schulname}", text
+
+
+def _sende_mail(store, empfaenger: str, betreff: str, nachricht: str) -> None:
     import smtplib
     from email.message import EmailMessage
     host = (store.get_setting("smtp_host") or "").strip()
@@ -342,10 +414,10 @@ def _sende_mail(store, empfaenger: str, schulname: str, text: str) -> None:
     except ValueError:
         port = 587
     msg = EmailMessage()
-    msg["Subject"] = f"Termin-Anfrage: {schulname}"
+    msg["Subject"] = betreff
     msg["From"] = von
     msg["To"] = empfaenger
-    msg.set_content(text)
+    msg.set_content(nachricht)
     try:
         with smtplib.SMTP(host, port, timeout=30) as smtp:
             smtp.ehlo()

@@ -6,33 +6,39 @@
   <title>Verwaltung — Kinder-Events Berlin</title>
   <link rel="stylesheet" href="/static/style.css" />
   <style>
-    body { max-width: 1100px; margin: 0 auto; padding: 16px; }
+    body { max-width: 1200px; margin: 0 auto; padding: 16px; }
     header { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
     header h1 { font-size: 20px; margin: 0; }
     .adminnote { border: 1px solid #b8860b; color: #e6c36a; background: rgba(184,134,11,.08);
       border-radius: 6px; padding: 6px 10px; font-size: 12.5px; margin: 10px 0; }
     h2 { font-size: 15px; margin: 22px 0 8px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+    h3 { font-size: 13.5px; margin: 0 0 8px; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
     th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
     th { color: var(--muted); font-weight: 600; font-size: 11.5px; text-transform: uppercase; }
+    tr.schule { cursor: pointer; }
+    tr.schule:hover td { background: rgba(255,255,255,.03); }
     .badge { display: inline-block; font-size: 11px; padding: 0 7px; border-radius: 8px; border: 1px solid var(--border); color: var(--muted); }
     .badge.ok { color: var(--ok); border-color: var(--ok); }
     .badge.err { color: #f85149; border-color: #f85149; }
     .badge.off { opacity: .55; }
-    .btnrow { display: flex; gap: 6px; flex-wrap: wrap; }
+    .badge.warn { color: #d29922; border-color: #d29922; }
+    .btnrow { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
     button { background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 5px;
       padding: 5px 10px; cursor: pointer; font-size: 12.5px; }
     button:hover { border-color: var(--accent); }
     button.primary { background: var(--accent); color: #0c0f14; border-color: var(--accent); font-weight: 600; }
     button.danger { color: #f85149; border-color: #f85149; }
     button.ghost { background: transparent; color: var(--muted); }
+    button:disabled { opacity: .5; cursor: default; }
     .panel { border: 1px solid var(--border); border-radius: 8px; padding: 14px; background: var(--panel); margin: 10px 0; }
     .formgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px 14px; }
     label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
     input, select, textarea { background: #0f131a; color: var(--text); border: 1px solid var(--border);
       border-radius: 5px; padding: 6px 8px; font-size: 13px; font-family: inherit; }
     input[type="checkbox"] { accent-color: var(--accent); width: auto; }
-    textarea { font-family: ui-monospace, monospace; font-size: 12px; min-height: 240px; width: 100%; box-sizing: border-box; }
+    textarea.mail { font-family: ui-monospace, monospace; font-size: 12px; min-height: 300px; width: 100%; box-sizing: border-box; }
+    textarea.yaml { font-family: ui-monospace, monospace; font-size: 12px; min-height: 240px; width: 100%; box-sizing: border-box; }
     .hinweis { color: var(--ok); font-size: 12.5px; margin-top: 6px; }
     .fehler { color: #f85149; font-size: 12.5px; margin-top: 6px; }
     .muted { color: var(--muted); font-size: 12px; }
@@ -42,6 +48,29 @@
     #statusline { margin-left: auto; color: var(--muted); font-size: 12.5px; }
     code { background: rgba(255,255,255,.06); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
     a.back { color: var(--accent); font-size: 13px; text-decoration: none; }
+    /* Tabs */
+    nav.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin: 12px 0 0; flex-wrap: wrap; }
+    nav.tabs button { border: none; border-bottom: 2px solid transparent; border-radius: 6px 6px 0 0;
+      background: transparent; padding: 8px 14px; font-size: 13.5px; color: var(--muted); }
+    nav.tabs button:hover { color: var(--text); }
+    nav.tabs button.aktiv { color: var(--text); border-bottom-color: var(--accent); background: rgba(255,255,255,.03); }
+    .tabinhalt { padding-top: 4px; }
+    .count { font-size: 11px; color: var(--muted); padding-left: 4px; }
+    /* Collapsible */
+    details.klapp { border: 1px solid var(--border); border-radius: 8px; background: var(--panel); margin: 8px 0; }
+    details.klapp summary { cursor: pointer; padding: 9px 12px; font-size: 13px; color: var(--text); list-style: none; }
+    details.klapp summary::-webkit-details-marker { display: none; }
+    details.klapp summary::before { content: "▸ "; color: var(--muted); }
+    details.klapp[open] summary::before { content: "▾ "; }
+    details.klapp .klappbody { padding: 0 12px 12px; border-top: 1px solid var(--border); padding-top: 10px; }
+    .adr { line-height: 1.5; }
+    .termzeile { display: flex; justify-content: space-between; align-items: center; gap: 10px;
+      padding: 7px 4px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+    .termzeile:last-child { border-bottom: none; }
+    .termtitel { font-weight: 600; }
+    .termmt { color: var(--muted); font-size: 12.5px; }
+    .klein { font-size: 11.5px; color: var(--muted); }
+    .zurueck { margin-bottom: 8px; }
   </style>
 </head>
 <body>
@@ -54,8 +83,16 @@
   <div class="adminnote">⚠ Diese Verwaltungsseite ist derzeit <b>offen</b> (ohne Anmeldung). Vor einem öffentlichen Betrieb absichern — Schutz folgt in einem späteren Schritt.</div>
   <div id="errorbar" class="errorbar hidden"><span id="errortext"></span></div>
 
-  <section>
-    <h2>Quellen</h2>
+  <nav class="tabs" id="tabs">
+    <button data-tab="quellen" class="aktiv">Quellen</button>
+    <button data-tab="schulen">Schulen</button>
+    <button data-tab="termine">Termine</button>
+    <button data-tab="kategorien">Kategorien</button>
+    <button data-tab="einstellungen">Einstellungen</button>
+  </nav>
+
+  <!-- ===================== TAB: QUELLEN ===================== -->
+  <section class="tabinhalt" id="tab-quellen">
     <div class="btnrow" style="margin-bottom:8px">
       <button id="neuBtn" type="button" class="primary">+ Neue Quelle</button>
       <button id="refreshBtn" type="button" class="ghost">Aktualisieren</button>
@@ -68,40 +105,131 @@
       </tr></thead>
       <tbody></tbody>
     </table>
+
+    <div class="spalte">
+      <section>
+        <h2>Letzte Läufe</h2>
+        <table id="runsTabelle">
+          <thead><tr><th>Zeit</th><th>Quelle</th><th>Status</th><th>Neu</th><th>Geänd.</th><th>Fehler</th><th>Dauer</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </section>
+      <section>
+        <h2>Fehler-Queue</h2>
+        <div id="fehlerListe" class="muted"></div>
+      </section>
+    </div>
   </section>
 
-  <div class="spalte">
-    <section>
-      <h2>Letzte Läufe</h2>
-      <table id="runsTabelle">
-        <thead><tr><th>Zeit</th><th>Quelle</th><th>Status</th><th>Neu</th><th>Geänd.</th><th>Fehler</th><th>Dauer</th></tr></thead>
+  <!-- ===================== TAB: SCHULEN ===================== -->
+  <section class="tabinhalt hidden" id="tab-schulen">
+    <div id="schuleUebersicht">
+      <div class="btnrow" style="margin-bottom:8px">
+        <input id="schulSuche" type="search" placeholder="Schule oder BSN suchen…" style="min-width:240px" />
+        <select id="schulBezirk"><option value="">Alle Bezirke</option></select>
+        <select id="schulForm"><option value="">Alle Schulformen</option></select>
+        <span class="muted" id="schulZaehler"></span>
+      </div>
+      <div id="schuleListe" style="max-height:70vh; overflow:auto; border:1px solid var(--border); border-radius:8px;">
+        <table>
+          <thead><tr><th>Schule</th><th>Schulform</th><th>Adresse</th><th>Kontakt</th><th>Termine</th><th>Aktionen</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Detail einer Schule (ausgeklappt) -->
+    <div id="schuleDetail" class="hidden">
+      <button id="schuleZurueck" type="button" class="ghost zurueck">← Zurück zur Liste</button>
+      <div id="schuleDetailInhalt"></div>
+    </div>
+  </section>
+
+  <!-- ===================== TAB: TERMINE ===================== -->
+  <section class="tabinhalt hidden" id="tab-termine">
+    <div class="btnrow" style="margin-bottom:8px">
+      <select id="termineFilterStatus">
+        <option value="">Alle Status</option>
+        <option value="ungeprueft">Ungeprüft</option>
+        <option value="bestaetigt">Bestätigt</option>
+      </select>
+      <span class="muted">Nur manuell gepflegte Schul-Termine (Scrape-Termine werden von Läufen überschrieben).</span>
+    </div>
+    <div id="termineListe" style="max-height:70vh; overflow:auto; border:1px solid var(--border); border-radius:8px;">
+      <table>
+        <thead><tr><th>Datum</th><th>Schule</th><th>Titel</th><th>Status</th><th>Beleg</th><th>Aktionen</th></tr></thead>
         <tbody></tbody>
       </table>
-    </section>
-    <section>
-      <h2>Fehler-Queue</h2>
-      <div id="fehlerListe" class="muted"></div>
-    </section>
-  </div>
-
-  <section>
-    <h2>Einstellungen</h2>
-    <div class="panel">
-      <div class="formgrid" style="max-width:520px">
-        <label>Scrape täglich um (Europe/Berlin, HH:MM)
-          <input type="text" id="setAt" placeholder="05:30" title="Leer lassen für Intervall-Modus" />
-        </label>
-        <label>…oder Scrape-Intervall (Stunden, nur wenn Uhrzeit leer)
-          <input type="number" id="setInterval" min="0.5" max="168" step="0.5" />
-        </label>
-      </div>
-      <p class="hint" style="max-width:520px;margin:6px 0 0;font-size:12px;color:var(--muted)">
-        Ohne Einstellung scrapet die App täglich um 05:30 — die Termine der Quellen
-        erscheinen meist erst tagesnah, deshalb läuft der Scrape von selbst.
-      </p>
-      <div style="margin-top:10px"><button id="settingsBtn" type="button" class="primary">Einstellungen speichern</button>
-      <span id="settingsMsg"></span></div>
     </div>
+  </section>
+
+  <!-- ===================== TAB: KATEGORIEN ===================== -->
+  <section class="tabinhalt hidden" id="tab-kategorien">
+    <div class="btnrow" style="margin-bottom:8px">
+      <button id="katNeu" type="button" class="primary">+ Neue Kategorie</button>
+    </div>
+    <div id="katPanel" class="panel hidden"></div>
+    <table id="katTabelle">
+      <thead><tr><th>Name</th><th>Farbe</th><th>Sortierung</th><th>Aktionen</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <!-- ===================== TAB: EINSTELLUNGEN ===================== -->
+  <section class="tabinhalt hidden" id="tab-einstellungen">
+    <details class="klapp" open>
+      <summary>Scrape-Zeitplan</summary>
+      <div class="klappbody">
+        <div class="formgrid" style="max-width:520px">
+          <label>Scrape täglich um (Europe/Berlin, HH:MM)
+            <input type="text" id="setAt" placeholder="05:30" title="Leer lassen für Intervall-Modus" />
+          </label>
+          <label>…oder Scrape-Intervall (Stunden, nur wenn Uhrzeit leer)
+            <input type="number" id="setInterval" min="0.5" max="168" step="0.5" />
+          </label>
+        </div>
+        <p class="hint" style="max-width:520px;margin:6px 0 0;font-size:12px;color:var(--muted)">
+          Ohne Einstellung scrapet die App täglich um 05:30 — die Termine der Quellen
+          erscheinen meist erst tagesnah, deshalb läuft der Scrape von selbst.
+        </p>
+        <div style="margin-top:10px"><button id="settingsBtn" type="button" class="primary">Einstellungen speichern</button>
+        <span id="settingsMsg"></span></div>
+      </div>
+    </details>
+
+    <details class="klapp" id="smtpKlapp">
+      <summary>E-Mail-Versand (SMTP) — für Termin-Anfragen an Schulen</summary>
+      <div class="klappbody">
+        <div class="formgrid">
+          <label>SMTP-Server (Host)<input id="setSmtpHost" placeholder="smtp.example.org" /></label>
+          <label>Port (Default 587 + STARTTLS)<input id="setSmtpPort" placeholder="587" /></label>
+          <label>Benutzer<input id="setSmtpUser" autocomplete="off" /></label>
+          <label>Passwort<input id="setSmtpPass" type="password" autocomplete="new-password" /></label>
+          <label>Absender (From)<input id="setSmtpFrom" placeholder="kinderkram@example.org" /></label>
+        </div>
+        <div style="margin-top:10px"><button id="smtpBtn" type="button" class="primary">SMTP speichern</button>
+        <span id="smtpMsg"></span></div>
+      </div>
+    </details>
+
+    <details class="klapp" id="vorlageKlapp">
+      <summary>Mail-Vorlage (Standardtext der Termin-Anfrage)</summary>
+      <div class="klappbody">
+        <p class="muted" style="margin-top:0">Platzhalter werden beim Senden ersetzt:
+          <code>{schule}</code> <code>{schulform}</code> <code>{bezirk}</code> <code>{jahr}</code>.
+          Erste Zeile <code>Betreff: …</code> wird der Mail-Betreff.</p>
+        <textarea id="setVorlage" class="mail" spellcheck="false"></textarea>
+        <div style="margin-top:10px"><button id="vorlageBtn" type="button" class="primary">Vorlage speichern</button>
+        <span id="vorlageMsg"></span></div>
+      </div>
+    </details>
+
+    <details class="klapp">
+      <summary>Termin-Kategorien (z. B. „Tag der offenen Tür“, „Infoabend“)</summary>
+      <div class="klappbody" id="katKurz">
+        <div class="muted">Kategorien werden im Tab „Kategorien“ verwaltet.</div>
+      </div>
+    </details>
   </section>
 
   <script src="/static/admin.js"></script>

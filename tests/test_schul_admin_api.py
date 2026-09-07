@@ -168,9 +168,19 @@ def test_anfrage_sendet_mail(tmp_path, monkeypatch):
     assert "Termin-Anfrage" in gesendet["msg"]["Subject"]
     # angefragt_am ist gesetzt
     assert c.get("/api/admin/schulen/1001").json()["angefragt_am"] is not None
-    # leere Nachricht → 422
+    # leerer Text → Vorlage wird gefüllt (Standard-Text), kein 422
+    gesendet.pop("msg", None)
     r = c.post("/api/admin/schulen/1001/anfrage", json={"text": "   "})
-    assert r.status_code == 422
+    assert r.status_code == 200, r.text
+    assert gesendet["msg"]["Subject"].startswith("Tage der offenen Tür")
+    assert "Grundschule Muster" in gesendet["msg"].get_content()
+    assert "spandau" in gesendet["msg"].get_content()
+    # explizite Betreff-Zeile wird als Subject übernommen
+    gesendet.pop("msg", None)
+    r = c.post("/api/admin/schulen/1001/anfrage",
+               json={"text": "Betreff: Terminliste gesucht\n\nHallo!"})
+    assert r.status_code == 200
+    assert gesendet["msg"]["Subject"] == "Terminliste gesucht"
 
 
 def test_anfrage_unbekannte_schule_404(tmp_path):
