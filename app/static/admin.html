@@ -54,6 +54,7 @@
       background: transparent; padding: 8px 14px; font-size: 13.5px; color: var(--muted); }
     nav.tabs button:hover { color: var(--text); }
     nav.tabs button.aktiv { color: var(--text); border-bottom-color: var(--accent); background: rgba(255,255,255,.03); }
+    nav.tabs button.unter { font-size: 12.5px; padding: 6px 11px; }
     .tabinhalt { padding-top: 4px; }
     .count { font-size: 11px; color: var(--muted); padding-left: 4px; }
     /* Collapsible */
@@ -71,6 +72,16 @@
     .termmt { color: var(--muted); font-size: 12.5px; }
     .klein { font-size: 11.5px; color: var(--muted); }
     .zurueck { margin-bottom: 8px; }
+    /* Tag-Chips */
+    .chip { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 9px;
+      border: 1px solid var(--border); color: var(--text); margin: 1px 3px 1px 0; }
+    .tagwahl { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+    .tagwahl button { font-size: 11px; padding: 2px 8px; border-radius: 9px; }
+    .tagwahl button.aktiv { background: var(--accent); color: #0c0f14; border-color: var(--accent); }
+    /* Quelle-Unter-Tab-Header */
+    .quellkopf { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 10px 0 6px; }
+    .quellkopf .name { font-size: 14px; font-weight: 600; }
+    .manuell-kennz { color: #d29922; font-size: 12px; }
   </style>
 </head>
 <body>
@@ -85,97 +96,104 @@
 
   <nav class="tabs" id="tabs">
     <button data-tab="quellen" class="aktiv">Quellen</button>
-    <button data-tab="schulen">Schulen</button>
     <button data-tab="termine">Termine</button>
-    <button data-tab="kategorien">Kategorien</button>
     <button data-tab="einstellungen">Einstellungen</button>
   </nav>
 
-  <!-- ===================== TAB: QUELLEN ===================== -->
+  <!-- ===================== OBER-TAB: QUELLEN ===================== -->
   <section class="tabinhalt" id="tab-quellen">
-    <div class="btnrow" style="margin-bottom:8px">
-      <button id="neuBtn" type="button" class="primary">+ Neue Quelle</button>
-      <button id="refreshBtn" type="button" class="ghost">Aktualisieren</button>
-    </div>
-    <div id="quellenPanel" class="panel hidden"></div>
-    <div id="regelnPanel" class="panel hidden"></div>
-    <table id="quellenTabelle">
-      <thead><tr>
-        <th>Quelle</th><th>Typ</th><th>URL</th><th>Aktiv</th><th>Events</th><th>Letzter Lauf</th><th>Aktionen</th>
-      </tr></thead>
-      <tbody></tbody>
-    </table>
+    <!-- Unter-Tabs: Übersicht + je Quelle + Schulen (JS baut) -->
+    <nav class="tabs" id="unterTabs" style="margin-top:0"></nav>
 
-    <div class="spalte">
-      <section>
-        <h2>Letzte Läufe</h2>
-        <table id="runsTabelle">
-          <thead><tr><th>Zeit</th><th>Quelle</th><th>Status</th><th>Neu</th><th>Geänd.</th><th>Fehler</th><th>Dauer</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </section>
-      <section>
-        <h2>Fehler-Queue</h2>
-        <div id="fehlerListe" class="muted"></div>
-      </section>
-    </div>
-  </section>
-
-  <!-- ===================== TAB: SCHULEN ===================== -->
-  <section class="tabinhalt hidden" id="tab-schulen">
-    <div id="schuleUebersicht">
+    <!-- Unter-Tab: Übersicht (Quellenverwaltung + Läufe + Fehler) -->
+    <div id="unter-uebersicht">
       <div class="btnrow" style="margin-bottom:8px">
-        <input id="schulSuche" type="search" placeholder="Schule oder BSN suchen…" style="min-width:240px" />
-        <select id="schulBezirk"><option value="">Alle Bezirke</option></select>
-        <select id="schulForm"><option value="">Alle Schulformen</option></select>
-        <span class="muted" id="schulZaehler"></span>
+        <button id="neuBtn" type="button" class="primary">+ Neue Quelle</button>
+        <button id="refreshBtn" type="button" class="ghost">Aktualisieren</button>
       </div>
-      <div id="schuleListe" style="max-height:70vh; overflow:auto; border:1px solid var(--border); border-radius:8px;">
+      <div id="quellenPanel" class="panel hidden"></div>
+      <div id="regelnPanel" class="panel hidden"></div>
+      <table id="quellenTabelle">
+        <thead><tr>
+          <th>Quelle</th><th>Typ</th><th>URL</th><th>Aktiv</th><th>Events</th><th>Letzter Lauf</th><th>Aktionen</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+
+      <div class="spalte">
+        <section>
+          <h2>Letzte Läufe</h2>
+          <table id="runsTabelle">
+            <thead><tr><th>Zeit</th><th>Quelle</th><th>Status</th><th>Neu</th><th>Geänd.</th><th>Fehler</th><th>Dauer</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </section>
+        <section>
+          <h2>Fehler-Queue</h2>
+          <div id="fehlerListe" class="muted"></div>
+        </section>
+      </div>
+    </div>
+
+    <!-- Unter-Tab-Inhalte je Quelle (JS füllt: Ereignisliste der Quelle) -->
+    <div id="unter-quelle" class="hidden">
+      <div id="quelleKopf"></div>
+      <div id="quelleEvents" style="max-height:70vh; overflow:auto; border:1px solid var(--border); border-radius:8px;">
         <table>
-          <thead><tr><th>Schule</th><th>Schulform</th><th>Adresse</th><th>Kontakt</th><th>Termine</th><th>Aktionen</th></tr></thead>
+          <thead><tr><th>Datum</th><th>Titel</th><th>Ort</th><th>Tags</th><th>Status</th><th>Aktionen</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
     </div>
 
-    <!-- Detail einer Schule (ausgeklappt) -->
-    <div id="schuleDetail" class="hidden">
-      <button id="schuleZurueck" type="button" class="ghost zurueck">← Zurück zur Liste</button>
-      <div id="schuleDetailInhalt"></div>
+    <!-- Unter-Tab: Schulen (manuelle Quelle) -->
+    <div id="unter-schulen" class="hidden">
+      <div id="schuleUebersicht">
+        <div class="btnrow" style="margin-bottom:8px">
+          <input id="schulSuche" type="search" placeholder="Schule oder BSN suchen…" style="min-width:240px" />
+          <select id="schulBezirk"><option value="">Alle Bezirke</option></select>
+          <select id="schulForm"><option value="">Alle Schulformen</option></select>
+          <span class="muted" id="schulZaehler"></span>
+        </div>
+        <div id="schuleListe" style="max-height:70vh; overflow:auto; border:1px solid var(--border); border-radius:8px;">
+          <table>
+            <thead><tr><th>Schule</th><th>Schulform</th><th>Adresse</th><th>Kontakt</th><th>Termine</th><th>Aktionen</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Detail einer Schule (ausgeklappt) -->
+      <div id="schuleDetail" class="hidden">
+        <button id="schuleZurueck" type="button" class="ghost zurueck">← Zurück zur Liste</button>
+        <div id="schuleDetailInhalt"></div>
+      </div>
     </div>
   </section>
 
-  <!-- ===================== TAB: TERMINE ===================== -->
+  <!-- ===================== OBER-TAB: TERMINE (ALLE) ===================== -->
   <section class="tabinhalt hidden" id="tab-termine">
     <div class="btnrow" style="margin-bottom:8px">
+      <select id="termineFilterQuelle"><option value="">Alle Quellen</option></select>
       <select id="termineFilterStatus">
         <option value="">Alle Status</option>
-        <option value="ungeprueft">Ungeprüft</option>
-        <option value="bestaetigt">Bestätigt</option>
+        <option value="auto">Gescrapt (auto)</option>
+        <option value="manuell">Manuell gepflegt</option>
       </select>
-      <span class="muted">Nur manuell gepflegte Schul-Termine (Scrape-Termine werden von Läufen überschrieben).</span>
+      <input id="termineSuche" type="search" placeholder="Titel oder Ort suchen…" style="min-width:200px" />
+      <span class="muted" id="termineZaehler"></span>
     </div>
+    <div class="muted" style="margin-bottom:6px">Alle Termine sind hier editierbar — auch gescrapte. Wer einen gescrapten Termin bearbeitet,
+      markiert ihn als <b>manuell gepflegt</b>: Der nächste Scrape überschreibt ihn nicht mehr.</div>
     <div id="termineListe" style="max-height:70vh; overflow:auto; border:1px solid var(--border); border-radius:8px;">
       <table>
-        <thead><tr><th>Datum</th><th>Schule</th><th>Titel</th><th>Status</th><th>Beleg</th><th>Aktionen</th></tr></thead>
+        <thead><tr><th>Datum</th><th>Quelle</th><th>Titel</th><th>Ort</th><th>Tags</th><th>Status</th><th>Aktionen</th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
   </section>
 
-  <!-- ===================== TAB: KATEGORIEN ===================== -->
-  <section class="tabinhalt hidden" id="tab-kategorien">
-    <div class="btnrow" style="margin-bottom:8px">
-      <button id="katNeu" type="button" class="primary">+ Neue Kategorie</button>
-    </div>
-    <div id="katPanel" class="panel hidden"></div>
-    <table id="katTabelle">
-      <thead><tr><th>Name</th><th>Farbe</th><th>Sortierung</th><th>Aktionen</th></tr></thead>
-      <tbody></tbody>
-    </table>
-  </section>
-
-  <!-- ===================== TAB: EINSTELLUNGEN ===================== -->
+  <!-- ===================== OBER-TAB: EINSTELLUNGEN ===================== -->
   <section class="tabinhalt hidden" id="tab-einstellungen">
     <details class="klapp" open>
       <summary>Scrape-Zeitplan</summary>
@@ -206,6 +224,7 @@
           <label>Benutzer<input id="setSmtpUser" autocomplete="off" /></label>
           <label>Passwort<input id="setSmtpPass" type="password" autocomplete="new-password" /></label>
           <label>Absender (From)<input id="setSmtpFrom" placeholder="kinderkram@example.org" /></label>
+          <label>Antwort an (Reply-To)<input id="setSmtpReplyTo" placeholder="kinderkram@example.org" /></label>
         </div>
         <div style="margin-top:10px"><button id="smtpBtn" type="button" class="primary">SMTP speichern</button>
         <span id="smtpMsg"></span></div>
@@ -217,17 +236,30 @@
       <div class="klappbody">
         <p class="muted" style="margin-top:0">Platzhalter werden beim Senden ersetzt:
           <code>{schule}</code> <code>{schulform}</code> <code>{bezirk}</code> <code>{jahr}</code>.
-          Erste Zeile <code>Betreff: …</code> wird der Mail-Betreff.</p>
+          Erste Zeile <code>Betreff: …</code> wird der Mail-Betreff.
+          Dieser Beispieltext wird mitgeliefert und kann hier angepasst werden.</p>
         <textarea id="setVorlage" class="mail" spellcheck="false"></textarea>
         <div style="margin-top:10px"><button id="vorlageBtn" type="button" class="primary">Vorlage speichern</button>
         <span id="vorlageMsg"></span></div>
       </div>
     </details>
 
-    <details class="klapp">
-      <summary>Termin-Kategorien (z. B. „Tag der offenen Tür“, „Infoabend“)</summary>
-      <div class="klappbody" id="katKurz">
-        <div class="muted">Kategorien werden im Tab „Kategorien“ verwaltet.</div>
+    <details class="klapp" id="tagsKlapp">
+      <summary>Tags — Schlagworte für alle Termine</summary>
+      <div class="klappbody">
+        <p class="muted" style="margin-top:0">Tags kennzeichnen jede Art von Termin
+          (Schul-Termine: „Tag der offenen Tür“, „Infoabend“…; Veranstaltungen:
+          „Workshop“, „Musik &amp; Konzert“…). Die Liste ist ein Start-Template —
+          eigene Tags kannst du hier ergänzen. Tags werden an den Terminen im
+          Termine-Tab vergeben.</p>
+        <div class="btnrow" style="margin-bottom:8px">
+          <button id="tagNeu" type="button" class="primary">+ Eigenes Tag</button>
+        </div>
+        <div id="tagPanel" class="panel hidden"></div>
+        <table id="tagTabelle">
+          <thead><tr><th>Tag</th><th>Farbe</th><th>Herkunft</th><th>Aktionen</th></tr></thead>
+          <tbody></tbody>
+        </table>
       </div>
     </details>
   </section>

@@ -320,6 +320,90 @@ class Store:
             int(ev.get("manuell", 0)),
         )
 
+    def list_events_admin(self, quelle: str | None = None,
+                          status: str | None = None,
+                          q: str | None = None,
+                          limit: int = 1000) -> list[dict]:
+        """Alle Events (auch gescrapte) für die Admin-Terminliste —
+        mit manuell-Flag, sortiert nach Start (neueste zuerst)."""
+        where, args = [], []
+        if quelle:
+            where.append("quelle = ?")
+            args.append(quelle)
+        if status:
+            where.append("status = ?")
+            args.append(status)
+        if q:
+            where.append("(titel LIKE ? OR ort LIKE ? OR adresse LIKE ?)")
+            like = f"%{q}%"
+            args.extend([like, like, like])
+        sql = ("SELECT * FROM events"
+               + (f" WHERE {' AND '.join(where)}" if where else "")
+               + " ORDER BY start_iso DESC LIMIT ?")
+        args.append(limit)
+        with self._lock:
+            rows = self._conn.execute(sql, args).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["kategorien"] = json.loads(d.get("kategorien") or "[]")
+            out.append(d)
+        return out
+
+    def get_event(self, ev_id: str) -> dict | None:
+        with self._lock:
+            r = self._conn.execute("SELECT * FROM events WHERE id=?", (ev_id,)).fetchone()
+        if not r:
+            return None
+        d = dict(r)
+        d["kategorien"] = json.loads(d.get("kategorien") or "[]")
+        return d
+
+    def update_event_admin(self, ev_id: str, felder: dict) -> bool:
+        """Admin-Edit eines Events (auch gescraptes) → manuell=1.
+
+        Erlaubte Felder: titel, beschreibung_kurz, ort, adresse, bezirk,
+        kategorien, kostenlos, ganztags. Nur gesendete Felder ändern
+        (Partial-Update), nie Scrape-Felder wie quelle/source_*.
+        Rückgabe: True wenn geändert."""
+        erlaubt = {"titel", "beschreibung_kurz", "ort", "adresse", "bezirk",
+                   "kategorien", "kostenlos", "ganztags", "start_local",
+                   "ende_local"}
+        sets, vals = [], []
+        for k in erlaubt:
+            if k in felder and felder[k] is not None:
+                if k == "kategorien":
+                    sets.append("kategorien = ?")
+                    vals.append(json.dumps(felder[k] or [], ensure_ascii=False))
+                elif k in ("kostenlos", "ganztags"):
+                    sets.append(f"{k} = ?")
+                    vals.append(int(bool(felder[k])))
+                else:
+                    sets.append(f"{k} = ?")
+                    vals.append(felder[k])
+        # start_local mitgeführt → start_iso (UTC) neu berechnen, damit
+        # Sortierung/Filters der öffentlichen API stimmen.
+        if "start_local" in felder and felder["start_local"]:
+            try:
+                lokal = datetime.fromisoformat(felder["start_local"])
+            except ValueError:
+                lokal = None
+            if lokal is not None:
+                sets.append("start_iso = ?")
+                vals.append(iso_utc(lokal))
+        if not sets:
+            return False
+        sets.append("manuell = 1")  # Admin-Edit → Scrape überschreibt nicht mehr
+        sets.append("geholt_am = ?")
+        vals.append(iso_utc(datetime.now(TZ_BERLIN)))
+        vals.append(ev_id)
+        with self._lock:
+            cur = self._conn.execute(
+                f"UPDATE events SET {', '.join(sets)} WHERE id = ?", vals)
+            self._conn.commit()
+        return cur.rowcount > 0
+
+
     def query_events(self, filters: dict) -> list[dict]:
         """Filter: bezirk(list), altersband(list of (lo,hi,family)),
         uhrzeit(list of band keys), von/bis (Datum lokal, YYYY-MM-DD),

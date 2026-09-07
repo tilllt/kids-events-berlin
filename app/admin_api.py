@@ -485,6 +485,29 @@ def tag_delete(kid: str, request: Request):
         raise HTTPException(404, str(e)) from None
 
 
+@router.get("/events")
+def events_admin_list(request: Request, quelle: str | None = None,
+                      status: str | None = None, q: str | None = None,
+                      limit: int = 1000):
+    """ALLE Events (auch gescrapte) für die Termin-Verwaltung."""
+    return _store(request).list_events_admin(quelle=quelle, status=status,
+                                             q=q, limit=limit)
+
+
+@router.put("/events/{ev_id}")
+def event_admin_update(ev_id: str, body: dict, request: Request):
+    """Admin-Edit eines beliebigen Events → manuell=1 (Scrape überschreibt
+    danach nicht mehr — „Meine Bearbeitung gewinnt“, User-Entscheidung)."""
+    store = _store(request)
+    if not store.update_event_admin(ev_id, body):
+        raise HTTPException(404, f"Unbekanntes Event: {ev_id}")
+    # frisch zurücklesen
+    ev = store.get_event(ev_id)
+    if not ev:
+        raise HTTPException(404, f"Unbekanntes Event: {ev_id}")
+    return ev
+
+
 @router.get("/termine")
 def termine_list(request: Request, schule: str | None = None,
                  status: str | None = None):

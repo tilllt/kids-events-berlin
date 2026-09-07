@@ -355,21 +355,88 @@ $("#vorlageBtn").onclick = async () => {
   } catch (e) { meldung(msg, e.message, false); }
 };
 
-/* ---------- Tabs ---------- */
+/* ---------- Tabs: Obertab (Quellen | Termine | Einstellungen) ---------- */
+let obentab = "quellen";
+let untertab = "uebersicht"; // uebersicht | quelle:<key> | schulen
+
+function unterTabZeigen(name) {
+  untertab = name;
+  $$("#unterTabs button").forEach((b) =>
+    b.classList.toggle("aktiv", b.dataset.unter === name));
+  ["uebersicht", "quelle", "schulen"].forEach((t) =>
+    $("#unter-" + t).classList.toggle("hidden", t !== name.split(":")[0]));
+  if (name === "schulen") loadSchulen();
+  if (name.startsWith("quelle:")) quelleEventsLaden(name.split(":")[1]);
+}
+
 function tabAktiv(name) {
+  obentab = name;
   $$("#tabs button").forEach((b) => b.classList.toggle("aktiv", b.dataset.tab === name));
-  ["quellen", "schulen", "termine", "kategorien", "einstellungen"].forEach((t) => {
-    $("#tab-" + t).classList.toggle("hidden", t !== name);
+  ["quellen", "termine", "einstellungen"].forEach((t) => {
+    const el = $("#tab-" + t);
+    if (el) el.classList.toggle("hidden", t !== name);
   });
+  if (name === "termine") loadAlleTermine();
+  if (name === "quellen" && !$("#unterTabs").dataset.gefuellt) baueUnterTabs();
 }
 $("#tabs").addEventListener("click", (ev) => {
   const b = ev.target.closest("button[data-tab]");
   if (!b) return;
   tabAktiv(b.dataset.tab);
-  if (b.dataset.tab === "schulen") loadSchulen();
-  if (b.dataset.tab === "termine") loadTermine();
-  if (b.dataset.tab === "kategorien") loadKategorien();
+  if (b.dataset.tab === "einstellungen") loadTags();
 });
+
+/* Unter-Tabs aus den aktiven Quellen bauen: Übersicht + je Quelle + Schulen */
+async function baueUnterTabs() {
+  const nav = $("#unterTabs");
+  nav.dataset.gefuellt = "1";
+  nav.innerHTML = '<button data-unter="uebersicht" class="aktiv">Übersicht</button>';
+  try {
+    const qs = await api("/api/admin/sources");
+    quellen = qs;
+    qs.filter((q) => q.aktiv).forEach((q) => {
+      const b = document.createElement("button");
+      b.dataset.unter = "quelle:" + q.quelle;
+      b.className = "unter";
+      b.innerHTML = `${esc(q.name)} <span class="count">${q.events}</span>`;
+      nav.appendChild(b);
+    });
+    const sch = document.createElement("button");
+    sch.dataset.unter = "schulen";
+    sch.className = "unter";
+    sch.innerHTML = "🏫 Schulen <span class=\"manuell-kennz\">(manuelle Termine)</span>";
+    nav.appendChild(sch);
+  } catch (e) {
+    fehlerZeigen(`Quellen für Unter-Tabs: ${e.message}`);
+  }
+  nav.addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-unter]");
+    if (b) unterTabZeigen(b.dataset.unter);
+  });
+  loadQuellen(); // Übersicht füllen
+}
+
+/* Termine einer einzelnen Quelle (Unter-Tab) — alle sind editierbar */
+let quelleEventsCache = new Map();
+async function quelleEventsLaden(quelleKey) {
+  const q = quellen.find((x) => x.quelle === quelleKey);
+  $("#quelleKopf").innerHTML = q
+    ? `<div class="quellkopf"><span class="name">${esc(q.name)}</span>
+       <a href="${esc(q.url || "#")}" target="_blank" rel="noopener">Website ↗</a>
+       <span class="muted">${esc(q.typ === "intern" ? "Eigener Adapter" : q.typ)}</span></div>`
+    : "";
+  const tbody = $("#quelleEvents tbody");
+  tbody.innerHTML = '<tr><td colspan="6" class="muted">Lade Termine…</td></tr>';
+  try {
+    const evs = await api(`/api/admin/events?quelle=${encodeURIComponent(quelleKey)}&limit=500`);
+    quelleEventsCache.set(quelleKey, evs);
+    tbody.innerHTML = evs.length
+      ? evs.map((e) => eventZeile(e, false)).join("")
+      : '<tr><td colspan="6" class="muted">Keine Termine von dieser Quelle.</td></tr>';
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="6" class="fehler">${esc(e.message)}</td></tr>`;
+  }
+}
 
 /* ---------- Schulen ---------- */
 let schulFilter = { q: "", bezirk: "", schulform: "" };
@@ -649,131 +716,281 @@ async function fuelleSchulFilter() {
   } catch (e) { /* Filter optional — Fehler nicht blockierend */ }
 }
 
-/* ---------- Termine (Tab) ---------- */
-async function loadTermine() {
-  const status = $("#termineFilterStatus").value;
+/* ---------- Termine: ALLE Events (gescrapt + manuell) ---------- */
+function evDatumKurz(e) {
+  // start_local "2026-09-12T18:00:00" → "12.09.2026"
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}:\d{2})?/.exec(e.start_local || "");
+  if (!m) return "—";
+  const zeit = m[4] ? ` ${m[4]} Uhr` : "";
+  return `${m[3]}.${m[2]}.${m[1]}${zeit}`;
+}
+function evTags(e) {
+  const t = e.kategorien || [];
+  if (!t.length) return "<span class=\"muted\">—</span>";
+  // Quellen-Kategorien sind Kurz-IDs (z. B. "fest") → Template-Namen anzeigen
+  return t.map((x) => {
+    const tag = tagListe.find((tg) => tg.id === x || tg.name === x);
+    return `<span class="chip">${esc(tag ? tag.name : x)}</span>`;
+  }).join(" ");
+}
+function eventZeile(e, mitQuelle = false) {
+  const status = e.manuell
+    ? '<span class="badge warn" title="Von dir bearbeitet — Scrape überschreibt nicht mehr">manuell gepflegt</span>'
+    : '<span class="badge">gescrapt</span>';
+  return `<tr data-ev-id="${esc(e.id)}">
+    <td style="white-space:nowrap">${evDatumKurz(e)}</td>
+    ${mitQuelle ? `<td>${esc(e.quelle)}</td>` : ""}
+    <td><strong>${esc(e.titel)}</strong>${e.beschreibung_kurz ? `<br/><span class="klein">${esc(e.beschreibung_kurz.slice(0, 80))}${e.beschreibung_kurz.length > 80 ? "…" : ""}</span>` : ""}</td>
+    <td>${esc(e.ort || "—")}</td>
+    <td>${evTags(e)}</td>
+    <td>${status}</td>
+    <td><div class="btnrow">
+      <button data-evid="${esc(e.id)}" data-act="edit">Bearbeiten</button>
+      ${e.quelle === "manuell" ? `<button data-evid="${esc(e.id)}" data-tid="${esc(e.source_event_id)}" data-act="del" class="danger">Löschen</button>` : ""}
+    </div></td>
+  </tr>`;
+}
+
+let alleTermine = [];
+async function loadAlleTermine() {
+  const q = $("#termineFilterQuelle")?.value || "";
+  const status = $("#termineFilterStatus")?.value || "";
+  const suche = $("#termineSuche")?.value.trim() || "";
   const qs = new URLSearchParams();
-  if (status) qs.set("status", status);
+  if (q) qs.set("quelle", q);
+  if (suche) qs.set("q", suche);
   const tb = $("#termineListe tbody");
-  tb.innerHTML = '<tr><td colspan="6" class="muted">Lade…</td></tr>';
+  tb.innerHTML = '<tr><td colspan="7" class="muted">Lade…</td></tr>';
   try {
-    const list = await api("/api/admin/termine?" + qs.toString());
-    tb.innerHTML = "";
-    if (!list.length) { tb.innerHTML = '<tr><td colspan="6" class="muted">Keine manuellen Termine.</td></tr>'; return; }
-    list.forEach((t) => {
-      const tr = document.createElement("tr");
-      const beleg = t.quelle_hinweis || "";
-      tr.innerHTML = `
-        <td style="white-space:nowrap">${esc(t.start_datum)}${t.start_zeit ? `<br/><span class="klein">${esc(t.start_zeit)} Uhr</span>` : ""}</td>
-        <td><strong>${esc(t.schulname || t.schule_bsn)}</strong>${t.schulbezirk ? `<br/><span class="klein">${esc(t.schulbezirk)}</span>` : ""}</td>
-        <td>${esc(t.titel)}${t.kategorie_name ? `<br/><span class="badge">${esc(t.kategorie_name)}</span>` : ""}</td>
-        <td>${statusBadge(t.status)}</td>
-        <td class="klein">${beleg ? `<a href="${esc(t.url || beleg.replace(/^automatisch erkannt: /, ""))}" target="_blank" rel="noopener">Beleg ↗</a>` : "—"}</td>
-        <td><div class="btnrow">
-          ${t.status !== "bestaetigt" ? `<button data-tid="${t.id}" data-act="freigeben" class="primary">Freigeben</button>` : `<button data-tid="${t.id}" data-act="zurueckziehen">Zurückziehen</button>`}
-          <button data-tid="${t.id}" data-bsn="${esc(t.schule_bsn)}" data-act="edit">Bearbeiten</button>
-          <button data-tid="${t.id}" data-act="del" class="danger">Löschen</button>
-        </div></td>`;
-      tb.appendChild(tr);
-    });
+    alleTermine = await api("/api/admin/events?" + qs.toString());
+    tb.innerHTML = alleTermine.length
+      ? alleTermine.map((e) => eventZeile(e, true)).join("")
+      : '<tr><td colspan="7" class="muted">Keine Termine gefunden.</td></tr>';
+    const z = $("#termineZaehler");
+    if (z) z.textContent = alleTermine.length + " Termine";
   } catch (e) { fehlerZeigen(`Termine: ${e.message}`); }
 }
-$("#termineFilterStatus").addEventListener("change", loadTermine);
+["termineFilterQuelle", "termineFilterStatus", "termineSuche"].forEach((id) => {
+  const el = $("#" + id);
+  if (el) el.addEventListener("change", loadAlleTermine);
+});
+$("#termineSuche")?.addEventListener("input", debounce(loadAlleTermine, 300));
+
+function debounce(fn, ms) {
+  let t;
+  return () => { clearTimeout(t); t = setTimeout(fn, ms); };
+}
+
+/* Event-Bearbeitungs-Formular (alle Termine; speichert als manuell gepflegt) */
+let tagListe = []; // [id, name, farbe, template]
+async function ladeTags() {
+  try {
+    tagListe = await api("/api/admin/tags");
+  } catch { tagListe = []; }
+  return tagListe;
+}
+let eventFormularOffen = false;
+async function eventFormularZeigen(ev) {
+  eventFormularOffen = true;
+  if (!tagListe.length) await ladeTags();
+  const panel = $("#eventPanel") || document.createElement("div");
+  panel.id = "eventPanel";
+  panel.className = "panel";
+  $("#tab-termine").prepend(panel);
+  panel.classList.remove("hidden");
+  const gewaehlt = new Set(ev.kategorien || []);
+  const tagChips = tagListe.map((t) => {
+    const an = gewaehlt.has(t.name) || gewaehlt.has(t.id);
+    return `<button type="button" class="tagbtn${an ? " aktiv" : ""}" data-tagname="${esc(t.name)}"
+       style="border-color:${esc(t.farbe || "#888")};color:${esc(t.farbe || "#ccc")}">${esc(t.name)}</button>`;
+  }).join("");
+  const [datum, zeit] = (() => {
+    const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})?/.exec(ev.start_local || "");
+    if (!m) return ["", ""];
+    const d = m[1].split("-");
+    return [`${d[2]}.${d[1]}.${d[0]}`, m[2] || ""];
+  })();
+  panel.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+      <h3 style="margin:0">Termin bearbeiten${ev.quelle === "manuell" ? " (Schul-Termin)" : ` — ${esc(ev.quelle)}`}</h3>
+      <button id="evClose" type="button" class="ghost">✕</button>
+    </div>
+    <div class="muted" style="margin:6px 0">Nach dem Speichern gilt der Termin als <b>manuell gepflegt</b> —
+      ein Scrape überschreibt deine Änderungen nicht mehr.</div>
+    <div class="formgrid">
+      <label style="grid-column:1/-1">Titel<input id="ev_titel" value="${esc(ev.titel)}" /></label>
+      <label>Datum (TT.MM.JJJJ)<input id="ev_datum" value="${datum}" placeholder="12.09.2026" /></label>
+      <label>Uhrzeit (HH:MM, leer = ganztags)<input id="ev_zeit" value="${zeit}" placeholder="18:00" /></label>
+      <label>Ort<input id="ev_ort" value="${esc(ev.ort || "")}" /></label>
+      <label>Bezirk<input id="ev_bezirk" value="${esc(ev.bezirk || "")}" /></label>
+      <label style="grid-column:1/-1">Kurzbeschreibung
+        <textarea id="ev_beschreibung" rows="2" style="font-family:inherit">${esc(ev.beschreibung_kurz || "")}</textarea></label>
+      <label style="grid-column:1/-1">Tags
+        <div class="tagwahl" id="ev_tags"></div></label>
+      <label style="flex-direction:row;align-items:center;gap:8px"><input id="ev_kostenlos" type="checkbox" ${ev.kostenlos ? "checked" : ""} /> Kostenlos</label>
+    </div>
+    <div class="btnrow" style="margin-top:12px">
+      <button id="ev_save" type="button" class="primary">Speichern</button>
+      <button id="ev_abort" type="button" class="ghost">Abbrechen</button>
+      <span id="ev_msg"></span>
+    </div>`;
+  const chipContainer = $("#ev_tags");
+  chipContainer.innerHTML = tagChips || '<span class="muted">Noch keine Tags angelegt (Einstellungen → Tags).</span>';
+  chipContainer.querySelectorAll(".tagbtn").forEach((b) => {
+    b.onclick = () => {
+      b.classList.toggle("aktiv");
+    };
+  });
+  const schliessen = () => { panel.classList.add("hidden"); eventFormularOffen = false; };
+  $("#evClose").onclick = schliessen;
+  $("#ev_abort").onclick = schliessen;
+  $("#ev_save").onclick = async () => {
+    const msg = $("#ev_msg");
+    const datumRaw = $("#ev_datum").value.trim();
+    const mDatum = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(datumRaw);
+    if (!mDatum) { meldung(msg, "Datum bitte als TT.MM.JJJJ eingeben.", false); return; }
+    const zeitRaw = $("#ev_zeit").value.trim();
+    if (zeitRaw && !/^\d{1,2}:\d{2}$/.test(zeitRaw)) { meldung(msg, "Uhrzeit bitte als HH:MM.", false); return; }
+    const aktiv = Array.from(chipContainer.querySelectorAll(".tagbtn.aktiv")).map((b) => b.dataset.tagname);
+    // Kanonische Form: bekannte Tags als id (Kurzform), unbekannte als Name
+    const kanonisch = aktiv.map((name) => {
+      const tag = tagListe.find((t) => t.name === name || t.id === name);
+      return tag ? tag.id : name;
+    });
+    const startLocal = `${mDatum[3]}-${mDatum[2].padStart(2, "0")}-${mDatum[1].padStart(2, "0")}T${zeitRaw || "00:00"}:00`;
+    const body = {
+      titel: $("#ev_titel").value.trim(),
+      start_local: startLocal,
+      ort: $("ev_ort") ? $("#ev_ort").value.trim() : null,
+      bezirk: $("ev_bezirk") ? $("#ev_bezirk").value.trim() : null,
+      beschreibung_kurz: $("ev_beschreibung") ? $("#ev_beschreibung").value.trim() : null,
+      kategorien: kanonisch,
+      kostenlos: $("#ev_kostenlos") ? $("#ev_kostenlos").checked : false,
+    };
+    try {
+      if (ev.quelle === "manuell") {
+        // Spiegel eines termine_manuell → über dessen API (syncen selbst)
+        await api(`/api/admin/termine/${ev.source_event_id}`, {
+          method: "PUT",
+          body: JSON.stringify({ titel: body.titel, start_datum: datumRaw,
+            start_zeit: zeitRaw || null, ort: body.ort, beschreibung: body.beschreibung_kurz,
+            kategorie_id: null }),
+        });
+      } else {
+        await api(`/api/admin/events/${encodeURIComponent(ev.id)}`, {
+          method: "PUT", body: JSON.stringify(body),
+        });
+      }
+      schliessen();
+      loadAlleTermine();
+    } catch (e) { meldung(msg, e.message, false); }
+  };
+}
+
+/* Termine-Tab: Quelle-Filter-Optionen füllen */
+async function fuelleTerminQuellen() {
+  try {
+    const qs = await api("/api/admin/sources");
+    $("#termineFilterQuelle").innerHTML = '<option value="">Alle Quellen</option>' +
+      qs.filter((q) => q.aktiv).map((q) => `<option value="${esc(q.quelle)}">${esc(q.name)}</option>`).join("") +
+      '<option value="manuell">Schulen (manuell)</option>';
+  } catch { /* optional */ }
+}
 
 /* Termine-Tab Aktionen (Delegation) */
 $("#termineListe").addEventListener("click", async (ev) => {
   const btn = ev.target.closest("button[data-act]");
   if (!btn) return;
-  const tid = btn.dataset.tid;
+  const evid = btn.dataset.evid;
   const act = btn.dataset.act;
   try {
-    if (act === "freigeben") {
-      await api(`/api/admin/termine/${tid}`, { method: "PUT", body: JSON.stringify({ status: "bestaetigt" }) });
-    } else if (act === "zurueckziehen") {
-      await api(`/api/admin/termine/${tid}`, { method: "PUT", body: JSON.stringify({ status: "ungeprueft" }) });
-    } else if (act === "del") {
-      if (!confirm("Termin wirklich löschen?")) return;
-      await api(`/api/admin/termine/${tid}`, { method: "DELETE" });
-    } else if (act === "edit") {
-      const t = await api(`/api/admin/termine/${tid}`);
-      const schule = await api(`/api/admin/schulen/${encodeURIComponent(t.schule_bsn)}`);
-      // In den Schulen-Tab wechseln und Detail öffnen
-      tabAktiv("schulen");
-      schuleDetailZeigen(await api(`/api/admin/schulen/${encodeURIComponent(t.schule_bsn)}?mit_termine=1`));
-      terminFormularZeigen(schule, t);
+    if (act === "del") {
+      if (!confirm("Termin wirklich löschen? Der nächste Scrape legt gescrapte Termine neu an — manuell gepflegte bleiben gelöscht.")) return;
+      if (btn.dataset.tid) {
+        await api(`/api/admin/termine/${btn.dataset.tid}`, { method: "DELETE" });
+      }
+      loadAlleTermine();
       return;
     }
-    loadTermine();
+    if (act === "edit") {
+      const ev = alleTermine.find((x) => x.id === evid) ||
+        (await api("/api/admin/events")).find((x) => x.id === evid);
+      if (ev) eventFormularZeigen(ev);
+      return;
+    }
+    loadAlleTermine();
   } catch (e) { fehlerZeigen(e.message); }
 });
 
-/* ---------- Kategorien (Tab) ---------- */
-async function loadKategorien() {
-  const tb = $("#katTabelle tbody");
+/* ---------- Tags (Einstellungen) ---------- */
+async function loadTags() {
+  const tb = $("#tagTabelle tbody");
   tb.innerHTML = "";
   try {
-    const list = await api("/api/admin/kategorien");
-    if (!list.length) { tb.innerHTML = '<tr><td colspan="4" class="muted">Noch keine Kategorien — z. B. „Tag der offenen Tür“, „Infoabend“, „Schnuppertag“.</td></tr>'; return; }
+    const list = await api("/api/admin/tags");
+    tagListe = list;
+    if (!list.length) { tb.innerHTML = '<tr><td colspan="4" class="muted">Noch keine Tags.</td></tr>'; return; }
     list.forEach((k) => {
       const tr = document.createElement("tr");
       tr.innerHTML = `<td><strong>${esc(k.name)}</strong> <span class="klein">(${esc(k.id)})</span></td>
         <td><span style="display:inline-block;width:18px;height:18px;border-radius:4px;background:${esc(k.farbe || "#888")};border:1px solid var(--border)"></span> ${esc(k.farbe || "—")}</td>
-        <td>${k.sort ?? 0}</td>
+        <td>${k.template ? '<span class="badge ok">Template</span>' : '<span class="badge">eigen</span>'}</td>
         <td><div class="btnrow">
-          <button data-kid="${esc(k.id)}" data-act="edit">Bearbeiten</button>
-          <button data-kid="${esc(k.id)}" data-act="del" class="danger">Löschen</button>
+          <button data-tid2="${esc(k.id)}" data-act="edit">Bearbeiten</button>
+          ${k.template ? "" : `<button data-tid2="${esc(k.id)}" data-act="del" class="danger">Löschen</button>`}
         </div></td>`;
       tb.appendChild(tr);
     });
-  } catch (e) { fehlerZeigen(`Kategorien: ${e.message}`); }
+  } catch (e) { fehlerZeigen(`Tags: ${e.message}`); }
 }
 
-function kategorieFormularZeigen(k = null) {
-  const p = $("#katPanel");
+function tagFormularZeigen(k = null) {
+  const p = $("#tagPanel");
   p.classList.remove("hidden");
   p.innerHTML = `
-    <h3>${k ? `Kategorie bearbeiten: ${esc(k.name)}` : "Neue Kategorie"}</h3>
+    <h3>${k ? `Tag bearbeiten: ${esc(k.name)}` : "Eigenes Tag anlegen"}</h3>
     <div class="formgrid" style="max-width:640px">
-      <label>Schlüssel (nur bei Neuanlage)<input id="k_id" ${k ? "disabled" : ""} value="${esc(k ? k.id : "")}" placeholder="z. B. tdot" /></label>
-      <label>Name<input id="k_name" value="${esc(k ? k.name : "")}" placeholder="Tag der offenen Tür" /></label>
-      <label>Farbe (Hex)<input id="k_farbe" value="${esc(k ? k.farbe || "" : "")}" placeholder="#2ea043" /></label>
-      <label>Sortierung<input id="k_sort" type="number" value="${k ? k.sort ?? 0 : 0}" /></label>
+      <label>Schlüssel (nur bei Neuanlage)<input id="t_id" ${k ? "disabled" : ""} value="${esc(k ? k.id : "")}" placeholder="z. B. wandern" /></label>
+      <label>Name<input id="t_name" value="${esc(k ? k.name : "")}" placeholder="Wandern" /></label>
+      <label>Farbe (Hex)<input id="t_farbe" value="${esc(k ? k.farbe || "" : "")}" placeholder="#2ea043" /></label>
+      <label>Sortierung<input id="t_sort" type="number" value="${k ? k.sort ?? 0 : 0}" /></label>
     </div>
     <div class="btnrow" style="margin-top:10px">
-      <button id="k_save" type="button" class="primary">Speichern</button>
-      <button id="k_abort" type="button" class="ghost">Abbrechen</button>
+      <button id="t_save" type="button" class="primary">Speichern</button>
+      <button id="t_abort" type="button" class="ghost">Abbrechen</button>
     </div>
-    <div id="k_msg"></div>`;
-  $("#k_abort").onclick = () => p.classList.add("hidden");
-  $("#k_save").onclick = async () => {
-    const msg = $("#k_msg");
-    const body = { name: $("#k_name").value.trim(), farbe: $("#k_farbe").value.trim() || null, sort: parseInt($("#k_sort").value, 10) || 0 };
+    <div id="t_msg"></div>`;
+  $("#t_abort").onclick = () => p.classList.add("hidden");
+  $("#t_save").onclick = async () => {
+    const msg = $("#t_msg");
+    const body = { name: $("#t_name").value.trim(), farbe: $("#t_farbe").value.trim() || null, sort: parseInt($("#t_sort").value, 10) || 0 };
     try {
-      if (k) await api(`/api/admin/kategorien/${encodeURIComponent(k.id)}`, { method: "PUT", body: JSON.stringify(body) });
-      else { body.id = $("#k_id").value.trim(); await api("/api/admin/kategorien", { method: "POST", body: JSON.stringify(body) }); }
+      if (k) await api(`/api/admin/tags/${encodeURIComponent(k.id)}`, { method: "PUT", body: JSON.stringify(body) });
+      else { body.id = $("#t_id").value.trim(); await api("/api/admin/tags", { method: "POST", body: JSON.stringify(body) }); }
       p.classList.add("hidden");
-      loadKategorien();
+      loadTags();
     } catch (e) { meldung(msg, e.message, false); }
   };
 }
-$("#katNeu").onclick = () => kategorieFormularZeigen(null);
-$("#katTabelle").addEventListener("click", async (ev) => {
+$("#tagNeu").onclick = () => tagFormularZeigen(null);
+$("#tagTabelle").addEventListener("click", async (ev) => {
   const btn = ev.target.closest("button[data-act]");
   if (!btn) return;
-  const kid = btn.dataset.kid;
+  const kid = btn.dataset.tid2;
   try {
     if (btn.dataset.act === "edit") {
-      const k = (await api("/api/admin/kategorien")).find((x) => x.id === kid);
-      kategorieFormularZeigen(k);
+      const k = (await api("/api/admin/tags")).find((x) => x.id === kid);
+      tagFormularZeigen(k);
     } else if (btn.dataset.act === "del") {
-      if (!confirm(`Kategorie „${kid}“ löschen? (Termine behalten sie, aber ohne Kategorie.)`)) return;
-      await api(`/api/admin/kategorien/${encodeURIComponent(kid)}`, { method: "DELETE" });
-      loadKategorien();
+      if (!confirm(`Tag „${kid}“ löschen? Bereits vergebene Tags an Terminen bleiben erhalten.`)) return;
+      await api(`/api/admin/tags/${encodeURIComponent(kid)}`, { method: "DELETE" });
+      loadTags();
     }
   } catch (e) { fehlerZeigen(e.message); }
 });
 
 /* ---------- Init ---------- */
 fuelleSchulFilter();
-Promise.all([loadQuellen(), loadRuns(), loadFehler(), loadSettings()])
+Promise.all([loadQuellen(), loadRuns(), loadFehler(), loadSettings(), ladeTags(), fuelleTerminQuellen()])
   .catch((e) => fehlerZeigen(e.message));
+baueUnterTabs(); // Quellen-Tab ist beim Laden aktiv → Unter-Tabs sofort bauen
