@@ -66,6 +66,43 @@
 ### Theater (Grips, Parkaue) — später
 - JS-SPA bzw. „spiritec“-API; deterministisch nur mit API-Reverse — spätere Phase.
 
+### Grün Berlin — Park-Kalender (Tempelhofer Feld, Gärten der Welt, Britzer Garten, Natur-Park Südgelände) — Stufe 2, aufgenommen 2026-09-12
+
+Anlass: Das **13. STADT UND LAND-Festival der RIESENDRACHEN** (12.09.2026,
+11–20 Uhr) fehlte im Bestand. Der Betreiber Grün Berlin führt auf **vier**
+Park-Websites einen Veranstaltungskalender; alle vier nutzen dasselbe
+TYPO3-Plugin (`tx_events2`), aber **unterschiedliche Karten-Templates**.
+
+- `gruen-berlin.de` selbst hat **keinen** Kalender (`tx_events2` fehlt) → nicht aufgenommen.
+- `tempelhoferfeld.de/entdecken-erleben/veranstaltungskalender/` — Karte `div.eventWrapper`, Datum `div.date2` („Samstag, 12.09.2026"), Zeit `div.time` („Zeit: 11:00 – 20:00 Uhr"), `div.location` oft leer.
+- `gaertenderwelt.de/events/veranstaltungen/` — Datum `div.date` (teils **Bereich** „01.09.2026 - 01.11.2026"), Zeit mit **Punkt** („12.30 Uhr"), kein Ortsblock.
+- `britzergarten.de/events/eventkalender/` — Datum `div.date2`, Zeit nur **stundenweise** („Beginn: 19 – 21 Uhr"), kein Ortsblock.
+- `natur-park-suedgelaende.de/entdecken-erleben/kalender/` — Datum **ohne Jahr** („Samstag, 12.09."), Ortsblock „Ort: Natur Park Südgelände".
+
+**Lösung für alle vier:** `start` kommt aus dem **Detail-Pfad**
+(`.../detail/JJJJ-MM-TT_HHMM/slug/`) — das ist das einzige Feld mit
+vollständigem Datum *und* Uhrzeit und identisch über alle vier Seiten
+(Format `%Y-%m-%d_%H%M`). Das umgeht das jahrlose suedgelaende-Datum und die
+Datumsbereiche von gaertenderwelt. Umsetzung: `_GRUEN_BERLIN_VORLAGE` +
+`_gruen_berlin_regeln()` in `app/quellen_defaults.py` mit per-Seite
+abweichendem Ende-Regex/-Format (britzer-garten nutzt `%H`, gaertenderwelt
+`%H.%M`).
+
+**Befunde aus den Live-Abrufen (2026-09-12):**
+- robots.txt bei allen vier: `User-agent: * / Allow: *`, keine Einschränkungen.
+- **Kein Feed** (nur hreflang-Alternates) → Stufe 2.
+- **Zeitraum-Parameter des Formulars werden serverseitig ignoriert**:
+  `tx_events2_events[start]`/`[end]` (GET, `JavaScriptSearch`) ändern die
+  Antwort nicht — geprüft mit `TT.MM.JJJJ` und ISO, identische 5 Karten /
+  2 Tage. Die Liste zeigt nur die nächsten Tage; der tägliche Scheduler
+  greift jeden Termin also kurz vorher ab.
+- Detailseiten haben **Event-JSON-LD** (`startDate`/`endDate`/`description`),
+  aber **keinen Veranstaltungsort** — der Ort steht im Seitentitel-Suffix
+  („… | Tempelhofer Feld").
+- **`kostenlos` wird bewusst NICHT gemappt**: `isAccessibleForFree` steht im
+  JSON-LD auf `"False"`, obwohl das Festival der Riesendrachen Eintritt frei
+  hat — das Feld ist unzuverlässig, keine Angabe ist besser als eine falsche.
+
 ### Verworfen
 - **Kindaling** (kommerziell, Ticketing/Affiliate, ToS-Risiko), **berlinfamily.de** (parked).
 - **rausgegangen.de** — **technisch blockiert (2026-09-06 neu geprüft):** gesamte Domain hinter **Bunny Shield** (JS-Proof-of-Work-Challenge, `/.bunny-shield/`); selbst `robots.txt` liefert 403/Challenge-HTML. Deterministischer LLM-freier Zugriff ohne Browser-Automation/Challenge-Umgehung nicht möglich → nicht aufnehmen (unabhängig vom Erwachsenen-Fokus, der die ursprüngliche Runde-1-Begründung war). Bei Wegfall des Schutzes neu bewerten: Kinder-/Familien-Kategorien ggf. mit Kinder-Filter wie tip-berlin.

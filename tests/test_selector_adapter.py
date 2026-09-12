@@ -1,11 +1,26 @@
 """Offline-Tests: SelectorAdapter gegen echte Fixtures (ZLB, Museumsportal)."""
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 
 from app.adapters.selector_adapter import SelectorAdapter
 from app.model import TZ_BERLIN
-from app.quellen_defaults import MUSEUMS_REGELN, ZLB_REGELN
+from app.quellen_defaults import (
+    BRITZER_GARTEN_REGELN,
+    GAERTEN_DER_WELT_REGELN,
+    MUSEUMS_REGELN,
+    SUEDGELAENDE_REGELN,
+    TEMPELHOFER_FELD_REGELN,
+    ZLB_REGELN,
+)
+
+# Gruen-Berlin-Parks: gleiches TYPO3-Plugin, unterschiedliche Karten-Templates.
+GRUEN_BERLIN = [
+    ("tempelhoferfeld", TEMPELHOFER_FELD_REGELN, "fixture_dir_tempelhoferfeld", "RIESENDRACHEN"),
+    ("gaerten-der-welt", GAERTEN_DER_WELT_REGELN, "fixture_dir_gaerten_der_welt", None),
+    ("britzer-garten", BRITZER_GARTEN_REGELN, "fixture_dir_britzer_garten", None),
+    ("suedgelaende", SUEDGELAENDE_REGELN, "fixture_dir_suedgelaende", None),
+]
 from app.regeln import validate_regeln_yaml
 
 
@@ -90,7 +105,10 @@ def test_museumsportal_zu_event(fixture_dir_museumsportal):
     adapter = SelectorAdapter("museumsportal", regel_yaml=MUSEUMS_REGELN)
     html = (fixture_dir_museumsportal / "listing.html").read_text(encoding="utf-8")
     rows = adapter.parse_listing(html)
-    jetzt = datetime.now(TZ_BERLIN)
+    # Fixture-Snapshot hat feste Termine; Zeitpunkt an die Daten pinnen,
+    # sonst kippt der Test, sobald "heute" ueber den Snapshot hinauswandert
+    # (validate_event prueft HORIZONT_PAST gegen now()).
+    jetzt = rows[0]["start"] - timedelta(hours=1)
     slugs = {r["slug"] for r in rows}
     assert len(slugs) == len(rows), "Slug-Kollision: Events würden sich überschreiben"
     ev0 = adapter.zu_event(rows[0], {}, jetzt)
@@ -216,7 +234,10 @@ def test_museumsportal_zu_events_serie_expandiert(fixture_dir_museumsportal):
     rows = adapter.parse_listing(lhtml)
     dhtml = (fixture_dir_museumsportal / "detail_serie.html").read_text(encoding="utf-8")
     det = adapter.parse_detail(dhtml)
-    jetzt = datetime.now(TZ_BERLIN)
+    # Fixture-Snapshot hat feste Termine; Zeitpunkt an die Daten pinnen,
+    # sonst kippt der Test, sobald "heute" ueber den Snapshot hinauswandert
+    # (validate_event prueft HORIZONT_PAST gegen now()).
+    jetzt = rows[0]["start"] - timedelta(hours=1)
     evs = adapter.zu_events(rows[0], det, jetzt)
     termine = det["_termine"]
     # Row-Start in der Terminliste? Dann exakt len(termine) Events, sonst +1.
@@ -254,7 +275,10 @@ def test_familienportal_zu_events_mit_detail(fixture_dir_familienportal):
     assert rows, "Listing-Fixture ohne Rows"
     dhtml = (fixture_dir_familienportal / "detail.html").read_text(encoding="utf-8")
     det = adapter.parse_detail(dhtml)
-    jetzt = datetime.now(TZ_BERLIN)
+    # Fixture-Snapshot hat feste Termine; Zeitpunkt an die Daten pinnen,
+    # sonst kippt der Test, sobald "heute" ueber den Snapshot hinauswandert
+    # (validate_event prueft HORIZONT_PAST gegen now()).
+    jetzt = rows[0]["start"] - timedelta(hours=1)
     evs = adapter.zu_events(rows[0], det, jetzt)
     ev = evs[0]
     assert ev["ort"] == "Eisbahn im Sportforum Hohenschönhausen"
@@ -278,4 +302,52 @@ def test_familienportal_detail_beschreibung_sauber(fixture_dir_familienportal):
     rows = adapter.parse_listing(lhtml)
     for r in rows:
         assert not r.get("beschreibung_kurz"), "Listing-Beschreibung entfernt (vermüllt)"
+    adapter.close()
+
+
+
+
+# --------------------------------------------------------------------------
+# Gruen Berlin: Park-Kalender (Tempelhofer Feld, Gärten der Welt,
+# Britzer Garten, Natur-Park Südgelände) — gleiches Plugin, andere Templates
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("quelle,regeln,fixture_name,needle", GRUEN_BERLIN)
+def test_gruen_berlin_regeln_validieren(quelle, regeln, fixture_name, needle):
+    assert validate_regeln_yaml(regeln, quelle) == []
+
+
+@pytest.mark.parametrize("quelle,regeln,fixture_name,needle", GRUEN_BERLIN)
+def test_gruen_berlin_listing_offline(quelle, regeln, fixture_name, needle, request):
+    fixture_dir = request.getfixturevalue(fixture_name)
+    adapter = SelectorAdapter(quelle, regel_yaml=regeln)
+    rows = adapter.parse_listing((fixture_dir / "listing.html").read_text(encoding="utf-8"))
+    warn = adapter.drain_warnungen()
+    assert len(rows) >= 3, f"nur {len(rows)} Events; warnungen: {warn}"
+    for r in rows:
+        assert r["titel"]
+        # Das Datum kommt aus dem Detail-Pfad (JJJJ-MM-TT_HHMM) — immer mit Jahr.
+        assert r["start"].year >= 2026, f"{r['titel']}: {r['start']}"
+        assert r["start"].tzinfo is not None
+        assert r["url"] and r["url"].startswith("http")
+    if needle:
+        treffer = [r for r in rows if needle in r["titel"].upper()]
+        assert treffer, f"{needle} fehlt im Listing"
+        d0 = treffer[0]
+        assert d0["start"].hour == 11 and d0["ende"].hour == 20, (d0["start"], d0["ende"])
+    adapter.close()
+
+
+@pytest.mark.parametrize("quelle,regeln,fixture_name,needle", GRUEN_BERLIN)
+def test_gruen_berlin_detail_ort(quelle, regeln, fixture_name, needle, request):
+    fixture_dir = request.getfixturevalue(fixture_name)
+    adapter = SelectorAdapter(quelle, regel_yaml=regeln)
+    assert adapter.braucht_detail is True
+    det = adapter.parse_detail((fixture_dir / "detail.html").read_text(encoding="utf-8"))
+    # Ort kommt aus dem Seitentitel-Suffix ("... | <Park>") bzw. dem
+    # Listing-Block (suedgelaende: "Ort: Natur Park Südgelände").
+    assert det.get("ort") or det.get("beschreibung_kurz"), f"kein Ort/keine Beschreibung: {det}"
+    if det.get("beschreibung_kurz"):
+        assert len(det["beschreibung_kurz"]) > 20
     adapter.close()

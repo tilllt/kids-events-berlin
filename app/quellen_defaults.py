@@ -75,8 +75,82 @@ detail:
     beschreibung_kurz: {css: '.modul-text_bild .text'}
 """
 
+# ---------------------------------------------------------------------------
+# Gruen Berlin: Veranstaltungskalender der Park-Websites
+# ---------------------------------------------------------------------------
+# Alle vier Seiten nutzen dasselbe TYPO3-Plugin (tx_events2), aber
+# UNTERSCHIEDLICHE Karten-Templates. Gemeinsam ist nur:
+#   * div.eventWrapper als Karte
+#   * h3.media-heading a als Titel + Detail-Link
+#   * der Detail-Pfad .../detail/JJJJ-MM-TT_HHMM/slug/ — das einzige Feld mit
+#     vollstaendigem Datum UND Uhrzeit. suedgelaende listet "Samstag, 12.09."
+#     (ohne Jahr!), gaertenderwelt teils Datumsbereiche ("01.09.2026 -
+#     01.11.2026") und Zeiten mit Punkt ("12.30 Uhr") — deshalb kommt `start`
+#     bei allen vieren aus der URL (Format %Y-%m-%d_%H%M).
+# Zeitraum-Parameter des JavaScriptSearch-Formulars werden serverseitig
+# ignoriert (geprueft 2026-09-12: TT.MM.JJJJ wie ISO, Antwort unveraendert),
+# ein Feed existiert nicht -> Stufe 2, Liste zeigt nur die naechsten Tage.
+# `kostenlos` wird NICHT gemappt: isAccessibleForFree steht im JSON-LD auf
+# "False", obwohl z. B. das Festival der Riesendrachen Eintritt frei ist.
+_GRUEN_BERLIN_VORLAGE = """quelle: __QUELLE__
+robots: "erlaubt (robots.txt: Allow: *, geprueft 2026-09-12)"
+listing:
+  url: __URL__
+  item_css: "div.eventWrapper"
+  horizont_tage: 21
+  felder:
+    titel: {css: "h3.media-heading a"}
+    url: {css: "h3.media-heading a", attr: "href"}
+    start: {css: "h3.media-heading a", attr: "href", regex: "detail/([0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{4})", format: "%Y-%m-%d_%H%M"}
+    ende: {css: "div.time", regex: "__ENDE_REGEX__", format: "__ENDE_FORMAT__"}
+    ort: {css: "div.location"__ORT_REGEX__}
+detail:
+  # Event-JSON-LD vorhanden (name/description/startDate/endDate), aber kein
+  # Veranstaltungsort — der steht im Seitentitel-Suffix ("... | <Park>").
+  jsonld: true
+  felder:
+    beschreibung_kurz: {jsonld: "$.description"}
+    ort: {css: "title", regex: "[|][ ]*([^|]+?)[ ]*$"}
+"""
+
+
+def _gruen_berlin_regeln(quelle: str, url: str, ende_regex: str, ende_format: str,
+                         ort_regex: str = "") -> str:
+    return (_GRUEN_BERLIN_VORLAGE
+            .replace("__QUELLE__", quelle)
+            .replace("__URL__", url)
+            .replace("__ENDE_REGEX__", ende_regex)
+            .replace("__ENDE_FORMAT__", ende_format)
+            .replace("__ORT_REGEX__", ort_regex))
+
+
+TEMPELHOFER_FELD_REGELN = _gruen_berlin_regeln(
+    "tempelhoferfeld",
+    "https://www.tempelhoferfeld.de/entdecken-erleben/veranstaltungskalender/",
+    "[0-9]{1,2}:[0-9]{2}[^0-9]{1,4}([0-9]{1,2}:[0-9]{2})", "%H:%M")
+
+GAERTEN_DER_WELT_REGELN = _gruen_berlin_regeln(
+    "gaerten-der-welt",
+    "https://www.gaertenderwelt.de/events/veranstaltungen/",
+    "[-][ ]*([0-9]{1,2}[.][0-9]{2})[ ]*Uhr", "%H.%M")
+
+BRITZER_GARTEN_REGELN = _gruen_berlin_regeln(
+    "britzer-garten",
+    "https://www.britzergarten.de/events/eventkalender/",
+    "[-][ ]*([0-9]{1,2})[ ]*Uhr", "%H")
+
+SUEDGELAENDE_REGELN = _gruen_berlin_regeln(
+    "suedgelaende",
+    "https://www.natur-park-suedgelaende.de/entdecken-erleben/kalender/",
+    "[0-9]{1,2}:[0-9]{2}[^0-9]{1,4}([0-9]{1,2}:[0-9]{2})", "%H:%M",
+    ort_regex=', regex: "(?:Ort:[ ]*)?([^|]+?)[ ]*$"')
+
 DEFAULT_REGELN: dict[str, str] = {
     "zlb": ZLB_REGELN,
     "museumsportal": MUSEUMS_REGELN,
     "familienportal": FAMILIENPORTAL_REGELN,
+    "tempelhoferfeld": TEMPELHOFER_FELD_REGELN,
+    "gaerten-der-welt": GAERTEN_DER_WELT_REGELN,
+    "britzer-garten": BRITZER_GARTEN_REGELN,
+    "suedgelaende": SUEDGELAENDE_REGELN,
 }
