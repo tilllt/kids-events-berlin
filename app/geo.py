@@ -134,6 +134,33 @@ _ADRESSE_RX = re.compile(
     r"(?:[,\s]+(?P<plz>\d{5}))?\s*"
     r"(?:Berlin|berlin)?\s*,?\s*(?:Berlin)?\s*$")
 
+# Straßen-Abkürzungen der Quellen → amtliche Schreibweise. Der Berliner WFS
+# kennt „…str." NICHT (0 Treffer), die Langform schon (1 Treffer) — gemessen
+# 2026-09-12 an „Distelfalterstr./Distelfalterstraße 41, 12683 Berlin",
+# „Konrad-Wolf-Str./-Straße 39, 13055 Berlin", „Rheinstr./Rheinstraße 1".
+_STR_KOMPOSITUM_RX = re.compile(r"(?<=[A-Za-zÄÖÜäöüß])[Ss]tr\.?(?=\s|$)")
+_STR_WORT_RX = re.compile(r"\bStr\b\.?", re.IGNORECASE)
+_PL_WORT_RX = re.compile(r"\bPl\b\.?", re.IGNORECASE)
+_BERLIN_RX = re.compile(r"\bBerlin\b", re.IGNORECASE)
+_DEUTSCHLAND_RX = re.compile(r"[,\s]*\bDeutschland\b\s*$", re.IGNORECASE)
+
+
+def _adresse_normalisieren(adresse: str) -> str:
+    """Quell-Schreibweise → amtliche Schreibweise (nur für die WFS-Abfrage).
+
+    „Distelfalterstr. 41 12683 Berlin" → „Distelfalterstraße 41 12683 Berlin".
+    Die *angezeigte* Adresse bleibt die Quellangabe (Provenienz); normalisiert
+    wird ausschließlich der Suchschlüssel — damit Cache-Key und Abfrage
+    zusammenpassen.
+    """
+    t = re.sub(r"\s+", " ", (adresse or "")).strip()
+    t = _DEUTSCHLAND_RX.sub("", t)
+    t = _STR_KOMPOSITUM_RX.sub("straße", t)
+    t = _STR_WORT_RX.sub("Straße", t)
+    t = _PL_WORT_RX.sub("Platz", t)
+    t = _BERLIN_RX.sub("Berlin", t)
+    return re.sub(r"\s+", " ", t).strip().strip(",").strip()
+
 
 def _adresse_teile(adresse: str) -> dict | None:
     """„Königin-Luise-Straße 6-8, 14195 Berlin“ → {str, hnr, zus, plz}."""
@@ -158,10 +185,11 @@ def adresse_amtlich(store, adresse: str, client: httpx.Client | None = None,
     bei eindeutigem Treffer. Ergebnis {lat, lon, bezirk, adresse} | None —
     gecacht (auch negativ).
     """
-    teile = _adresse_teile(adresse)
+    normalisiert = _adresse_normalisieren(adresse)
+    teile = _adresse_teile(normalisiert)
     if not teile:
         return None
-    key = "amtlich:" + ort_key(adresse)
+    key = "amtlich:" + ort_key(normalisiert)
     cached = store.get_ort_geo(key)
     if cached:
         if not cached["gefunden"]:
