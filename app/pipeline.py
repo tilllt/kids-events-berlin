@@ -232,21 +232,30 @@ def _scrape_mit_adapter(store, adapter, quelle, *, online, geo,
             ort_klar_ = (ev.get("ort") or "").strip()
             ort_low = ort_klar_.lower()
             ist_bezirksname = ort_low in _BEZIRKS_LABEL_KEYS
-            if (ort_klar_ and ort_low not in ("ohne angabe", "berlinweit",
-                                              "ganz berlin", "berlin")
+            treffer = None
+            # Amtliche Adress-Geokodierung ZUERST und UNABHÄNGIG vom Ort:
+            # eine echte Adresse (Straße+Hausnr+PLZ) ist die stärkere Aussage
+            # als der Ortsname — Quellen ohne Veranstaltungsort im Text
+            # (Kinderkulturkalender: ~40 % der Angebote) tragen den Ort nur
+            # als „Ohne Angabe“/„Berlin“ und bekämen sonst NIE eine Position
+            # (realer Befund 2026-09-12: 125 von 211 ohne Koordinaten, obwohl
+            # die Adresse vorlag). Der Ortsname-Weg (Nominatim) bleibt auf
+            # echte Venue-Namen beschränkt — Bezirksnamen, „Berlin“,
+            # „Berlinweit“ und „Ohne Angabe“ ergeben dort keine Position.
+            if (ev.get("adresse") or "").strip():
+              treffer = adresse_amtlich(store, ev["adresse"], geo_client)
+            if (not treffer and ort_klar_
+                    and ort_low not in ("ohne angabe", "berlinweit",
+                                        "ganz berlin", "berlin")
                     and not ist_bezirksname):
-              treffer = None
-              if (ev.get("adresse") or "").strip():
-                treffer = adresse_amtlich(store, ev["adresse"], geo_client)
-              if not treffer:
-                treffer = ort_koordinaten(store, ev["ort"], geo_client)
-              if treffer:
-                ev["lat"] = treffer["lat"]
-                ev["lon"] = treffer["lon"]
-                if not ev.get("bezirk") and treffer.get("bezirk"):
-                  ev["bezirk"] = treffer["bezirk"]
-                if not ev.get("adresse") and treffer.get("adresse"):
-                  ev["adresse"] = treffer["adresse"]
+              treffer = ort_koordinaten(store, ev["ort"], geo_client)
+            if treffer:
+              ev["lat"] = treffer["lat"]
+              ev["lon"] = treffer["lon"]
+              if not ev.get("bezirk") and treffer.get("bezirk"):
+                ev["bezirk"] = treffer["bezirk"]
+              if not ev.get("adresse") and treffer.get("adresse"):
+                ev["adresse"] = treffer["adresse"]
           fehler = validate_event(ev, jetzt)
           if fehler:
               n_fehler += 1
