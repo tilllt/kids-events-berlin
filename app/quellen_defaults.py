@@ -103,25 +103,23 @@ listing:
     url: {css: "h3.media-heading a", attr: "href"}
     start: {css: "h3.media-heading a", attr: "href", regex: "detail/([0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{4})", format: "%Y-%m-%d_%H%M"}
     ende: {css: "div.time", regex: "__ENDE_REGEX__", format: "__ENDE_FORMAT__"}
-    ort: {css: "div.location"__ORT_REGEX__}
 detail:
   # Event-JSON-LD vorhanden (name/description/startDate/endDate), aber kein
   # Veranstaltungsort — der steht im Seitentitel-Suffix ("... | <Park>").
   jsonld: true
   felder:
     beschreibung_kurz: {jsonld: "$.description"}
-    ort: {css: "title", regex: "[|][ ]*([^|]+?)[ ]*$"}
+    # Element selbst, bei verschachtelten Kindern nur den Text davor ("Ort:").
 """
 
 
-def _gruen_berlin_regeln(quelle: str, url: str, ende_regex: str, ende_format: str,
-                         ort_regex: str = "") -> str:
+def _gruen_berlin_regeln(quelle: str, url: str, ende_regex: str, ende_format: str) -> str:
     return (_GRUEN_BERLIN_VORLAGE
             .replace("__QUELLE__", quelle)
             .replace("__URL__", url)
             .replace("__ENDE_REGEX__", ende_regex)
             .replace("__ENDE_FORMAT__", ende_format)
-            .replace("__ORT_REGEX__", ort_regex))
+            )
 
 
 TEMPELHOFER_FELD_REGELN = _gruen_berlin_regeln(
@@ -142,8 +140,7 @@ BRITZER_GARTEN_REGELN = _gruen_berlin_regeln(
 SUEDGELAENDE_REGELN = _gruen_berlin_regeln(
     "suedgelaende",
     "https://www.natur-park-suedgelaende.de/entdecken-erleben/kalender/",
-    "[0-9]{1,2}:[0-9]{2}[^0-9]{1,4}([0-9]{1,2}:[0-9]{2})", "%H:%M",
-    ort_regex=', regex: "(?:Ort:[ ]*)?([^|]+?)[ ]*$"')
+    "[0-9]{1,2}:[0-9]{2}[^0-9]{1,4}([0-9]{1,2}:[0-9]{2})", "%H:%M")
 
 DEFAULT_REGELN: dict[str, str] = {
     "zlb": ZLB_REGELN,
