@@ -624,10 +624,18 @@ class Store:
         return self.recent_errors(None, limit)
 
     def prune_stale(self, quelle: str, cutoff_iso_utc: str) -> int:
-        """Löscht Events der Quelle, deren Start vor cutoff liegt (ISO UTC)."""
+        """Löscht Events der Quelle, die VOR cutoff ENDEN (ISO UTC).
+
+        Ende statt Start: mehrtägige Events (Ferienworkshop 09.–13.09.) sind
+        an ihrem vierten Tag noch nicht „alt“ — eine Start-Bedingung warf sie
+        mitten im Lauf weg (realer Befund 2026-09-12: ein laufender Workshop
+        verschwand aus Liste und Karte). Fehlendes ende_local = eintägig →
+        dann zählt der Starttag.
+        """
         with self._lock:
             cur = self._conn.execute(
-                "DELETE FROM events WHERE quelle=? AND start_iso < ?",
+                "DELETE FROM events WHERE quelle=? AND "
+                "COALESCE(ende_iso, start_iso) < ?",
                 (quelle, cutoff_iso_utc),
             )
             self._conn.commit()

@@ -133,3 +133,24 @@ def test_pipeline_raeumt_altlasten_und_meldet_sie(tmp_path, listing_p0, listing_
     assert len([e for e in store.query_events({})
                 if e["titel"] != titel]) >= 5
     store.close()
+
+
+def test_laufendes_mehrtaegiges_event_ueberlebt_prune_stale(tmp_path):
+    """Stale-Bereinigung richtet sich nach dem ENDE, nicht nach dem Start.
+
+    Realer Befund 2026-09-12: der Ferienworkshop 09.–13.09. (Start 3+ Tage
+    alt, läuft aber noch) wurde von der Start-Bedingung mitten im Lauf
+    gelöscht — er verschwand aus Liste und Karte.
+    """
+    store = Store(tmp_path / "events.db")
+    titel = "Ferienworkshop läuft noch"
+    # Start vor dem Cutoff, Ende danach → muss bleiben
+    store.upsert_event(_ev(QUELLE, titel, _d(5, 10), _d(11, 16), nummer=1))
+    # komplett vergangen → muss gehen
+    store.upsert_event(_ev(QUELLE, "Alter Workshop", _d(5, 10), _d(6, 16), nummer=2))
+    cutoff = datetime(2026, 10, 9, 0, 0, tzinfo=__import__("zoneinfo").ZoneInfo("UTC")).isoformat()
+    weg = store.prune_stale(QUELLE, cutoff)
+    assert weg == 1
+    rest = [e["titel"] for e in store.query_events({})]
+    assert titel in rest and "Alter Workshop" not in rest
+    store.close()
