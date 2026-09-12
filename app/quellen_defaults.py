@@ -165,9 +165,14 @@ detail:
     # Kopf-/Fußzeilen-Blöcke und liefert „Kontrast Instagram …“ davor).
     beschreibung_kurz: {css: "article.node--type-offer.node--view-mode-full .field--name-body"}
     ort: {css: ".field--name-field-location .field--name-title"}
-    # Adressblock des verknüpften Orts-Knotens; Länderzusatz „Deutschland"
-    # muss weg, sonst findet die amtliche Adress-Geokodierung nichts.
-    adresse: {css: ".field--name-field-location .field--name-field-address", regex: '^(.*?)(?:[,\\s]*Deutschland)?$'}
+    # Adresse in zwei Stufen: zuerst der verknüpfte Orts-Knoten (Straße+PLZ),
+    # sonst der AddToCalendar-Link (Parameter location=, plus-kodiert) — 
+    # ~40 % der Angebote haben keinen Orts-Knoten, aber IMMER den Link.
+    # Länderzusatz „Deutschland" muss weg, sonst findet die amtliche
+    # Adress-Geokodierung (WFS) nichts.
+    adresse:
+      - {css: ".field--name-field-location .field--name-field-address", regex: '^(.*?)(?:[,\\s]*Deutschland)?$'}
+      - {css: '.addtocal-menu a[href*="calendar.google"]', attr: "href", urldecode: true, regex: '[?&]location=((?:[^,&\d]*?\d{1,4}[^,&\d]*?)\s+\d{5}\s+Berlin)'}
   # Termine als Textitems „20.09.26, 11:00 - 20.09.26, 12:30" (Form B im
   # Selector-Adapter) — Liste ist autoritativ, kein Phantom-Row-Event.
   # `> .field__item` ist Pflicht: ohne das Kind-Selektor matcht auch der

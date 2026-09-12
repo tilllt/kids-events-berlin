@@ -467,3 +467,35 @@ def test_parse_termin_text_ohne_datum():
     """Elemente ohne Datum (Buttons, Kalender-Links) werden verworfen."""
     assert _parse_termin_text("Zum Kalender hinzufügen Google Yahoo!") is None
     assert _parse_termin_text("") is None
+
+
+def test_kkk_detail_adresse_fallback_kalenderlink(fixture_dir_kinderkulturkalender):
+    """Ohne Orts-Knoten kommt die Adresse aus dem AddToCalendar-Link der Seite."""
+    html = (fixture_dir_kinderkulturkalender / "detail_ohne_ort.html").read_text(encoding="utf-8")
+    assert "field--name-field-location" not in html  # Beweis: Orts-Knoten fehlt
+    adapter = SelectorAdapter("kinderkulturkalender",
+                              regel_yaml=KINDERKULTURKALENDER_REGELN)
+    det = adapter.parse_detail(html)
+    assert det.get("adresse") == "Columbiadamm 84 10965 Berlin", det
+    # Die Quelle nennt hier keinen Veranstaltungsnamen → Feld bleibt leer
+    # (Fallback „Ohne Angabe" in der Pipeline), aber die Position kommt.
+    assert not det.get("ort")
+    adapter.close()
+
+
+def test_kkk_detail_adresse_bevorzugt_ortsknoten(fixture_dir_kinderkulturkalender):
+    adapter = SelectorAdapter("kinderkulturkalender",
+                              regel_yaml=KINDERKULTURKALENDER_REGELN)
+    det = adapter.parse_detail(
+        (fixture_dir_kinderkulturkalender / "detail.html").read_text(encoding="utf-8"))
+    # Erste Alternative (Orts-Knoten) gewinnt, nicht der Kalender-Link.
+    assert det["adresse"] == "Blücherplatz 1 10961 Berlin"
+    adapter.close()
+
+
+def test_parse_termin_text_ganztags_schreibweise():
+    """Explizit „00:00 - 23:59" der Quelle = ganztägig (jup-Konvention)."""
+    start, ende, ganztags = _parse_termin_text("12.09.26, 00:00 - 12.09.26, 23:59")
+    assert ganztags is True
+    assert (start.hour, start.minute) == (0, 0)
+    assert (ende.hour, ende.minute) == (23, 59)

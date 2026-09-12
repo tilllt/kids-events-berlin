@@ -14,7 +14,7 @@ import hashlib
 import re
 from datetime import datetime, timedelta, time as dtime
 from typing import Any
-from urllib.parse import urljoin
+from urllib.parse import unquote_plus, urljoin
 
 import httpx
 import parsel
@@ -87,7 +87,14 @@ def _parse_termin_text(text: str) -> tuple[datetime, datetime | None, bool] | No
                         int(zeiten[-1][0]), int(zeiten[-1][1]), tzinfo=TZ_BERLIN)
     except ValueError:
         return (start, None, False)
-    return (start, ende if ende >= start else start, False)
+    if ende < start:
+        ende = start
+    # Explizit „00:00 - 23:59“ ist die Ganztags-Schreibweise der Quellen →
+    # ganztags-Flag setzen (Konvention wie im jup-Adapter), sonst zeigt die
+    # UI „00:00 – 23:59“ statt „ganztägig“.
+    if (start.hour, start.minute, ende.hour, ende.minute) == (0, 0, 23, 59):
+        return (start, ende, True)
+    return (start, ende, False)
 
 
 def _lade_regeln(regel_yaml: str | None, quelle: str) -> dict:
@@ -141,6 +148,32 @@ def _regex_ziehen(text: str | None, rx: str | None) -> str | None:
         return text
     m = re.search(rx, text)
     return m.group(1) if m and m.groups() else (m.group(0) if m else None)
+
+
+def _detail_feld_wert(sel_css: parsel.Selector, regel: dict) -> str:
+    """Detail-Feld aus CSS(+attr/regex/urldecode) → Text ("" = kein Treffer).
+
+    Reihenfolge: Selektor/Attribut → Whitespace/Komma normalisieren →
+    urldecode (Prozent-/Plus-Kodierung, z. B. Adresse im Kalender-Link) →
+    regex (ohne Treffer bleibt das Feld LEER, kein Rohtext in der DB).
+    """
+    if regel.get("attr"):
+        txt = ""
+        for el in sel_css.css(regel["css"]):
+            v = el.attrib.get(regel["attr"])
+            if v:
+                txt = v
+                break
+    else:
+        txt = " ".join(sel_css.css(regel["css"]).css("::text").getall())
+    txt = re.sub(r"\s+", " ", txt).strip()
+    # Textknoten-Kommas („Straße 1 , 12435 Berlin“) normalisieren.
+    txt = re.sub(r"\s*,\s*", ", ", txt)
+    if regel.get("urldecode") and txt:
+        txt = unquote_plus(txt)
+    if regel.get("regex"):
+        txt = _regex_ziehen(txt, regel["regex"]) or ""
+    return txt.strip()
 
 
 def _parse_zeit(text: str | None, fmt: str | None, feld: str) -> datetime:
@@ -361,25 +394,27 @@ class SelectorAdapter:
         if not html.strip():
             return {}  # kein Detail vorhanden (Listing ohne URL)
         out: dict[str, Any] = {}
-        # CSS-Felder (Quellen ohne JSON-LD, z. B. familienportal): Selektoren
-        # wie „#contact li.name“ (Venue) / „#contact li.address.loc“ (Adresse).
-        css_felder = {k: v for k, v in (self._detail_cfg.get("felder") or {}).items()
-                      if v.get("css")}
+        # Feld-Regeln dürfen eine Liste von Alternativen sein (erste mit
+        # Treffer gewinnt): z. B. Adresse zuerst aus dem verknüpften Orts-
+        # Knoten, sonst aus dem AddToCalendar-Link (Kinderkulturkalender hat
+        # bei ~40 % der Angebote keinen Orts-Knoten, aber immer den Link).
+        def _als_liste(v: Any) -> list[dict]:
+            return [r for r in (v if isinstance(v, list) else [v])
+                    if isinstance(r, dict)]
+
+        detail_felder = self._detail_cfg.get("felder") or {}
+        css_felder = {k: _als_liste(v) for k, v in detail_felder.items()
+                      if any(r.get("css") for r in _als_liste(v))}
         if css_felder:
             sel_css = parsel.Selector(text=html)
-            for feldname, regel in css_felder.items():
-                txt = " ".join(sel_css.css(regel["css"]).css("::text").getall())
-                txt = re.sub(r"\s+", " ", txt).strip()
-                # Textknoten-Kommas („Straße 1 , 12435 Berlin“) normalisieren:
-                # Leerzeichen vor Komma entfernen — für WFS-Geokodierung + Anzeige.
-                txt = re.sub(r"\s*,\s*", ", ", txt)
-                # optionaler regex: Nachbehandlung (z. B. Länderzusatz
-                # „… Deutschland“ entfernen, damit die amtliche Adress-
-                # Geokodierung den Treffer findet). Kein Treffer → Feld leer.
-                if regel.get("regex"):
-                    txt = _regex_ziehen(txt, regel["regex"]) or ""
-                if txt:
-                    out[feldname] = txt
+            for feldname, regeln_liste in css_felder.items():
+                for regel in regeln_liste:
+                    if not regel.get("css"):
+                        continue
+                    txt = _detail_feld_wert(sel_css, regel)
+                    if txt:
+                        out[feldname] = txt
+                        break
 
         # Serien-Terminliste der Detailseite: entweder li mit zwei Spans
         # (deutsches Datum + Uhrzeit, Museumsportal) oder Termin-Text ohne
@@ -417,8 +452,8 @@ class SelectorAdapter:
             if termine:
                 out["_termine"] = termine
 
-        jsonld_felder = {k: v for k, v in (self._detail_cfg.get("felder") or {}).items()
-                         if v.get("jsonld")}
+        jsonld_felder = {k: v for k, v in detail_felder.items()
+                         if any(r.get("jsonld") for r in _als_liste(v))}
         if jsonld_felder and not self._detail_cfg.get("jsonld"):
             return out  # Quelle ohne JSON-LD-Detail → nur CSS-Felder
         if not self._detail_cfg.get("jsonld"):
@@ -452,8 +487,9 @@ class SelectorAdapter:
             self._warnungen.append("kein JSON-LD @type:Event auf der Detailseite")
             return out
         from jsonpath_ng.ext import parse as jp_parse
-        for feldname, regel in (self._detail_cfg.get("felder") or {}).items():
-            pfad = regel.get("jsonld")
+        for feldname, regel_wert in detail_felder.items():
+            pfad = next((r.get("jsonld") for r in _als_liste(regel_wert)
+                         if r.get("jsonld")), None)
             if not pfad:
                 continue
             try:

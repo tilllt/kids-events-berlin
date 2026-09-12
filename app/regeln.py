@@ -67,12 +67,22 @@ def _css_ok(selektor: str) -> str | None:
 # Feld-Optionen: css (parsel) und/oder jsonld (extruct-Pfad).
 # Zusätzlich: xpath (relativ zum Item statt css), attr (href aus css-Element),
 # regex (erster Treffer im Text), format (strptime auf extrahiertem Text),
-# join (Textliste verbinden).
-_FELD_OPTIONEN = {"css", "jsonld", "xpath", "attr", "regex", "format", "join"}
+# join (Textliste verbinden), urldecode (Prozent-/Plus-Kodierung auflösen,
+# z. B. Adresse aus einem Kalender-Link-Parameter).
+_FELD_OPTIONEN = {"css", "jsonld", "xpath", "attr", "regex", "format", "join",
+                  "urldecode"}
 
 
 def _pruefe_feld(feldname: str, regeln: dict, pfad: str) -> list[str]:
     fehler: list[str] = []
+    if isinstance(regeln, list):
+        # Alternativen-Liste: erste Regel mit Treffer gewinnt (z. B. Adresse
+        # zuerst aus dem Orts-Knoten, sonst aus dem Kalender-Link).
+        if not regeln:
+            return [f"{pfad}/{feldname}: Alternativen-Liste ist leer."]
+        for i, r in enumerate(regeln):
+            fehler.extend(_pruefe_feld(feldname, r, f"{pfad}[{i}]"))
+        return fehler
     if not isinstance(regeln, dict):
         return [f"{pfad}: Feld-Regel für '{feldname}' ist kein Mapping."]
     keys = set(regeln)
