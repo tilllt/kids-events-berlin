@@ -66,3 +66,8 @@ def fixture_dir_britzer_garten() -> Path:
 @pytest.fixture()
 def fixture_dir_suedgelaende() -> Path:
     return Path(__file__).parent / "fixtures" / "suedgelaende"
+
+
+@pytest.fixture()
+def fixture_dir_kinderkulturkalender() -> Path:
+    return Path(__file__).parent / "fixtures" / "kinderkulturkalender"

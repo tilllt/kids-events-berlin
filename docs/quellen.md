@@ -12,7 +12,7 @@
 | familienportal.berlin.de/veranstaltungen | offiziell (Land) | **aufnehmen (Stufe 2)** | erreichbar (200, 103 KB); Datumsangaben + h3-Artikelstruktur; Feed: keiner gefunden |
 | tip-berlin.de/veranstaltungen | Stadtmagazin (kommerziell-redaktionell), WordPress | **aufnehmen (Stufe 2, mit Kinder-Filter-Pflicht)** | serverseitige Event-Teaser `.card-teaser` (Kategorie/Titel/Venue/Datum/Link `/event/<slug>/`), robots offen; Familien-Rubrik `/stadt/familie/` ist redaktionell (28 Artikel, 3 Events) → nicht als Listing |
 | Museumsportal Berlin (museumsportal-berlin.de) | öffentlich (Land Berlin), Ionic/Angular + SSR | **aufnehmen (Stufe 2)** | `/de/veranstaltungen/` serverseitig gerendert: `mp-card`-Karten (Titel/Datum `06.09.26 \| 20:00`/Link `/de/veranstaltungen/<slug>/`); robots `search=yes, use=reference` (explizit erlaubt), AI-Crawler geblockt; Fixture vorhanden |
-| kinderkulturkalender-berlin.de | LKJ Berlin, Drupal | **nicht aufnehmen** | Einträge laufen über die jup!-Datenbasis → Duplikat; kein Doppel-Scrape |
+| kinderkulturkalender-berlin.de | LKJ Berlin, Drupal 10 | **aufnehmen (Stufe 2, live seit 2026-09-12)** | eigene Datenbank (kein jup!-Duplikat — Audit-Befund vom 2026-09-06 widerlegt, Messung unten); Drupal-Views-Masonry `div.masonry-item.views-row article.node--type-offer`, Termine/Uhrzeiten + Ort + Adresse im Detail; `/rss.xml` existiert, hat 0 Items → keine Stufe 1 |
 | FEZ Berlin | TYPO3 | offen | Programm-URL noch zu klären |
 | Grips/Parkaue-Spielpläne | SPA/API | später | |
 | Kindaling, berlinfamily.de, rausgegangen | kommerziell/parked/bot-geschützt | **verwerfen** | rausgegangen: Bunny-Shield-Challenge (403, kein deterministischer Zugriff) |
@@ -33,9 +33,15 @@
 - robots: offen (nur `/suche//`, `/suche/s/` disallowed).
 - Adapter: Regeldatei (Selektoren beim Implementieren präzisiert, Fixture-Pflicht).
 
-### kinderkulturkalender-berlin.de — nicht aufnehmen (Duplikat)
-- Drupal, sehr listenreich. Einträge laufen über die jup!-Datenbasis → als eigene Quelle würde sie jup!-Events duplizieren. **Entscheidung:** nicht in Registry; Merge-Regel (Titel+Datum±1+Venue) bleibt für echte Quellen-Überschneidungen.
-- robots: offen.
+### kinderkulturkalender-berlin.de — Stufe 2, aufnehmen (Korrektur 2026-09-12)
+
+- **Die frühere Begründung („läuft über die jup!-Datenbasis → Duplikat“) ist falsch.** Eigene Drupal-10-Instanz der **LKJ Berlin e.V.** mit eigener Datenbank: eigene Knoten `/angebot/<slug>`, eigene Felder (`field-event-date`, `field-location`, `field-event-link`, `term-categories`); im Markup kein jup-Bezug. Live-Messung 2026-09-12 (186 Angebote der Startseite, Titel-Abgleich gegen 1.493 Bestands-Events):
+  - **21-Tage-Fenster: 94 Angebote, 91 (97 %) im Bestand — 87 über `familienportal`, nur 4 über `jup-berlin`.** Der Überschneidungspartner ist also der Aggregator, nicht jup.
+  - **ab +22 Tagen: 78 Angebote, 4 im Bestand** (Oktober-/Ferienvorlauf, KinderKulturMonat) — Lücke entsteht durch unseren 3-Wochen-Horizont, nicht durch Exklusivität der Quelle.
+  - Zusatznutzen: Preis (inkl. ermäßigt), vollständige Veranstaltungsadresse, kuratierte LKJ-Programme.
+- Struktur/Vorgehen: Listing `…/startseite` (Drupal-Views-Masonry, 186 Karten, **keine Pagination**); Listing trägt nur **Datum ohne Uhrzeit** (teils Spanne, ein Alt-Eintrag 2025), die echten Termine stehen im Detail unter `.dates .field__items > .field__item` als Text („20.09.26, 11:00 - 20.09.26, 12:30“) → `termine_css` (Textform) + `termine_autoritativ: true`; Ort/Adresse aus `.field--name-field-location` (Adress-Regel schneidet „Deutschland“ weg, sonst findet die amtliche WFS-Geokodierung nichts); Beschreibung aus `article.node--type-offer.node--view-mode-full .field--name-body`.
+- robots: `/startseite` + `/angebot/` erlaubt; disallowed nur `/admin`, `/core`, `/profiles`, `/search`, `/user/*` (2026-09-12). Abruf 1 req/s.
+- Quelle: `kinderkulturkalender`, typ `regeln`, `horizont_tage: 21` (User-Vorgabe 2026-09-12: „3 Wochen Vorlauf reicht“).
 
 ### Berliner Bibliotheken / ZLB (zlb.de) — Stufe 2, aufnehmen
 - **Struktur (2026-09-06):** `https://www.zlb.de/veranstaltungen` → 200 (239 KB); Event-Teaser als `<article class="eventTeaser …" is="event-teaser">` mit `<h3 class="eventTeaser__title">` und Datumsangaben im Teaser (`06.09.2026`). TYPO3.
@@ -118,3 +124,9 @@ abweichendem Ende-Regex/-Format (britzer-garten nutzt `%H`, gaertenderwelt
 - Proben/Feeds: Live-Abrufe (UA `kids-events-berlin/0.2 (research)`) — Fixtures versioniert unter `tests/fixtures/<quelle>/`.
 - Neue Quelle → Entscheidung Feed (Stufe 1) oder Regeln (Stufe 2) nach Live-Check; Eintrag in `configs/quellen.yaml` (+ ggf. `configs/regeln/<quelle>.yaml`); Fixture-Test Pflicht.
 - Quelle fällt um oder baut um → Fixture-Test rot + Anomalie-Alarm; Regeln per Volume-Overlay korrigierbar (Anleitung in `docs/quellen-regeln.md`).
+
+### Serien-Zwillinge (überlappende Spannen) — Change 008, 2026-09-12
+
+- Befund: `jup-berlin` führt einen mehrtägigen Ferienworkshop (MAXIM) als 13 Einträge mit je um einen Tag verschobener Spanne (09.–13.09., 10.–14.09., … 21.–25.09.); Ursache ist die Quelle („Veranstaltungstermin/e“-Block), nicht der Parser. Bestands-Messung: 9 Überlappungs-Klumpen mit 22 überzähligen Einträgen (8× jup, 1× zlb).
+- Abgrenzung: berührende Slots sind KEINE Dubletten (ZLB-Stundenblöcke 09–10/10–11 Uhr, Weinmeisterhaus 15:30–17:00/17:00–19:00) und bleiben; ebenso gleiche Titel an verschiedenen Orten und `manuell=1`.
+- Regel (Pipeline je Quelle, nach dem Upsert): gleiche Quelle+Titel+Ort mit ECHTER Überlappung (`start < ende` des Vorgängers, fehlendes `ende` = Starttag) → nur der Eintrag mit dem frühesten Start bleibt.

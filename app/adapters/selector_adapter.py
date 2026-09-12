@@ -51,6 +51,45 @@ def _parse_de_datum(text: str) -> datetime | None:
         return None
 
 
+# Termin-Textform OHNE Spans (z. B. Kinderkulturkalender):
+#   „20.09.26, 11:00 - 20.09.26, 12:30“  (Start + Ende)
+#   „11.10.2026, 10:00“                   (nur Start)
+#   „20.09.26“                            (ganztägig)
+_RE_TERMIN_DATUM = re.compile(r"(\d{1,2})[.](\d{1,2})[.]([0-9]{2,4})")
+_RE_TERMIN_ZEIT = re.compile(r"(\d{1,2}):(\d{2})")
+
+
+def _jahr_aus_kurz(v: str) -> int:
+    j = int(v)
+    return 2000 + j if j < 100 else j
+
+
+def _parse_termin_text(text: str) -> tuple[datetime, datetime | None, bool] | None:
+    """Termin-Text → (start, ende, ganztags) oder None (kein Datum → verwerfen)."""
+    daten = _RE_TERMIN_DATUM.findall(text or "")
+    if not daten:
+        return None
+    tag, monat, jahr = daten[0]
+    try:
+        start = datetime(_jahr_aus_kurz(jahr), int(monat), int(tag), tzinfo=TZ_BERLIN)
+    except ValueError:
+        return None
+    zeiten = _RE_TERMIN_ZEIT.findall(text or "")
+    if not zeiten:
+        return (start.replace(hour=0, minute=0),
+                start.replace(hour=23, minute=59), True)
+    start = start.replace(hour=int(zeiten[0][0]), minute=int(zeiten[0][1]))
+    if len(zeiten) < 2:
+        return (start, None, False)
+    tag_e, monat_e, jahr_e = daten[-1] if len(daten) > 1 else daten[0]
+    try:
+        ende = datetime(_jahr_aus_kurz(jahr_e), int(monat_e), int(tag_e),
+                        int(zeiten[-1][0]), int(zeiten[-1][1]), tzinfo=TZ_BERLIN)
+    except ValueError:
+        return (start, None, False)
+    return (start, ende if ende >= start else start, False)
+
+
 def _lade_regeln(regel_yaml: str | None, quelle: str) -> dict:
     fehler = validate_regeln_yaml(regel_yaml or "", quelle)
     if fehler:
@@ -145,9 +184,11 @@ class SelectorAdapter:
         # calendarize/cHash-Links, die auf die Startseite umleiten).
         self._detail_url_skip = str(listing.get("detail_url_skip") or "")
         self._detail_cfg = self._regeln.get("detail") or {}
-        # Detailseiten nur laden, wenn die Regeln sie auswerten (JSON-LD/CSS).
+        # Detailseiten nur laden, wenn die Regeln sie auswerten (JSON-LD/CSS/
+        # Serien-Termine).
         self.braucht_detail = bool(self._detail_cfg.get("jsonld")
-                                   or self._detail_cfg.get("felder"))
+                                   or self._detail_cfg.get("felder")
+                                   or self._detail_cfg.get("termine_css"))
         q = self._regeln.get("quelle") or quelle
         robots = (self._regeln.get("robots") or "")[:200]
         self.robots_policy = robots or "siehe docs/quellen.md"
@@ -332,12 +373,59 @@ class SelectorAdapter:
                 # Textknoten-Kommas („Straße 1 , 12435 Berlin“) normalisieren:
                 # Leerzeichen vor Komma entfernen — für WFS-Geokodierung + Anzeige.
                 txt = re.sub(r"\s*,\s*", ", ", txt)
+                # optionaler regex: Nachbehandlung (z. B. Länderzusatz
+                # „… Deutschland“ entfernen, damit die amtliche Adress-
+                # Geokodierung den Treffer findet). Kein Treffer → Feld leer.
+                if regel.get("regex"):
+                    txt = _regex_ziehen(txt, regel["regex"]) or ""
                 if txt:
                     out[feldname] = txt
+
+        # Serien-Terminliste der Detailseite: entweder li mit zwei Spans
+        # (deutsches Datum + Uhrzeit, Museumsportal) oder Termin-Text ohne
+        # Spans („20.09.26, 11:00 - 20.09.26, 12:30“, Kinderkulturkalender).
+        # Läuft VOR dem JSON-LD-Block: die Terminliste ist unabhängig davon
+        # und darf nicht an einem fehlenden @type:Event scheitern.
+        tcss = self._detail_cfg.get("termine_css")
+        if tcss:
+            termine: list[tuple[datetime, datetime | None, bool]] = []
+            sel = parsel.Selector(text=html)
+            for li in sel.css(tcss):
+                # Form A: li mit Spans (deutsches Datum + Uhrzeit).
+                spans = li.css("span")
+                dt = None
+                if spans:
+                    dt = _parse_de_datum(" ".join(spans[0].css("::text").getall()))
+                if dt is not None:
+                    zeit_txt = (" ".join(spans[1].css("::text").getall()).strip()
+                                if len(spans) > 1 else "")
+                    mz = re.match(r"(\d{1,2}):(\d{2})", zeit_txt)
+                    if mz:
+                        termine.append((dt.replace(hour=int(mz.group(1)),
+                                                   minute=int(mz.group(2))), None, False))
+                    else:
+                        # Nur Datum → ganztägig (00:00–23:59, wie Listing-Konvention)
+                        termine.append((dt.replace(hour=0, minute=0),
+                                        dt.replace(hour=23, minute=59), True))
+                    continue
+                # Form B: Termin als Text — Datumslose Elemente (Buttons,
+                # Kalender-Links) werden verworfen.
+                geparst = _parse_termin_text(" ".join(li.css("::text").getall()))
+                if geparst is None:
+                    continue
+                termine.append(geparst)
+            if termine:
+                out["_termine"] = termine
+
         jsonld_felder = {k: v for k, v in (self._detail_cfg.get("felder") or {}).items()
                          if v.get("jsonld")}
         if jsonld_felder and not self._detail_cfg.get("jsonld"):
             return out  # Quelle ohne JSON-LD-Detail → nur CSS-Felder
+        if not self._detail_cfg.get("jsonld"):
+            # Quelle ohne JSON-LD-Detail: Extraktion überspringen, sonst steht
+            # pro Detailseite eine „kein JSON-LD @type:Event“-Warnung im Log,
+            # die die Pipeline im Detail-Pfad nicht drainiert (stilles Rauschen).
+            return out
         try:
             from extruct.jsonld import JsonLdExtractor
         except ImportError:  # pragma: no cover
@@ -385,33 +473,6 @@ class SelectorAdapter:
                         v = v.get("name") or v.get("streetAddress") or ""
                 out[feldname] = v if isinstance(v, str) else str(v)
 
-        # Serien-Terminliste der Detailseite (z. B. mp „Datum und Uhrzeit“):
-        # li-Elemente mit zwei Spans (deutsches Datum + Uhrzeit). Ergänzt das
-        # JSON-LD-Einzelevent um alle weiteren Termine → zu_events expandiert.
-        tcss = self._detail_cfg.get("termine_css")
-        if tcss:
-            termine: list[tuple[datetime, datetime | None, bool]] = []
-            sel = parsel.Selector(text=html)
-            for li in sel.css(tcss):
-                spans = li.css("span")
-                if len(spans) < 1:
-                    continue
-                dt = _parse_de_datum(" ".join(spans[0].css("::text").getall()))
-                if dt is None:
-                    continue
-                zeit_txt = ""
-                if len(spans) > 1:
-                    zeit_txt = " ".join(spans[1].css("::text").getall()).strip()
-                mz = re.match(r"(\d{1,2}):(\d{2})", zeit_txt)
-                if mz:
-                    dt = dt.replace(hour=int(mz.group(1)), minute=int(mz.group(2)))
-                    termine.append((dt, None, False))
-                else:
-                    # Nur Datum → ganztägig (00:00–23:59, wie Listing-Konvention)
-                    termine.append((dt.replace(hour=0, minute=0),
-                                    dt.replace(hour=23, minute=59), True))
-            if termine:
-                out["_termine"] = termine
         return out
 
     # --- Event-Bau ----------------------------------------------------------
@@ -468,14 +529,21 @@ class SelectorAdapter:
         Mit Terminliste (detail['_termine']): ein Event pro Termin; enthält
         die Liste den Listing-Start, ist sie autoritativ, sonst kommt das
         Row-Event zusätzlich (Sicherheitsnetz bei abweichenden Daten).
+
+        detail.termine_autoritativ: true schaltet das Sicherheitsnetz ab —
+        nötig, wenn das Listing nur ein Datum OHNE Uhrzeit trägt (Kinder-
+        kulturkalender): das Row-Event wäre sonst ein zusätzlicher
+        ganztägiger Phantom-Termin neben den echten Terminen.
         """
         detail = detail or {}
         termine = detail.get("_termine") or []
         if not termine:
             return [self._bau_event(row, detail, jetzt, row["start"])]
+        evs = [self._bau_event(row, detail, jetzt, t[0], t[1], t[2]) for t in termine]
+        if self._detail_cfg.get("termine_autoritativ"):
+            return evs
         row_start = row["start"].astimezone(TZ_BERLIN).replace(second=0, microsecond=0)
         in_liste = any(t[0] == row_start for t in termine)
-        evs = [self._bau_event(row, detail, jetzt, t[0], t[1], t[2]) for t in termine]
         if not in_liste:
             evs.insert(0, self._bau_event(row, detail, jetzt, row["start"]))
         return evs

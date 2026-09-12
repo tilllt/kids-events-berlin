@@ -260,6 +260,14 @@ def _scrape_mit_adapter(store, adapter, quelle, *, online, geo,
         if geo_client is not None:
             geo_client.close()
 
+    # Serien-Zwillinge: Quellen liefern mehrtägige Events teils als mehrere, je
+    # um einen Tag verschobene Kopien (jup „Veranstaltungstermin/e“) → je Kette
+    # nur der früheste Eintrag bleibt (Change 008). Räumt auch Altlasten mit weg.
+    entfernt = store.entferne_ueberlappende_zwillinge(quelle)
+    if entfernt:
+        print(f"[dedup] {quelle}: {len(entfernt)} überlappende Serien-Zwillinge "
+              f"entfernt", flush=True)
+
     # Stale-Bereinigung: Events der Quelle, deren Start > 3 Tage zurückliegt
     cutoff = (jetzt - timedelta(days=3)).astimezone(ZoneInfo("UTC")).isoformat()
     store.prune_stale(quelle, cutoff)
@@ -275,6 +283,7 @@ def _scrape_mit_adapter(store, adapter, quelle, *, online, geo,
         "n_neu": n_neu,
         "n_geaendert": n_geaendert,
         "n_fehler": n_fehler,
+        "n_zwillinge_entfernt": len(entfernt),
         "seiten": n_pages,
     }
 

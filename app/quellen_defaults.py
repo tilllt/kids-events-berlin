@@ -142,6 +142,40 @@ SUEDGELAENDE_REGELN = _gruen_berlin_regeln(
     "https://www.natur-park-suedgelaende.de/entdecken-erleben/kalender/",
     "[0-9]{1,2}:[0-9]{2}[^0-9]{1,4}([0-9]{1,2}:[0-9]{2})", "%H:%M")
 
+# Kinderkulturkalender (LKJ Berlin e.V., Drupal 10) — eigene Datenbank,
+# KEIN jup!-Duplikat (Audit-Befund 2026-09-12 widerlegt; 87 der 91 im
+# 21-Tage-Fenster überlappenden Angebote kommen über familienportal).
+KINDERKULTURKALENDER_REGELN = """quelle: kinderkulturkalender
+robots: "erlaubt: /startseite + /angebot/; disallowed nur /admin,/core,/profiles,/search,/user/* (2026-09-12)"
+listing:
+  url: https://www.kinderkulturkalender-berlin.de/startseite
+  # Drupal-Views-Masonry: 186 Karten, keine Pagination; 3-Wochen-Horizont
+  # über horizont_tage (Projekt-Vorgabe „nur 3 Wochen in die Zukunft").
+  horizont_tage: 21
+  item_css: "div.masonry-item.views-row article.node--type-offer"
+  felder:
+    titel: {css: "h3 .field--name-title"}
+    url: {css: "a.offer__wrapper", attr: "href"}
+    # Das Listing trägt nur Datum (teils als Spanne, ohne Uhrzeit) — die
+    # echten Termine stehen im Detail (termine_css + termine_autoritativ).
+    start: {css: "div.field--name-field-event-date", regex: "([0-9]{2}[.][0-9]{2}[.][0-9]{4})", format: "%d.%m.%Y"}
+detail:
+  felder:
+    # Haupttext der Angebotsseite (das nackte .field--name-body matcht auch
+    # Kopf-/Fußzeilen-Blöcke und liefert „Kontrast Instagram …“ davor).
+    beschreibung_kurz: {css: "article.node--type-offer.node--view-mode-full .field--name-body"}
+    ort: {css: ".field--name-field-location .field--name-title"}
+    # Adressblock des verknüpften Orts-Knotens; Länderzusatz „Deutschland"
+    # muss weg, sonst findet die amtliche Adress-Geokodierung nichts.
+    adresse: {css: ".field--name-field-location .field--name-field-address", regex: '^(.*?)(?:[,\\s]*Deutschland)?$'}
+  # Termine als Textitems „20.09.26, 11:00 - 20.09.26, 12:30" (Form B im
+  # Selector-Adapter) — Liste ist autoritativ, kein Phantom-Row-Event.
+  # `> .field__item` ist Pflicht: ohne das Kind-Selektor matcht auch der
+  # Spannen-Wrapper („13.09.2026 - 21.11.2026") ohne Uhrzeit.
+  termine_css: "div.dates .field__items > .field__item"
+  termine_autoritativ: true
+"""
+
 DEFAULT_REGELN: dict[str, str] = {
     "zlb": ZLB_REGELN,
     "museumsportal": MUSEUMS_REGELN,
@@ -150,4 +184,5 @@ DEFAULT_REGELN: dict[str, str] = {
     "gaerten-der-welt": GAERTEN_DER_WELT_REGELN,
     "britzer-garten": BRITZER_GARTEN_REGELN,
     "suedgelaende": SUEDGELAENDE_REGELN,
+    "kinderkulturkalender": KINDERKULTURKALENDER_REGELN,
 }

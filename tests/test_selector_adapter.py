@@ -3,11 +3,12 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from app.adapters.selector_adapter import SelectorAdapter
+from app.adapters.selector_adapter import SelectorAdapter, _parse_termin_text
 from app.model import TZ_BERLIN
 from app.quellen_defaults import (
     BRITZER_GARTEN_REGELN,
     GAERTEN_DER_WELT_REGELN,
+    KINDERKULTURKALENDER_REGELN,
     MUSEUMS_REGELN,
     SUEDGELAENDE_REGELN,
     TEMPELHOFER_FELD_REGELN,
@@ -351,3 +352,118 @@ def test_gruen_berlin_detail_ort(quelle, regeln, fixture_name, needle, request):
     if det.get("beschreibung_kurz"):
         assert len(det["beschreibung_kurz"]) > 20
     adapter.close()
+
+
+# --- Kinderkulturkalender (LKJ Berlin, Drupal 10; Change 007) --------------
+
+def test_kinderkulturkalender_regeln_validieren():
+    assert validate_regeln_yaml(KINDERKULTURKALENDER_REGELN,
+                                "kinderkulturkalender") == []
+
+
+def test_kkk_listing_offline(fixture_dir_kinderkulturkalender):
+    adapter = SelectorAdapter("kinderkulturkalender",
+                              regel_yaml=KINDERKULTURKALENDER_REGELN)
+    assert adapter.braucht_detail is True
+    assert adapter.horizont_tage == 21
+    rows = adapter.parse_listing(
+        (fixture_dir_kinderkulturkalender / "listing.html").read_text(encoding="utf-8"))
+    assert adapter.drain_warnungen() == []
+    assert len(rows) > 100, f"nur {len(rows)} Karten"
+    for r in rows:
+        assert r["titel"]
+        assert r["url"] and r["url"].startswith(
+            "https://www.kinderkulturkalender-berlin.de/angebot/")
+        assert r["start"].tzinfo is not None
+        assert r["start"].year >= 2025
+    # Genau ein Alt-Eintrag der Quelle trägt ein veraltetes Datum
+    # („Skulptur mit Ton“: 15.09.2025 - 23.08.2027, Quelldaten, kein
+    # Parser-Fehler); alles andere ist 2026+ und wird vom Fenster-Filter
+    # der Pipeline auf die nächsten 3 Wochen begrenzt.
+    assert sum(1 for r in rows if r["start"].year >= 2026) >= 180
+    # Das Listing trägt nur ein Datum ohne Uhrzeit → ganztags; Ort/Zeit
+    # kommen erst aus der Detailseite.
+    assert all(r["ganztags"] for r in rows)
+    needle = [r for r in rows if "Herbstshow bei CABUWAZI" in r["titel"]]
+    assert needle, "Anlass-Event fehlt im Listing"
+    # Die Quelle führt die Show als mehrere Knoten (…-show-1, …-show-1-0, …-show-2)
+    # mit 19.09. bzw. 20.09.2026; der 20.09. ist der in der Detailseite
+    # hinterlegte Termin (11:00–12:30).
+    starts = {(r["start"].month, r["start"].day) for r in needle}
+    assert (9, 20) in starts, starts
+    adapter.close()
+
+
+def test_kkk_detail_ort_adresse_beschreibung(fixture_dir_kinderkulturkalender):
+    adapter = SelectorAdapter("kinderkulturkalender",
+                              regel_yaml=KINDERKULTURKALENDER_REGELN)
+    det = adapter.parse_detail(
+        (fixture_dir_kinderkulturkalender / "detail.html").read_text(encoding="utf-8"))
+    assert adapter.drain_warnungen() == []  # kein JSON-LD-Rauschen ohne jsonld-Regel
+    assert det["ort"] == "Amerika-Gedenkbibliothek"
+    # Länderzusatz entfernt + PLZ erhalten (für die amtliche Geokodierung)
+    assert det["adresse"] == "Blücherplatz 1 10961 Berlin"
+    assert "<" not in (det["beschreibung_kurz"] or "")
+    assert not det["beschreibung_kurz"].startswith("Kontrast")
+    adapter.close()
+
+
+def test_kkk_detail_termine_textform(fixture_dir_kinderkulturkalender):
+    adapter = SelectorAdapter("kinderkulturkalender",
+                              regel_yaml=KINDERKULTURKALENDER_REGELN)
+    det = adapter.parse_detail(
+        (fixture_dir_kinderkulturkalender / "detail_serie.html").read_text(encoding="utf-8"))
+    termine = det.get("_termine") or []
+    assert len(termine) == 4, termine
+    start, ende, ganztags = termine[0]
+    assert (start.month, start.day, start.hour, start.minute) == (9, 13, 16, 0)
+    assert (ende.hour, ende.minute) == (16, 45)
+    assert ganztags is False
+    # Der Spannen-Wrapper („13.09.2026 - 21.11.2026“) darf NICHT als
+    # zusätzlicher ganztägiger Termin durchrutschen.
+    assert not any(t[2] for t in termine)
+    adapter.close()
+
+
+def test_kkk_zu_events_autoritativ(fixture_dir_kinderkulturkalender):
+    """termine_autoritativ: kein Phantom-Row-Event neben den echten Terminen."""
+    adapter = SelectorAdapter("kinderkulturkalender",
+                              regel_yaml=KINDERKULTURKALENDER_REGELN)
+    rows = adapter.parse_listing(
+        (fixture_dir_kinderkulturkalender / "listing.html").read_text(encoding="utf-8"))
+    row = [r for r in rows if r["slug"] == "chaos-der-gefuehle-relaxed-performance"][0]
+    det = adapter.parse_detail(
+        (fixture_dir_kinderkulturkalender / "detail_serie.html").read_text(encoding="utf-8"))
+    jetzt = datetime(2026, 9, 12, 12, 0, tzinfo=TZ_BERLIN)
+    evs = adapter.zu_events(row, det, jetzt)
+    assert len(evs) == 4
+    assert all(e["ganztags"] is False for e in evs)
+    assert all(e["ort"] == "THEATER AN DER PARKAUE" for e in evs)
+    assert all(e["adresse"] == "Parkaue 29 10367 Berlin" for e in evs)
+    ids = {e["id"] for e in evs}
+    assert len(ids) == 4  # eindeutige Event-IDs je Termin
+    adapter.close()
+
+
+@pytest.mark.parametrize("text,erwartet", [
+    ("20.09.26, 11:00 - 20.09.26, 12:30", (2026, 9, 20, 11, 0, 12, 30, False)),
+    ("11.10.2026, 10:00 - 11.10.2026, 16:00", (2026, 10, 11, 10, 0, 16, 0, False)),
+    ("13.09.26, 16:00", (2026, 9, 13, 16, 0, None, None, False)),
+    ("20.09.26", (2026, 9, 20, 0, 0, 23, 59, True)),
+])
+def test_parse_termin_text(text, erwartet):
+    start, ende, ganztags = _parse_termin_text(text)
+    jahr, monat, tag, sh, sm, eh, em, ganz = erwartet
+    assert (start.year, start.month, start.day, start.hour, start.minute) == (jahr, monat, tag, sh, sm)
+    assert start.tzinfo is not None
+    assert ganztags is ganz
+    if eh is None:
+        assert ende is None
+    else:
+        assert (ende.hour, ende.minute) == (eh, em)
+
+
+def test_parse_termin_text_ohne_datum():
+    """Elemente ohne Datum (Buttons, Kalender-Links) werden verworfen."""
+    assert _parse_termin_text("Zum Kalender hinzufügen Google Yahoo!") is None
+    assert _parse_termin_text("") is None

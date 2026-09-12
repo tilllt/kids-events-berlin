@@ -633,6 +633,69 @@ class Store:
             self._conn.commit()
             return int(cur.rowcount)
 
+    def entferne_ueberlappende_zwillinge(self, quelle: str) -> list[dict]:
+        """Überlappende Serien-Zwillinge EINER Quelle zusammenfassen.
+
+        Quellen führen mehrtägige Events teils als mehrere, je um einen Tag
+        verschobene Einträge mit derselben Spanne (jup.berlin: „Veranstaltungs-
+        termin/e“) — jeder Eintrag ist einzeln korrekt, in Summe entsteht ein
+        Stapel überlappender Kopien in Liste und Karte (realer User-Befund
+        2026-09-12: ein Ferienworkshop 13× im Bestand).
+
+        Regel: Gruppen aus gleicher Quelle + normalisiertem Titel + Ort werden
+        zu Ketten mit ECHTER Überlappung zusammengefasst (start < ende des
+        Vorgängers; fehlendes ende zählt als Starttag). Je Kette bleibt der
+        Eintrag mit dem FRÜHESTEN Start — das ist der ursprüngliche Termin,
+        die verschobenen Kopien sind die späteren.
+
+        Berührende Slots (ende == start, z. B. ZLB-Stundenblöcke 09–10/10–11
+        Uhr) sind KEINE Dubletten und bleiben unangetastet, ebenso gleiche
+        Titel an verschiedenen Orten und manuell gepflegte Events (manuell=1).
+
+        Rückgabe: die gelöschten Datensätze (für Metrik/Log).
+        """
+        with self._lock:
+            rows = [dict(r) for r in self._conn.execute(
+                "SELECT id, titel, ort, start_local, ende_local FROM events "
+                "WHERE quelle=? AND COALESCE(manuell, 0) = 0 "
+                "ORDER BY start_local, id", (quelle,)).fetchall()]
+
+        def _key(r: dict) -> tuple[str, str]:
+            return ((r.get("titel") or "").strip().lower(),
+                    (r.get("ort") or "").strip().lower())
+
+        def _dt(v):
+            try:
+                return datetime.fromisoformat(v) if v else None
+            except ValueError:
+                return None
+
+        gruppen: dict[tuple[str, str], list[dict]] = {}
+        for r in rows:
+            gruppen.setdefault(_key(r), []).append(r)
+
+        zu_loeschen: list[dict] = []
+        for items in gruppen.values():
+            if len(items) < 2:
+                continue
+            kette = [items[0]]
+            for r in items[1:]:
+                ende_vor = _dt(kette[-1].get("ende_local")) or _dt(kette[-1]["start_local"])
+                start = _dt(r["start_local"])
+                if ende_vor and start and start < ende_vor:
+                    kette.append(r)
+                else:
+                    zu_loeschen.extend(kette[1:])
+                    kette = [r]
+            zu_loeschen.extend(kette[1:])
+        if not zu_loeschen:
+            return []
+        with self._lock:
+            self._conn.executemany("DELETE FROM events WHERE id = ?",
+                                   [(r["id"],) for r in zu_loeschen])
+            self._conn.commit()
+        return zu_loeschen
+
     def get_venue_cache(self, key: str) -> dict | None:
         with self._lock:
             r = self._conn.execute(
