@@ -49,6 +49,8 @@ CREATE TABLE IF NOT EXISTS events (
     geholt_am TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'auto',
     manuell INTEGER NOT NULL DEFAULT 0,
+    -- Change 016: wann hat die Quelle diesen Termin zuletzt angeboten?
+    zuletzt_gesehen TEXT,
     -- Change 011: weitere Quellen, die dieselbe Veranstaltung gelistet haben
     quellen_json TEXT
 );
@@ -266,6 +268,16 @@ class Store:
             # die dieselbe Veranstaltung gelistet haben).
             if "quellen_json" not in ev_cols:
                 self._conn.execute("ALTER TABLE events ADD COLUMN quellen_json TEXT")
+            # Change 016: Grundlage für das Entfernen nicht mehr angebotener
+            # Termine (deterministisch: die Quelle selbst ist das Signal).
+            if "zuletzt_gesehen" not in ev_cols:
+                self._conn.execute("ALTER TABLE events ADD COLUMN zuletzt_gesehen TEXT")
+            # Altbestand: alles, was schon da ist, gilt als zuletzt beim Holen
+            # gesehen — sonst würde der erste Lauf nach dem Update den ganzen
+            # Bestand als „nicht mehr angeboten" einstufen.
+            self._conn.execute(
+                "UPDATE events SET zuletzt_gesehen = geholt_am "
+                "WHERE zuletzt_gesehen IS NULL")
             # Change 012: Schulenbezug je Brave-Aufruf (Wiederholungs-Schutz)
             br_cols = {r["name"] for r in self._conn.execute(
                 "PRAGMA table_info(brave_aufrufe)").fetchall()}
@@ -778,6 +790,57 @@ class Store:
                 "DELETE FROM events WHERE quelle=? AND "
                 "COALESCE(ende_iso, start_iso) < ?",
                 (quelle, cutoff_iso_utc),
+            )
+            self._conn.commit()
+            return int(cur.rowcount)
+
+    def markiere_gesehen(self, quelle: str, refs: list[tuple[str, str]],
+                         zeit: str) -> int:
+        """Change 016: stempelt alle Termine, die die Quelle noch anbietet.
+
+        refs = (id, source_event_id) der gelesenen Termine. Der normale
+        Schreibpfad ändert nur echte Unterschiede — ohne diesen Stempel hätte
+        ein unveränderter Termin nach Tagen ein altes „zuletzt gesehen" und
+        gälte fälschlich als nicht mehr angeboten. Beide Kennungen werden
+        geprüft: nach einer Zusammenführung kann der Satz unter anderer id stehen.
+        """
+        if not refs:
+            return 0
+        ids = [r[0] for r in refs if r[0]]
+        sids = [r[1] for r in refs if len(r) > 1 and r[1]]
+        n = 0
+        with self._lock:
+            for spalte, werte in (("id", ids), ("source_event_id", sids)):
+                for i in range(0, len(werte), 400):   # SQL-Variablen begrenzen
+                    block = werte[i:i + 400]
+                    ph = ",".join("?" * len(block))
+                    cur = self._conn.execute(
+                        f"UPDATE events SET zuletzt_gesehen=? WHERE quelle=? "
+                        f"AND {spalte} IN ({ph})",
+                        [zeit, quelle, *block])
+                    n += int(cur.rowcount)
+            self._conn.commit()
+        return n
+
+    def entferne_nicht_mehr_angeboten(self, quelle: str, lauf_start: str,
+                                      ok: bool = True) -> int:
+        """Change 016: Termine löschen, die die Quelle nicht mehr anbietet.
+
+        Bedingung: „zuletzt gesehen" fehlt oder liegt VOR dem Laufbeginn UND der
+        letzte Tag (Ende, sonst Start) liegt in der Vergangenheit. Ein
+        Mehrtagestermin, den die Quelle weiterhin anbietet, ist gestempelt und
+        bleibt. Bei ok=False (Lauf mit Fehlern) passiert nichts — ein halb
+        gelesenes Listing darf keinen Termin kosten.
+        """
+        if not ok:
+            return 0
+        heute = lauf_start[:10]
+        with self._lock:
+            cur = self._conn.execute(
+                "DELETE FROM events WHERE quelle=? "
+                "AND (zuletzt_gesehen IS NULL OR zuletzt_gesehen < ?) "
+                "AND substr(COALESCE(ende_local, start_local), 1, 10) < ?",
+                (quelle, lauf_start, heute),
             )
             self._conn.commit()
             return int(cur.rowcount)

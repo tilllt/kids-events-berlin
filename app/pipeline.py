@@ -193,6 +193,9 @@ def _scrape_mit_adapter(store, adapter, quelle, *, online, geo,
                 else "")
 
     n_neu = n_geaendert = n_fehler = 0
+    # Change 016: Kennungen aller Termine, die die Quelle in diesem Lauf noch
+    # angeboten hat → Grundlage für das Entfernen verschwundener Angebote.
+    gesehen: list[tuple[str, str]] = []
     # Ein HTTP-Client für alle Geokodierungs-Anfragen des Laufs (1 req/s).
     geo_client = None
     if geo and online:
@@ -285,11 +288,23 @@ def _scrape_mit_adapter(store, adapter, quelle, *, online, geo,
                               ("titel", "start_iso", "source_url")})
               continue
           neu, geaendert = store.upsert_event(ev)
+          gesehen.append((ev["id"], ev.get("source_event_id") or ""))
           n_neu += int(neu)
           n_geaendert += int(geaendert)
     finally:
         if geo_client is not None:
             geo_client.close()
+
+    # Change 016: erst stempeln, was die Quelle noch anbietet, dann verschwundene
+    # Angebote entfernen. Deterministisch (die Quelle ist das Signal) statt
+    # fester Frist — der Altbestand behielt sonst Termine tageweise und mit
+    # ihrem alten Zustand (Ort „Ohne Angabe", keine Position).
+    store.markiere_gesehen(quelle, gesehen, jetzt.isoformat())
+    weg = store.entferne_nicht_mehr_angeboten(quelle, jetzt.isoformat(),
+                                              ok=(n_fehler == 0))
+    if weg:
+        print(f"[stale] {quelle}: {weg} nicht mehr angebotene Termine entfernt",
+              flush=True)
 
     # Serien-Zwillinge: Quellen liefern mehrtägige Events teils als mehrere, je
     # um einen Tag verschobene Kopien (jup „Veranstaltungstermin/e“) → je Kette
