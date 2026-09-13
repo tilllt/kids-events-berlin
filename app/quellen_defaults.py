@@ -59,7 +59,7 @@ listing:
   item_css: "article.modul-teaser"
   felder:
     titel: {css: "h3.title"}
-    url: {css: "a.more", attr: "href"}
+    url: {css: "a.more", attr: "href", regex: '(/veranstaltungen-3/termin/[^?#]+)'}
     start: {css: ".teaser__meta .text--meta", regex: "([0-9]{2}[.][0-9]{2}[.][0-9]{4})", format: "%d.%m.%Y"}
     zeit: {css: '.teaser__meta .text--meta', regex: '([0-9]{1,2}:[0-9]{2})\\s*Uhr', format: '%H:%M'}
     bezirk: {css: '.teaser__meta .text--meta', regex: '\\|\\s*([^|]+)$'}

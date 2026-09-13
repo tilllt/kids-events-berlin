@@ -318,7 +318,17 @@ class SelectorAdapter:
         for feldname, regel in self._felder.items():
             if feldname in ("titel", "start", "ende", "zeit", "ort", "url",
                             "beschreibung_kurz", "adresse", "bezirk"):
-                f[feldname] = _feld_wert(item, regel)
+                wert = _feld_wert(item, regel)
+                # 'regex' gilt für JEDES Feld, nicht nur für die Termin-Felder.
+                # Nötig z. B. beim Familienportal: dort trägt eine Karte sowohl
+                # tote calendarize/cHash-Links (leiten auf die Liste um) als auch
+                # sprechende /termin/<slug>-Links. Über ein Muster lässt sich der
+                # brauchbare Link behalten und der tote verwerfen — sonst zeigt
+                # die App einen Link, der ins Leere führt.
+                # start/ende/zeit/bezirk behalten ihre eigene Auswertung darunter.
+                if regel.get("regex") and feldname not in ("start", "ende", "zeit", "bezirk"):
+                    wert = _regex_ziehen(wert, regel.get("regex"))
+                f[feldname] = wert
         titel = f.get("titel")
         if not titel:
             raise ValueError("titel fehlt")

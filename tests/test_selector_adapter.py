@@ -205,6 +205,34 @@ listing:
     adapter.close()
 
 
+def test_url_regex_verwirft_tote_links():
+    """Familienportal liefert pro Karte mal einen sprechenden /termin/-Link, mal
+    einen toten calendarize/cHash-Link, der auf die Liste umleitet. Über ein
+    Muster auf dem url-Feld darf nur der brauchbare Link übrig bleiben
+    (Nutzerhinweis: „Quelle linked auf eine leere Seite")."""
+    regeln = """
+quelle: test-url-regex
+name: Testquelle URL
+robots: 'erlaubt: / (Test)'
+listing:
+  url: https://example.org/veranstaltungen
+  item_css: 'article.t'
+  felder:
+    titel: {css: 'h3'}
+    start: {css: '.d', format: '%d.%m.%Y'}
+    url: {css: 'a.more', attr: 'href', regex: '(/veranstaltungen-3/termin/[^?#]+)'}
+"""
+    html = ('<article class="t"><h3>Gut</h3><div class="d">01.10.2026</div>'
+            '<a class="more" href="/veranstaltungen-3/termin/robotik-20261001-7">mehr</a></article>'
+            '<article class="t"><h3>Tod</h3><div class="d">02.10.2026</div>'
+            '<a class="more" href="/veranstaltungen-3?tx_calendarize_calendar%5Baction%5D=detail&cHash=abc">mehr</a></article>')
+    adapter = SelectorAdapter("test-url-regex", regel_yaml=regeln)
+    rows = {r["titel"]: r for r in adapter.parse_listing(html)}
+    assert rows["Gut"]["url"] == "https://example.org/veranstaltungen-3/termin/robotik-20261001-7"
+    assert not rows["Tod"].get("url"), "toter calendarize-Link muss verworfen werden"
+    adapter.close()
+
+
 def test_familienportal_zu_event_bezirk(fixture_dir_familienportal):
     from app.quellen_defaults import FAMILIENPORTAL_REGELN
     adapter = SelectorAdapter("familienportal", regel_yaml=FAMILIENPORTAL_REGELN)
