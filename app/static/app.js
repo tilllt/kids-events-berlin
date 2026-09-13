@@ -224,6 +224,17 @@ legendeEinrichten();
 let cluster = null;
 let markers = [];
 
+/* Leaflet merkt sich die Größe des Containers beim Start. Ändert sich das
+   Layout (Filter auf-/zugeklappt, Fenster gedreht/verkleinert), muss die Karte
+   neu vermessen werden — sonst fehlen unten Kacheln, Legende oder Attribution. */
+function karteNachziehen() {
+  if (!map || typeof map.invalidateSize !== "function") return;
+  setTimeout(() => map.invalidateSize(false), 60);
+}
+window.addEventListener("resize", karteNachziehen);
+window.addEventListener("orientationchange", karteNachziehen);
+window.addEventListener("load", karteNachziehen);
+
 function clearMarkers() {
   if (cluster) { map.removeLayer(cluster); cluster = null; }
   markers.forEach((m) => m.remove());
@@ -463,6 +474,7 @@ document.addEventListener("click", (ev) => {
     t.setAttribute("aria-selected", String(aktiv));
   });
   $$(".filter-panel").forEach((p) => p.classList.toggle("hidden", schliessen || p.id !== `panel-${panel}`));
+  karteNachziehen();
 });
 $("#detail-close").addEventListener("click", closeDetail);
 $("#detail").addEventListener("click", (ev) => { if (ev.target === ev.currentTarget) closeDetail(); });
