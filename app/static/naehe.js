@@ -109,19 +109,46 @@
       var liProTitel = {};
       Array.prototype.forEach.call(document.querySelectorAll("#eventlist li"), function (li) {
         var h = li.querySelector("h3");
-        if (h) liProTitel[(h.textContent || "").trim()] = li;
+        if (!h) return;
+        var t = (h.textContent || "").trim();
+        (liProTitel[t] = liProTitel[t] || []).push(li);
       });
+      // Abstände je Titel sammeln (und wie viele Termine diesen Titel tragen).
+      var jeTitel = {};
       (gj.features || []).forEach(function (f) {
         var p = f.properties || {};
         if (p.entfernung_km == null || !p.titel) return;
-        var li = liProTitel[String(p.titel).trim()];
-        if (!li) return;
-        var s = li.querySelector(".naehe-km");
-        if (!s) {
-          s = el("span", { class: "naehe-km" }, "");
-          (li.querySelector(".li-meta") || li).appendChild(s);
+        var t = String(p.titel).trim();
+        (jeTitel[t] = jeTitel[t] || []).push({
+          km: p.entfernung_km, start: String(p.start_local || ""),
+        });
+      });
+      Object.keys(jeTitel).forEach(function (t) {
+        var lis = liProTitel[t];
+        if (!lis || !lis.length) return;
+        var eintraege = jeTitel[t];
+        var werte = {};
+        eintraege.forEach(function (e) { werte[e.km] = true; });
+        var eindeutig = Object.keys(werte).length === 1;
+        var gleichViele = lis.length === eintraege.length;
+        // Lieber kein Wert als ein falscher: gesetzt wird nur, wenn entweder
+        // alle Einträge dieses Titels gleich weit liegen (dann gilt der Wert
+        // für alle) oder Titel und Einträge 1:1 sind (dann in Reihenfolge der
+        // Startzeit, genau wie die Liste sortiert ist).
+        if (!eindeutig && !gleichViele) return;
+        if (!eindeutig) {
+          eintraege.sort(function (a, b) { return a.start.localeCompare(b.start); });
         }
-        s.textContent = String(p.entfernung_km).replace(".", ",") + " km";
+        lis.forEach(function (li, i) {
+          var km = eindeutig ? Object.keys(werte)[0] : (eintraege[i] || {}).km;
+          if (km == null) return;
+          var s = li.querySelector(".naehe-km");
+          if (!s) {
+            s = el("span", { class: "naehe-km" }, "");
+            (li.querySelector(".li-meta") || li).appendChild(s);
+          }
+          s.textContent = String(km).replace(".", ",") + " km";
+        });
       });
     };
     setzeEntfernungen();
