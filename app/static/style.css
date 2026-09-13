@@ -75,6 +75,10 @@ main > * { min-width: 0; }
 .naehe-abo-link { color: #4ac26b; text-decoration: none; margin-right: 6px; }
 .naehe-abo-link:hover { text-decoration: underline; }
 .naehe-abo-kopie { padding: 2px 8px !important; font-size: 11.5px !important; }
+/* Der Geo-Block sitzt im Höhen-Container der Karte. Ohne flex: 0 0 auto wird er
+   dort zusammengedrückt — auf dem Handy war er nur noch 2 px hoch, die
+   Umkreisfilter waren damit unsichtbar (gemessen 390x844). */
+.naehe { flex: 0 0 auto !important; min-height: 34px; }
 .switch { display: flex; gap: 6px; align-items: center; cursor: pointer; font-size: 13px; }
 .switch input { accent-color: var(--accent); }
 .ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; cursor: pointer; }
