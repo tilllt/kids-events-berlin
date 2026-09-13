@@ -72,6 +72,13 @@ main > * { min-width: 0; }
   background-repeat: no-repeat; background-position: 13px center; background-size: 17px 17px;
 }
 #suche:focus { outline: none; border-color: var(--accent); background-color: #242b36; }
+/* Nur für Screenreader: Die Klasse war im HTML benutzt, aber nie definiert —
+   dadurch standen "Volltextsuche" und "Veranstaltungsort suchen" sichtbar
+   über den Suchfeldern. */
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
 .naehe-abo { white-space: nowrap; }
 .naehe-abo-link { color: #4ac26b; text-decoration: none; margin-right: 6px; }
 .naehe-abo-link:hover { text-decoration: underline; }
