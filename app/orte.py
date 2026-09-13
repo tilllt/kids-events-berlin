@@ -39,6 +39,8 @@ _GENERISCH = {
     "nach absprache", "wird bekannt gegeben", "folgt", "siehe beschreibung",
     "siehe anbieter", "treffpunkt wird bekannt gegeben", "vor ort",
     "bezirk", "ausserhalb berlins", "außerhalb berlins",
+    # 30 Termine trugen „vielerorts" als Ort (Messung 2026-09-13).
+    "vielerorts", "überall", "ueberall", "an verschiedenen orten",
 }
 
 # Ab dieser Ähnlichkeit lohnt die Nachfrage (Prüfliste). Bewusst großzügig:
