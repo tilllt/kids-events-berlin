@@ -86,12 +86,12 @@ main > * { min-width: 0; }
 #filters input[type="date"]:disabled { opacity: 0.5; cursor: not-allowed; }
 .metanote { color: var(--muted); font-size: 11.5px; margin-top: 8px; line-height: 1.5; }
 #content { display: flex; flex-direction: column; min-height: 0; }
-#eventlist { flex: 1 1 55%; overflow-y: auto; list-style: none; margin: 0; padding: 0; border-bottom: 1px solid var(--border); }
+#eventlist { flex: 1 1 50%; overflow-y: auto; list-style: none; margin: 0; padding: 0; border-bottom: 1px solid var(--border); }
 /* Karte und Liste teilen sich die Höhe. Vorher hatte die Karte eine feste
    Prozent-Höhe mit harter Obergrenze (max-height 480px) — auf kleineren
    Fenstern ragte sie über den sichtbaren Bereich hinaus und wirkte unten
    abgeschnitten (Legende/Attribution weg). min() erlaubt Mitschrumpfen. */
-#mapwrap { flex: 1 1 45%; height: auto; min-height: min(240px, 40vh); display: flex; flex-direction: column; }
+#mapwrap { flex: 1 1 50%; height: auto; min-height: min(320px, 45vh); display: flex; flex-direction: column; }
 .maptitle {
   font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted);
   margin: 0; padding: 6px 14px; background: var(--panel); border-bottom: 1px solid var(--border);

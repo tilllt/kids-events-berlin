@@ -270,13 +270,18 @@
       "border:1px solid var(--border,#2a2f36);background:#12161b;color:#e6edf3;font-size:13px}" +
       ".naehe-suche input::placeholder{color:#6e7681}" +
       ".naehe-suche input:focus{outline:none;border-color:rgba(46,160,67,.6)}" +
-      ".naehe-seg-wrap{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}" +
+      ".naehe-slider-wrap{display:flex;align-items:center;gap:10px;margin-top:10px}" +
       ".naehe-label{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#9aa4b2}" +
-      ".naehe-seg{display:flex;border:1px solid var(--border,#2a2f36);border-radius:8px;overflow:hidden}" +
-      ".naehe-seg button{min-height:34px;border:none;border-radius:0;background:transparent;" +
-      "padding:0 12px;font-size:12.5px;color:#9aa4b2}" +
-      ".naehe-seg button+button{border-left:1px solid var(--border,#2a2f36)}" +
-      ".naehe-seg button[aria-pressed=true]{background:rgba(46,160,67,.18);color:#4ac26b;font-weight:600}" +
+      // Schieberegler statt fester km-Schaltflächen: die Knöpfe waren in der
+      // Höhe angeschnitten (Rückmeldung), außerdem sind Zwischenwerte möglich.
+      ".naehe-slider{flex:1 1 auto;-webkit-appearance:none;appearance:none;height:6px;" +
+      "border-radius:3px;background:linear-gradient(90deg,rgba(46,160,67,.55),rgba(46,160,67,.18));outline:none}" +
+      ".naehe-slider::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;" +
+      "background:#4ac26b;border:2px solid #0d1117;cursor:pointer}" +
+      ".naehe-slider::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:#4ac26b;" +
+      "border:2px solid #0d1117;cursor:pointer}" +
+      ".naehe-slider:focus-visible{outline:2px solid rgba(46,160,67,.6);outline-offset:3px}" +
+      ".naehe-kmwert{min-width:52px;text-align:right;color:#4ac26b;font-weight:600;font-size:12.5px}" +
       ".naehe-info{margin:9px 0 0;font-size:12px;color:#9aa4b2;line-height:1.45}" +
       ".naehe-info.fehler{color:#f85149;font-weight:600}" +
       ".naehe-abo{white-space:nowrap}" +
@@ -316,18 +321,22 @@
     z2.appendChild(ui.plzBtn);
     body.appendChild(z2);
 
-    var z3 = el("div", { class: "naehe-seg-wrap" });
+    var z3 = el("div", { class: "naehe-slider-wrap" });
     z3.appendChild(el("span", { class: "naehe-label" }, "Umkreis"));
-    var seg = el("div", { class: "naehe-seg", role: "group", "aria-label": "Umkreis wählen" });
-    ui.segmente = [];
-    KM_WAHL.forEach(function (k) {
-      var b = el("button", { type: "button", "data-km": String(k),
-                             "aria-pressed": "false" }, k + " km");
-      b.addEventListener("click", function () { waehleUmkreis(k); });
-      seg.appendChild(b);
-      ui.segmente.push(b);
+    ui.km = el("input", { type: "range", class: "naehe-slider", min: "1", max: "20",
+                          step: "1", value: String(STD_KM),
+                          "aria-label": "Umkreis in Kilometern" });
+    ui.kmWert = el("span", { class: "naehe-kmwert" }, STD_KM + " km");
+    // Beim Ziehen nur die Anzeige mitführen, erst beim Loslassen laden — sonst
+    // löste jede Zwischenstufe einen Abruf aus.
+    ui.km.addEventListener("input", function () {
+      ui.kmWert.textContent = this.value + " km";
     });
-    z3.appendChild(seg);
+    ui.km.addEventListener("change", function () {
+      waehleUmkreis(Number(this.value));
+    });
+    z3.appendChild(ui.km);
+    z3.appendChild(ui.kmWert);
     body.appendChild(z3);
 
     ui.info = el("p", { class: "naehe-info" });
@@ -337,12 +346,26 @@
     ui.details = details;
     ui.summary = summary;
 
-    // Über der Karte einhängen — als Geschwister des Karten-Containers, damit
-    // die Höhe der Karte unangetastet bleibt.
-    var anker = karte.parentElement || karte;
-    var eltern = (anker.parentElement && anker.parentElement !== document.body)
-      ? anker.parentElement : anker;
-    eltern.insertBefore(details, anker);
+    // Platz je Bildschirmgröße (Nutzerwunsch):
+    //   Handy   -> direkt über der Karte
+    //   Desktop -> in der linken Spalte unter den übrigen Filtern
+    var MOBIL = window.matchMedia("(max-width: 820px)");
+    function platzieren() {
+      var eltern, ziel;
+      if (MOBIL.matches) {
+        eltern = document.getElementById("content") || document.body;
+        ziel = document.getElementById("mapwrap");
+      } else {
+        eltern = document.getElementById("filters") || document.body;
+        ziel = null;
+      }
+      if (details.parentNode !== eltern || (ziel && details.nextSibling !== ziel)) {
+        if (ziel) eltern.insertBefore(details, ziel);
+        else eltern.appendChild(details);
+      }
+    }
+    platzieren();
+    if (MOBIL.addEventListener) MOBIL.addEventListener("change", platzieren);
 
     ui.standort.addEventListener("click", holeStandort);
     ui.mitte.addEventListener("click", ausKartenmitte);
@@ -402,6 +425,8 @@
     if (an) {
       ui.chip.style.display = "";
       ui.chip.textContent = (merker.km || STD_KM) + " km";
+      if (ui.km) ui.km.value = merker.km || STD_KM;
+      if (ui.kmWert) ui.kmWert.textContent = (merker.km || STD_KM) + " km";
     } else {
       ui.chip.style.display = "none";
     }
