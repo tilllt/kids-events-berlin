@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from .admin_api import router as admin_router
 from .api import router as api_router
@@ -141,5 +141,24 @@ def index():
 @app.get("/admin", include_in_schema=False)
 def admin():
     """Admin-Sektion: Quellen/Regeln/Einstellungen. Offen — Schutz folgt
-    (vor öffentlichem Betrieb absichern, siehe docs/admin.md)."""
-    return FileResponse(str(STATIC_DIR / "admin.html"))
+    (vor öffentlichem Betrieb absichern, siehe docs/admin.md).
+
+    Die Seite wird beim Ausliefern mit dem Änderungsstand von admin.js/style.css
+    versioniert (``?v=<mtime>``) und trägt den Stand sichtbar in der Kopfzeile.
+    Grund: ein offener oder zwischengespeicherter Tab zeigte sonst eine alte
+    Oberfläche, ohne dass man das erkennen konnte („die GUI ist nicht
+    aktualisiert"). ``no-store`` gilt für die Seite selbst, die Assets bleiben
+    per ETag revalidierbar.
+    """
+    html = (STATIC_DIR / "admin.html").read_text(encoding="utf-8")
+    stand = max((STATIC_DIR / "admin.js").stat().st_mtime,
+                (STATIC_DIR / "style.css").stat().st_mtime,
+                (STATIC_DIR / "admin.html").stat().st_mtime)
+    marke = datetime.fromtimestamp(stand, TZ_BERLIN).strftime("%d.%m.%Y %H:%M")
+    version = str(int(stand))
+    html = html.replace('"/static/style.css"', f'"/static/style.css?v={version}"')
+    html = html.replace('"/static/admin.js"', f'"/static/admin.js?v={version}"')
+    html = html.replace("<!--BAUSTAND-->",
+                        f"<span class=\"badge\" title=\"Stand der Oberfläche\">"
+                        f"Stand {marke}</span>")
+    return HTMLResponse(html, headers={"Cache-Control": "no-store"})

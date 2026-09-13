@@ -86,6 +86,7 @@
 </head>
 <body>
   <header>
+    <!--BAUSTAND-->
     <h1>Kinder-Events Berlin — Verwaltung</h1>
     <a class="back" href="/">← Zur Karte</a>
     <div id="statusline">Lade…</div>
@@ -215,35 +216,6 @@
       </div>
     </details>
 
-    <details class="klapp" id="smtpKlapp">
-      <summary>E-Mail-Versand (SMTP) — für Termin-Anfragen an Schulen</summary>
-      <div class="klappbody">
-        <div class="formgrid">
-          <label>SMTP-Server (Host)<input id="setSmtpHost" placeholder="smtp.example.org" /></label>
-          <label>Port (Default 587 + STARTTLS)<input id="setSmtpPort" placeholder="587" /></label>
-          <label>Benutzer<input id="setSmtpUser" autocomplete="off" /></label>
-          <label>Passwort<input id="setSmtpPass" type="password" autocomplete="new-password" /></label>
-          <label>Absender (From)<input id="setSmtpFrom" placeholder="kinderkram@example.org" /></label>
-          <label>Antwort an (Reply-To)<input id="setSmtpReplyTo" placeholder="kinderkram@example.org" /></label>
-        </div>
-        <div style="margin-top:10px"><button id="smtpBtn" type="button" class="primary">SMTP speichern</button>
-        <span id="smtpMsg"></span></div>
-      </div>
-    </details>
-
-    <details class="klapp" id="vorlageKlapp">
-      <summary>Mail-Vorlage (Standardtext der Termin-Anfrage)</summary>
-      <div class="klappbody">
-        <p class="muted" style="margin-top:0">Platzhalter werden beim Senden ersetzt:
-          <code>{schule}</code> <code>{schulform}</code> <code>{bezirk}</code> <code>{jahr}</code>.
-          Erste Zeile <code>Betreff: …</code> wird der Mail-Betreff.
-          Dieser Beispieltext wird mitgeliefert und kann hier angepasst werden.</p>
-        <textarea id="setVorlage" class="mail" spellcheck="false"></textarea>
-        <div style="margin-top:10px"><button id="vorlageBtn" type="button" class="primary">Vorlage speichern</button>
-        <span id="vorlageMsg"></span></div>
-      </div>
-    </details>
-
     <details class="klapp" id="llmKlapp">
       <summary>LLM-Endpunkt — für die Schul-Recherche (Tage der offenen Tür)</summary>
       <div class="klappbody">
@@ -332,7 +304,7 @@
       </div>
     </details>
 
-    <details class="klapp" id="mailKlapp">
+    <details class="klapp" id="mailKlapp" open>
       <summary>E-Mail — Anfragen an Schulen senden und Antworten abholen</summary>
       <div class="klappbody">
         <p class="muted" style="margin-top:0">
@@ -392,7 +364,7 @@
       </div>
     </details>
 
-    <details class="klapp" id="braveKlapp">
+    <details class="klapp" id="braveKlapp" open>
       <summary>Websuche (Brave) — fehlende Termine finden, mit Kontingent-Verwaltung</summary>
       <div class="klappbody">
         <p class="muted" style="margin-top:0">

@@ -308,11 +308,6 @@ async function loadSettings() {
   // (Feld leer), sonst der Code-Standard 05:30.
   $("#setAt").value = s.scrape_at || (s.scrape_interval_h ? "" : "05:30");
   $("#setInterval").value = s.scrape_interval_h || "24";
-  $("#setSmtpHost").value = s.smtp_host || "";
-  $("#setSmtpPort").value = s.smtp_port || "";
-  $("#setSmtpUser").value = s.smtp_user || "";
-  $("#setSmtpFrom").value = s.smtp_from || "";
-  $("#setVorlage").value = s.mail_vorlage || "";
 }
 $("#settingsBtn").onclick = async () => {
   const msg = $("#settingsMsg");
@@ -327,34 +322,6 @@ $("#settingsBtn").onclick = async () => {
     meldung(msg, "Gespeichert — gilt ab dem nächsten Scheduler-Zyklus.");
   } catch (e) { meldung(msg, e.message, false); }
 };
-$("#smtpBtn").onclick = async () => {
-  const msg = $("#smtpMsg");
-  try {
-    await api("/api/admin/settings", {
-      method: "PUT",
-      body: JSON.stringify({
-        smtp_host: $("#setSmtpHost").value.trim(),
-        smtp_port: $("#setSmtpPort").value.trim(),
-        smtp_user: $("#setSmtpUser").value.trim(),
-        smtp_pass: $("#setSmtpPass").value,
-        smtp_from: $("#setSmtpFrom").value.trim(),
-      }),
-    });
-    $("#setSmtpPass").value = ""; // nie im DOM behalten
-    meldung(msg, "SMTP gespeichert.");
-  } catch (e) { meldung(msg, e.message, false); }
-};
-$("#vorlageBtn").onclick = async () => {
-  const msg = $("#vorlageMsg");
-  try {
-    await api("/api/admin/settings", {
-      method: "PUT",
-      body: JSON.stringify({ mail_vorlage: $("#setVorlage").value }),
-    });
-    meldung(msg, "Vorlage gespeichert.");
-  } catch (e) { meldung(msg, e.message, false); }
-};
-
 /* ---------- Tabs: Obertab (Quellen | Termine | Einstellungen) ---------- */
 let obentab = "quellen";
 let untertab = "uebersicht"; // uebersicht | quelle:<key> | schulen
