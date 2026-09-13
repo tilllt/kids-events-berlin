@@ -194,39 +194,107 @@
       p.set("lat", merker.lat); p.set("lon", merker.lon);
       p.set("umkreis_km", merker.km || String(STD_KM));
     }
-    var pfad = "/api/kalender.ics?" + p.toString();
+    var pfad = aboPfad(p);
     var gruppe = document.getElementById("naehe-abo");
     if (!gruppe) {
       box.appendChild(document.createTextNode(" · "));
       gruppe = el("span", { id: "naehe-abo", class: "naehe-abo" });
-      // Rückmeldung: Ein normaler Link lädt die Datei nur EINMAL herunter — kein
-      // Abonnement. Deshalb zwei Wege: webcal:// öffnet auf iPhone/Android den
-      // Abo-Dialog, und die Adresse lässt sich für jede Kalender-App kopieren.
-      gruppe.appendChild(el("a", { class: "naehe-abo-link",
-        title: "In der Kalender-App abonnieren — die Adresse bleibt gültig und " +
-               "aktualisiert sich dort selbst." }, "Kalender abonnieren"));
-      var kopie = el("button", { type: "button", class: "ghost naehe-abo-kopie",
-        title: "Adresse kopieren und in der Kalender-App als Abonnement einfügen" },
-        "Adresse kopieren");
-      kopie.addEventListener("click", function () {
-        var url = location.origin + pfad;
-        var b = this;
-        var fertig = function () {
-          b.textContent = "kopiert";
-          setTimeout(function () { b.textContent = "Adresse kopieren"; }, 2000);
-        };
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(url).then(fertig, function () {
-            window.prompt("Adresse zum Abonnieren:", url);
-          });
-        } else {
-          window.prompt("Adresse zum Abonnieren:", url);
-        }
-      });
-      gruppe.appendChild(kopie);
+      var oeffnen = el("button", { type: "button", class: "naehe-abo-knopf",
+        title: "Zeigt, was abonniert wird — mit der Adresse zum Einfügen" },
+        "Kalender abonnieren");
+      oeffnen.addEventListener("click", function () { zeigeAboDialog(pfad); });
+      gruppe.appendChild(oeffnen);
       box.appendChild(gruppe);
     }
-    gruppe.querySelector(".naehe-abo-link").href = "webcal://" + location.host + pfad;
+  }
+
+  /* ---------- Kalender-Abo ---------- */
+
+  var ABO_FILTER = { bezirk: "Bezirk", altersband: "Altersgruppe", uhrzeit: "Uhrzeit",
+                     kostenlos: "Kostenlos", quelle: "Quelle", q: "Suche", ort: "Ort" };
+
+  /* Abo-Adresse: dieselbe Auswahl, aber OHNE Zeitraum. Heute/Morgen/Demnächst sind
+     Ansichtssache — das Abo deckt immer die nächsten 21 Tage ab. */
+  function aboPfad(p) {
+    var abo = new URLSearchParams();
+    Object.keys(ABO_FILTER).forEach(function (k) {
+      if (p.get(k)) abo.set(k, p.get(k));
+    });
+    if (aktiv()) {
+      abo.set("lat", merker.lat); abo.set("lon", merker.lon);
+      abo.set("umkreis_km", merker.km || String(STD_KM));
+    }
+    abo.set("wochen", "3");                       // 3 Wochen = 21 Tage
+    return "/api/kalender.ics?" + abo.toString();
+  }
+
+  function kopiere(text, knopf) {
+    var fertig = function () {
+      knopf.textContent = "kopiert";
+      setTimeout(function () { knopf.textContent = "Adresse kopieren"; }, 2000);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(fertig, function () {
+        window.prompt("Adresse zum Abonnieren:", text);
+      });
+    } else {
+      window.prompt("Adresse zum Abonnieren:", text);
+    }
+  }
+
+  function zeigeAboDialog(pfad) {
+    var alt = document.getElementById("naehe-abo-dialog");
+    if (alt) alt.remove();
+    var p = new URLSearchParams(pfad.split("?")[1] || "");
+    var adresse = location.origin + pfad;
+    var huelle = el("div", { id: "naehe-abo-dialog", class: "naehe-modal-huelle" });
+    var kasten = el("div", { class: "naehe-modal", role: "dialog", "aria-modal": "true",
+                             "aria-label": "Kalender abonnieren" });
+    kasten.appendChild(el("h3", {}, "Kalender abonnieren"));
+    kasten.appendChild(el("p", {},
+      "Abonniert wird genau diese Auswahl — unabhängig davon, welcher Zeitraum gerade " +
+      "in der Ansicht gewählt ist. Das Abo umfasst immer die nächsten 21 Tage und " +
+      "aktualisiert sich danach von selbst; die Termine kommen ohne Ihr Zutun nach."));
+
+    var liste = el("ul", { class: "naehe-modal-filter" });
+    liste.appendChild(el("li", {}, "Zeitraum: die nächsten 21 Tage (fest)"));
+    Object.keys(ABO_FILTER).forEach(function (k) {
+      if (p.get(k)) liste.appendChild(el("li", {}, ABO_FILTER[k] + ": " + p.get(k)));
+    });
+    if (p.get("umkreis_km")) {
+      liste.appendChild(el("li", {}, "Umkreis: " + p.get("umkreis_km") + " km um den gewählten Punkt"));
+    }
+    kasten.appendChild(liste);
+
+    var feld = el("input", { type: "text", readonly: "readonly", class: "naehe-modal-url",
+                             value: adresse, "aria-label": "Abo-Adresse" });
+    feld.addEventListener("focus", function () { this.select(); });
+    kasten.appendChild(feld);
+
+    var knopfreihe = el("div", { class: "naehe-modal-knoepfe" });
+    var kopie = el("button", { type: "button", class: "btn primary" }, "Adresse kopieren");
+    kopie.addEventListener("click", function () { kopiere(adresse, this); });
+    knopfreihe.appendChild(kopie);
+    // Für iPhone/iPad: dort öffnet webcal:// den Abo-Dialog. Auf Android gibt es
+    // dafür keinen Handler — dort ist der Kopier-Weg der richtige, deshalb steht
+    // er als eigener Hinweis darunter statt als toter Knopf daneben.
+    knopfreihe.appendChild(el("a", { class: "btn",
+      href: "webcal://" + location.host + pfad }, "Auf iPhone/iPad öffnen"));
+    var zu = el("button", { type: "button", class: "btn" }, "Schließen");
+    zu.addEventListener("click", function () { huelle.remove(); });
+    knopfreihe.appendChild(zu);
+    kasten.appendChild(knopfreihe);
+
+    kasten.appendChild(el("p", { class: "naehe-modal-hinweis" },
+      "Android-Kalender: „Adresse kopieren“ und in der Kalender-App unter " +
+      "„Kalender abonnieren“ bzw. „Per URL hinzufügen“ einfügen."));
+
+    huelle.appendChild(kasten);
+    huelle.addEventListener("click", function (ev) { if (ev.target === huelle) huelle.remove(); });
+    document.addEventListener("keydown", function esc(ev) {
+      if (ev.key === "Escape") { huelle.remove(); document.removeEventListener("keydown", esc); }
+    });
+    document.body.appendChild(huelle);
   }
 
   /* ---------- Oberfläche ---------- */

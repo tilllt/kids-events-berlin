@@ -79,6 +79,23 @@ main > * { min-width: 0; }
    dort zusammengedrückt — auf dem Handy war er nur noch 2 px hoch, die
    Umkreisfilter waren damit unsichtbar (gemessen 390x844). */
 .naehe { flex: 0 0 auto !important; min-height: 34px; }
+/* Kalender-Abo: Fenster mit der abonnierten Auswahl und der Adresse zum Einfügen. */
+.naehe-abo-knopf { background: transparent; border: 1px solid var(--border); border-radius: 6px;
+  color: #4ac26b; padding: 3px 10px; font-size: 12px; cursor: pointer; }
+.naehe-abo-knopf:hover { border-color: #4ac26b; }
+.naehe-modal-huelle { position: fixed; inset: 0; background: rgba(0, 0, 0, .62); z-index: 9999;
+  display: flex; align-items: center; justify-content: center; padding: 16px; }
+.naehe-modal { background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  max-width: 460px; width: 100%; max-height: 86vh; overflow-y: auto; padding: 16px 18px; }
+.naehe-modal h3 { margin: 0 0 8px; font-size: 15px; }
+.naehe-modal p { margin: 0 0 10px; font-size: 13px; line-height: 1.5; }
+.naehe-modal-filter { margin: 0 0 12px; padding-left: 18px; font-size: 13px; line-height: 1.6; color: var(--muted); }
+.naehe-modal-url { width: 100%; box-sizing: border-box; background: #12161b; color: #e6edf3;
+  border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; font-size: 12px; margin-bottom: 12px; }
+.naehe-modal-knoepfe { display: flex; flex-wrap: wrap; gap: 8px; }
+.naehe-modal-knoepfe .btn { font-size: 12.5px; padding: 7px 12px; }
+.naehe-modal-hinweis { margin-top: 12px !important; font-size: 12px !important;
+  color: var(--muted) !important; }
 .switch { display: flex; gap: 6px; align-items: center; cursor: pointer; font-size: 13px; }
 .switch input { accent-color: var(--accent); }
 .ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; cursor: pointer; }

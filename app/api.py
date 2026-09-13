@@ -248,7 +248,7 @@ def kalender_ics(request: Request,
                  ort: str | None = None,
                  lat: float | None = None, lon: float | None = None,
                  umkreis_km: float | None = None,
-                 wochen: int = Query(8, ge=1, le=52)):
+                 wochen: int = Query(3, ge=1, le=52)):
     """Kalender-Abo (iCal) für die aktuelle Filterauswahl — Change 018.
 
     Pull statt Push: Kalender-Clients holen selbst, kein Versand, kein Login,
@@ -259,8 +259,10 @@ def kalender_ics(request: Request,
     from fastapi import Response
 
     from . import ical
+    # von/bis werden bewusst NICHT durchgereicht: Heute/Morgen/Demnächst sind
+    # Ansichtssache, das Abo umfasst immer die nächsten drei Wochen (Rückmeldung).
     params = {"bezirk": bezirk, "altersband": altersband, "uhrzeit": uhrzeit,
-              "von": von, "bis": bis, "kostenlos": kostenlos, "quelle": quelle,
+              "kostenlos": kostenlos, "quelle": quelle,
               "q": q, "ort": ort, "limit": 2000}
     rows = _store(request).query_events(_filters(params))
     im, entf = _naehe(rows, lat, lon, umkreis_km)
