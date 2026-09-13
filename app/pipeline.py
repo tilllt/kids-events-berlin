@@ -97,6 +97,11 @@ def _scrape_mit_adapter(store, adapter, quelle, *, online, geo,
             return rows
         return [r for r in rows if _im_fenster(r["start"], von, bis)]
 
+    # Change 017: erste Listing-Seite + Rohtrefferzahl festhalten (Diagnose)
+    erstes_html: str | None = None
+    erste_roh = 0
+    http_fehler = ""
+
     if online:
         detail_html = {}
         rows_all: list[dict] = []
@@ -107,9 +112,13 @@ def _scrape_mit_adapter(store, adapter, quelle, *, online, geo,
                 html = adapter.fetch_listing_page(page)
             except Exception as e:
                 store.log_error(quelle, f"Listing-Seite {page} fehlgeschlagen: {e}")
+                http_fehler = f"{e}"
                 break
             n_pages += 1
             rows = adapter.parse_listing(html)
+            if page == 0:
+                erstes_html = html
+                erste_roh = len(rows)
             for w in getattr(adapter, "drain_warnungen", lambda: [])():
                 store.log_error(quelle, w)
             rows = _filter_rows(rows)
@@ -144,6 +153,13 @@ def _scrape_mit_adapter(store, adapter, quelle, *, online, geo,
             seen_slugs |= slugs
             rows_all.extend(rows)
         n_pages = len(listing_htmls or [])
+        # Change 017: auch im Test-/CLI-Pfad die erste Seite für die Diagnose halten
+        if listing_htmls:
+            erstes_html = listing_htmls[0]
+            try:
+                erste_roh = len(adapter.parse_listing(listing_htmls[0]))
+            except Exception:
+                erste_roh = 0
 
     # Detail-Anreicherung je eindeutigem Slug (gecacht pro Lauf)
     details: dict[str, dict] = {}
@@ -294,6 +310,20 @@ def _scrape_mit_adapter(store, adapter, quelle, *, online, geo,
     finally:
         if geo_client is not None:
             geo_client.close()
+
+    # Change 017: Selbstheilung — Befund feststellen, gesunde Seite archivieren.
+    # Auslöser ist ein Fehler, nie eine kleinere Zahl. Fehler hier dürfen den
+    # Lauf nicht stören (deshalb abgesichert).
+    try:
+        from . import selbstheilung as _sh
+        _sh.pruefen(
+            store, quelle=quelle,
+            regeln=(store.get_regeln(quelle) or {}).get("regel_yaml") or "",
+            url=getattr(adapter, "_listing_url", "") or "",
+            html=erstes_html, roh_zeilen=erste_roh, n_zeilen=len(rows_all),
+            n_fehler=n_fehler, http_fehler=http_fehler, jetzt=jetzt.isoformat())
+    except Exception as e:
+        store.log_error(quelle, f"Selbstheilung-Prüfung fehlgeschlagen: {e}")
 
     # Change 016: erst stempeln, was die Quelle noch anbietet, dann verschwundene
     # Angebote entfernen. Deterministisch (die Quelle ist das Signal) statt

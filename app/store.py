@@ -82,6 +82,33 @@ CREATE TABLE IF NOT EXISTS venues_cache (
     venue_key TEXT PRIMARY KEY,
     lat REAL, lon REAL, bezirk TEXT, adresse TEXT, geholt_am TEXT
 );
+-- Change 017: Seiten-Archiv der letzten GESUNDEN Listing-Seite je Quelle.
+-- Grundlage für die Regressionsprobe eines Reparaturvorschlags: ein Selektor,
+-- der nur zufällig auf die heutige Seite passt, findet dort nichts.
+CREATE TABLE IF NOT EXISTS seiten_archiv (
+    quelle TEXT NOT NULL,
+    url TEXT NOT NULL,
+    html TEXT NOT NULL,
+    treffer INTEGER NOT NULL DEFAULT 0,
+    geholt_am TEXT NOT NULL,
+    PRIMARY KEY (quelle, url)
+);
+-- Change 017: festgestellte Störungen und (Phase 2) Reparaturvorschläge.
+-- status: offen | beobachtet | vorgeschlagen | angenommen | abgelehnt
+CREATE TABLE IF NOT EXISTS heilungen (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    quelle TEXT NOT NULL,
+    art TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'offen',
+    befund_json TEXT NOT NULL,
+    diagnose_json TEXT,
+    vorschlag_yaml TEXT,
+    begruendung TEXT,
+    beleg_json TEXT,
+    erstellt_am TEXT NOT NULL,
+    geaendert_am TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_heilungen_quelle ON heilungen(quelle, erstellt_am);
 CREATE TABLE IF NOT EXISTS ort_geo (
     ort_key TEXT PRIMARY KEY,
     ort TEXT NOT NULL,
@@ -844,6 +871,84 @@ class Store:
             )
             self._conn.commit()
             return int(cur.rowcount)
+
+    # ---- Change 017: Selbstheilung ---------------------------------------
+
+    def seiten_archiv_setzen(self, quelle: str, url: str, html: str,
+                             treffer: int, zeit: str) -> None:
+        """Letzte GESUNDE Listing-Seite merken (Grundlage der Regressionsprobe)."""
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO seiten_archiv (quelle, url, html, treffer, geholt_am) "
+                "VALUES (?,?,?,?,?) ON CONFLICT(quelle, url) DO UPDATE SET "
+                "html=excluded.html, treffer=excluded.treffer, "
+                "geholt_am=excluded.geholt_am",
+                (quelle, url, html, int(treffer), zeit))
+            self._conn.commit()
+
+    def seiten_archiv_holen(self, quelle: str, url: str) -> dict | None:
+        row = self._conn.execute(
+            "SELECT * FROM seiten_archiv WHERE quelle=? AND url=?",
+            (quelle, url)).fetchone()
+        return dict(row) if row else None
+
+    def heilung_anlegen(self, quelle: str, art: str, befund: dict, zeit: str,
+                        status: str = "offen") -> int:
+        with self._lock:
+            cur = self._conn.execute(
+                "INSERT INTO heilungen (quelle, art, status, befund_json, "
+                "diagnose_json, erstellt_am) VALUES (?,?,?,?,?,?)",
+                (quelle, art, status,
+                 json.dumps(befund, ensure_ascii=False),
+                 json.dumps(befund.get("diagnose") or {}, ensure_ascii=False), zeit))
+            self._conn.commit()
+            return int(cur.lastrowid or 0)
+
+    def heilung_offen_fuer(self, quelle: str, tag: str = "") -> dict | None:
+        """Schon eine offene Meldung? (Höchstens ein Heilungsversuch je Quelle/Tag)"""
+        where = ("quelle=? AND status IN ('offen','vorschlagen','vorgeschlagen')")
+        args: list = [quelle]
+        if tag:
+            where += " AND substr(erstellt_am,1,10)=?"
+            args.append(tag)
+        row = self._conn.execute(
+            f"SELECT * FROM heilungen WHERE {where} ORDER BY id DESC LIMIT 1",
+            args).fetchone()
+        return dict(row) if row else None
+
+    def heilungen_liste(self, quelle: str | None = None,
+                        limit: int = 50) -> list[dict]:
+        if quelle:
+            rows = self._conn.execute(
+                "SELECT * FROM heilungen WHERE quelle=? ORDER BY id DESC LIMIT ?",
+                (quelle, limit)).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT * FROM heilungen ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def heilung_setzen(self, heilung_id: int, *, status: str | None = None,
+                       vorschlag_yaml: str | None = None,
+                       begruendung: str | None = None,
+                       beleg: dict | None = None, zeit: str = "") -> None:
+        sets, args = [], []
+        for spalte, wert in (("status", status), ("vorschlag_yaml", vorschlag_yaml),
+                             ("begruendung", begruendung)):
+            if wert is not None:
+                sets.append(f"{spalte}=?")
+                args.append(wert)
+        if beleg is not None:
+            sets.append("beleg_json=?")
+            args.append(json.dumps(beleg, ensure_ascii=False))
+        if zeit:
+            sets.append("geaendert_am=?")
+            args.append(zeit)
+        if not sets:
+            return
+        args.append(heilung_id)
+        with self._lock:
+            self._conn.execute(f"UPDATE heilungen SET {', '.join(sets)} WHERE id=?", args)
+            self._conn.commit()
 
     def entferne_ueberlappende_zwillinge(self, quelle: str) -> list[dict]:
         """Überlappende Serien-Zwillinge EINER Quelle zusammenfassen.
