@@ -239,11 +239,24 @@ listing:
     assert ev2["ort"] == "Blumengarten"
     a2.close()
 
-    # Die ausgelieferten Standard-Regeln tragen den festen Ort wirklich.
+    # Die ausgelieferten Standard-Regeln tragen den festen Ort wirklich —
+    # samt amtlich geprüfter Adresse (Position für Termine ohne eigene Adresse).
     assert "standard:" in GAERTEN_DER_WELT_REGELN
     assert "Gärten der Welt" in GAERTEN_DER_WELT_REGELN
+    assert "Eisenacher Str. 99, 12685 Berlin" in GAERTEN_DER_WELT_REGELN
     fehler = validate_regeln_yaml(GAERTEN_DER_WELT_REGELN)
     assert fehler == [], fehler
+
+    # Fällt die Adresse aus dem Standard durch bis ins Event?
+    regeln3 = regeln.replace(
+        "standard: {ort: 'Gärten der Welt', bezirk: 'marzahn-hellersdorf'}",
+        "standard: {ort: 'Gärten der Welt', bezirk: 'marzahn-hellersdorf', "
+        "adresse: 'Eisenacher Str. 99, 12685 Berlin'}")
+    a3 = SelectorAdapter("test-park", regel_yaml=regeln3)
+    ev3 = a3.zu_event(a3.parse_listing(html)[0], {}, datetime.now(TZ_BERLIN))
+    assert ev3["adresse"] == "Eisenacher Str. 99, 12685 Berlin"
+    assert ev3["ort"] == "Gärten der Welt"
+    a3.close()
 
 
 def test_adresse_ohne_ortsname_ergibt_berlin_statt_ohne_angabe():

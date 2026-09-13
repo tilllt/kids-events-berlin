@@ -9,7 +9,7 @@ from __future__ import annotations
 
 ZLB_REGELN = """quelle: zlb
 # Fester Ort: die ZLB veranstaltet im Haus (Breite Str. 32-34, 10178 Berlin).
-standard: {ort: "Zentral- und Landesbibliothek Berlin (ZLB)", bezirk: "mitte"}
+standard: {ort: "Zentral- und Landesbibliothek Berlin (ZLB)", bezirk: "mitte", adresse: "Breite Str. 32-34, 10178 Berlin"}
 robots: "erlaubt; Events-Pfade nicht disallowed (2026-09-06)"
 listing:
   url: https://www.zlb.de/veranstaltungen
@@ -119,13 +119,19 @@ detail:
 
 
 def _gruen_berlin_regeln(quelle: str, url: str, ende_regex: str, ende_format: str,
-                         ort: str, bezirk: str) -> str:
+                         ort: str, bezirk: str, adresse: str = "") -> str:
+    standard = f'standard: {{ort: "{ort}", bezirk: "{bezirk}"'
+    if adresse:
+        # Amtlich geprüfte Adresse des Parks (WFS Adressen Berlin, 2026-09-13):
+        # der Ortsname allein liefert keine Position, die Adresse schon.
+        standard += f', adresse: "{adresse}"'
+    standard += "}"
     return (_GRUEN_BERLIN_VORLAGE
             .replace("__QUELLE__", quelle)
             .replace("__URL__", url)
             .replace("__ENDE_REGEX__", ende_regex)
             .replace("__ENDE_FORMAT__", ende_format)
-            .replace("__STANDARD__", f'standard: {{ort: "{ort}", bezirk: "{bezirk}"}}')
+            .replace("__STANDARD__", standard)
             )
 
 
@@ -139,19 +145,19 @@ GAERTEN_DER_WELT_REGELN = _gruen_berlin_regeln(
     "gaerten-der-welt",
     "https://www.gaertenderwelt.de/events/veranstaltungen/",
     "[-][ ]*([0-9]{1,2}[.][0-9]{2})[ ]*Uhr", "%H.%M",
-    "Gärten der Welt", "marzahn-hellersdorf")
+    "Gärten der Welt", "marzahn-hellersdorf", "Eisenacher Str. 99, 12685 Berlin")
 
 BRITZER_GARTEN_REGELN = _gruen_berlin_regeln(
     "britzer-garten",
     "https://www.britzergarten.de/events/eventkalender/",
     "[-][ ]*([0-9]{1,2})[ ]*Uhr", "%H",
-    "Britzer Garten", "neukoelln")
+    "Britzer Garten", "neukoelln", "Sangerhauser Weg 1, 12349 Berlin")
 
 SUEDGELAENDE_REGELN = _gruen_berlin_regeln(
     "suedgelaende",
     "https://www.natur-park-suedgelaende.de/entdecken-erleben/kalender/",
     "[0-9]{1,2}:[0-9]{2}[^0-9]{1,4}([0-9]{1,2}:[0-9]{2})", "%H:%M",
-    "Natur Park Südgelände", "tempelhof-schoeneberg")
+    "Natur Park Südgelände", "tempelhof-schoeneberg", "Prellerweg 47-49, 12157 Berlin")
 
 # Kinderkulturkalender (LKJ Berlin e.V., Drupal 10) — eigene Datenbank,
 # KEIN jup!-Duplikat (Audit-Befund 2026-09-12 widerlegt; 87 der 91 im

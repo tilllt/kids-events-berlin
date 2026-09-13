@@ -561,7 +561,8 @@ class SelectorAdapter:
         # „Charlottenburger Chaussee 67, 13597 Berlin"), darf nicht „Ohne Angabe"
         # dastehen — dann gilt die grobe Ortsangabe „Berlin"; die genaue Adresse
         # steht weiterhin in der Adresszeile (und dient der Geokodierung).
-        adresse = row.get("adresse") or detail.get("adresse")
+        adresse = (row.get("adresse") or detail.get("adresse")
+                   or self._standard.get("adresse"))
         ort = (row.get("ort") or detail.get("ort")
                or self._standard.get("ort")
                or (adresse and "Berlin")
@@ -598,7 +599,7 @@ class SelectorAdapter:
                            if ende else None),
             "ganztags": ganztags,
             "ort": ort,
-            "adresse": row.get("adresse") or detail.get("adresse"),
+            "adresse": adresse,
             "bezirk": bezirk,
             "lat": None,
             "lon": None,
