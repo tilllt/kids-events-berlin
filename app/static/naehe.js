@@ -194,17 +194,39 @@
       p.set("lat", merker.lat); p.set("lon", merker.lon);
       p.set("umkreis_km", merker.km || String(STD_KM));
     }
-    var a = document.getElementById("naehe-abo");
-    if (!a) {
-      a = el("a", { id: "naehe-abo", class: "naehe-abo",
-                    target: "_blank", rel: "noopener",
-                    title: "Diese Auswahl im Kalenderprogramm abonnieren " +
-                           "(aktualisiert sich dort selbst)" });
-      a.textContent = "Kalender abonnieren";
+    var pfad = "/api/kalender.ics?" + p.toString();
+    var gruppe = document.getElementById("naehe-abo");
+    if (!gruppe) {
       box.appendChild(document.createTextNode(" · "));
-      box.appendChild(a);
+      gruppe = el("span", { id: "naehe-abo", class: "naehe-abo" });
+      // Rückmeldung: Ein normaler Link lädt die Datei nur EINMAL herunter — kein
+      // Abonnement. Deshalb zwei Wege: webcal:// öffnet auf iPhone/Android den
+      // Abo-Dialog, und die Adresse lässt sich für jede Kalender-App kopieren.
+      gruppe.appendChild(el("a", { class: "naehe-abo-link",
+        title: "In der Kalender-App abonnieren — die Adresse bleibt gültig und " +
+               "aktualisiert sich dort selbst." }, "Kalender abonnieren"));
+      var kopie = el("button", { type: "button", class: "ghost naehe-abo-kopie",
+        title: "Adresse kopieren und in der Kalender-App als Abonnement einfügen" },
+        "Adresse kopieren");
+      kopie.addEventListener("click", function () {
+        var url = location.origin + pfad;
+        var b = this;
+        var fertig = function () {
+          b.textContent = "kopiert";
+          setTimeout(function () { b.textContent = "Adresse kopieren"; }, 2000);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(url).then(fertig, function () {
+            window.prompt("Adresse zum Abonnieren:", url);
+          });
+        } else {
+          window.prompt("Adresse zum Abonnieren:", url);
+        }
+      });
+      gruppe.appendChild(kopie);
+      box.appendChild(gruppe);
     }
-    a.href = "/api/kalender.ics?" + p.toString();
+    gruppe.querySelector(".naehe-abo-link").href = "webcal://" + location.host + pfad;
   }
 
   /* ---------- Oberfläche ---------- */
