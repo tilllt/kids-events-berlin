@@ -276,6 +276,93 @@ listing:
     adapter.close()
 
 
+def test_bezirksname_im_ortsfeld_wird_zum_bezirk():
+    """Nutzerfund: der Ortsfilter listete „Mitte" (77 Termine) — im Ortsfeld
+    stand also nur ein Bezirksname. Das ist kein Veranstaltungsort: der Wert
+    gehört in den Bezirk, der Ort kommt aus der Detailseite oder bleibt leer.
+    (Umweltkalender: Übersichtskarte nennt den Bezirk, Detailseite den Ort.)"""
+    regeln = """
+quelle: test-bezirksort
+name: Testquelle Bezirksort
+robots: 'erlaubt: / (Test)'
+listing:
+  url: https://example.org/kalender
+  item_css: 'div.ev'
+  felder:
+    titel: {css: 'h3'}
+    start: {css: '.d', format: '%d.%m.%Y'}
+    ort: {css: '.location'}
+"""
+    html = ('<div class="ev"><h3>Pflegeeinsatz</h3><div class="d">01.10.2026</div>'
+            '<div class="location">Mitte</div></div>')
+    a = SelectorAdapter("test-bezirksort", regel_yaml=regeln)
+    ev = a.zu_event(a.parse_listing(html)[0], {}, datetime.now(TZ_BERLIN))
+    assert ev["bezirk"] == "mitte"
+    assert ev["ort"] == "Ohne Angabe"     # Bezirksname ist kein Ort
+    a.close()
+
+    # Ort aus der Detailseite wird übernommen, der Bezirk kommt aus dem Listing.
+    a2 = SelectorAdapter("test-bezirksort", regel_yaml=regeln)
+    ev2 = a2.zu_event(a2.parse_listing(html)[0], {"ort": "Wildunger Weg"}, datetime.now(TZ_BERLIN))
+    assert ev2["ort"] == "Wildunger Weg"
+    assert ev2["bezirk"] == "mitte"
+    a2.close()
+
+
+def test_leeres_ortselement_liefert_kein_markup():
+    """Nutzerfund: im Ortsfilter stand „<div class="location"></div>". Ursache:
+    ein Selektor auf ein LEERES Element lieferte dessen HTML. Ein Ort ist Text
+    (auch aus alt/title) oder leer — nie Markup."""
+    regeln = """
+quelle: test-leer
+name: Testquelle leerer Ort
+robots: 'erlaubt: / (Test)'
+listing:
+  url: https://example.org/kalender
+  item_css: 'div.ev'
+  felder:
+    titel: {css: 'h3'}
+    start: {css: '.d', format: '%d.%m.%Y'}
+    ort: {css: '.location'}
+"""
+    leer = ('<div class="ev"><h3>Fest</h3><div class="d">01.10.2026</div>'
+            '<div class="location"></div></div>')
+    a1 = SelectorAdapter("test-leer", regel_yaml=regeln)
+    ev1 = a1.zu_event(a1.parse_listing(leer)[0], {}, datetime.now(TZ_BERLIN))
+    assert "<" not in (ev1.get("ort") or ""), ev1.get("ort")
+    assert ev1["ort"] == "Ohne Angabe"  # kein Ort bekannt — aber kein Markup
+    a1.close()
+
+    bild = ('<div class="ev"><h3>Fest</h3><div class="d">01.10.2026</div>'
+            '<div class="location"><img alt="Gärten der Welt"></div></div>')
+    a2 = SelectorAdapter("test-leer", regel_yaml=regeln)
+    ev2 = a2.zu_event(a2.parse_listing(bild)[0], {}, datetime.now(TZ_BERLIN))
+    assert ev2["ort"] == "Gärten der Welt"
+    a2.close()
+
+
+def test_markup_wird_aus_anzeigetexten_entfernt():
+    """Invariante der Pipeline: Tagger kommen nicht in die Datenbank — bereinigt
+    und im Fehlerprotokoll sichtbar (kein stiller Fix)."""
+    from app.pipeline import _markup_bereinigen
+
+    class StoreStub:
+        def __init__(self):
+            self.meldungen = []
+
+        def log_error(self, quelle, meldung, *args):
+            self.meldungen.append((quelle, meldung))
+
+    ev = {"titel": "Sommerfest", "ort": '<div class="location">Festwiese</div>',
+          "adresse": "Straße 1, 12345 Berlin", "lat": 52.5, "lon": 13.4}
+    store = StoreStub()
+    _markup_bereinigen(ev, store, "test-quelle")
+    assert ev["ort"] == "Festwiese"
+    assert ev["adresse"] == "Straße 1, 12345 Berlin"   # unverändert, kein Markup
+    assert ev["lat"] == 52.5                            # Zahlen bleiben Zahlen
+    assert store.meldungen and "Markup" in store.meldungen[0][1]
+
+
 def test_url_regex_verwirft_tote_links():
     """Familienportal liefert pro Karte mal einen sprechenden /termin/-Link, mal
     einen toten calendarize/cHash-Link, der auf die Liste umleitet. Über ein

@@ -145,8 +145,18 @@ def _feld_wert(el: parsel.Selector, regel: dict) -> str | None:
         texte.extend(g.css("::text").getall())
     roh = regel.get("join") if regel.get("join") else " "
     text = roh.join(t.strip() for t in texte if t and t.strip()).strip()
-    if not text and len(gefunden) == 1:
-        text = (gefunden[0].get() or "").strip()
+    if not text:
+        # Kein Textknoten: Bild- oder Meta-Elemente tragen den Wert in einem
+        # Attribut — auch als KIND des Treffers (typisch: <div><img alt="…">).
+        # NIE das HTML-Markup zurückgeben: ein Selektor auf ein LEERES Element
+        # lieferte früher dessen HTML und schrieb „<div class="location"></div>"
+        # als Ortsnamen in die Datenbank (Nutzerfund 2026-09-13).
+        for g in [*gefunden, *gefunden.css("*")]:
+            for attr in ("alt", "title", "content", "value"):
+                v = (g.attrib.get(attr) or "").strip()
+                if v:
+                    return v
+        return None
     return text or None
 
 
@@ -562,6 +572,16 @@ class SelectorAdapter:
         # Kalender-Orte (standard) gelten nur, wenn die Quelle nichts liefert.
         bezirk = (_LABEL_ZU_SLUG.get((row.get("bezirk") or "").strip().lower())
                   or _LABEL_ZU_SLUG.get((self._standard.get("bezirk") or "").strip().lower()))
+        # Steht im Ortsfeld nur ein Bezirks- oder Stadtname („Mitte": 77 Termine,
+        # Nutzerfund 2026-09-13), ist das kein Veranstaltungsort: der Wert wandert
+        # in den Bezirk, der Ort wird aus Detailseite / fester Vorgabe / Adresse
+        # neu bestimmt. Sonst stehen Bezirke im Ortsfilter, und die Geokodierung
+        # sucht einen Ort, den es nicht gibt.
+        slug_aus_ort = _LABEL_ZU_SLUG.get((ort or "").strip().lower())
+        if slug_aus_ort and slug_aus_ort != "unbekannt":
+            bezirk = bezirk or slug_aus_ort
+            ort = (self._standard.get("ort") or detail.get("ort")
+                   or (adresse and "Berlin") or "Ohne Angabe")
         if ende is None:
             ende = row.get("ende")
         if ganztags is None:

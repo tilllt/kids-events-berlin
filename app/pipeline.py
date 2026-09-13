@@ -6,6 +6,7 @@ Nominatim-Reverse-Geokodierung (app/geo.py, deterministisch, kein LLM).
 """
 from __future__ import annotations
 
+import re
 import sys
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -19,6 +20,25 @@ from .validate import validate_event
 
 # Ortsnamen, die nur Bezirksnamen sind (z. B. „Pankow“) → keine Geokodierung.
 _BEZIRKS_LABEL_KEYS = {v.lower() for v in BEZIRK_LABELS.values()}
+
+# Anzeigetexte sind Text, nie Markup — ein Selektor auf ein leeres Element hat
+# früher dessen HTML als Wert geliefert („<div class="location"></div>" als
+# Ortsname, Nutzerfund 2026-09-13).
+_MARKUP_RX = re.compile(r"<[a-zA-Z/!][^>]*>")
+
+
+def _markup_bereinigen(ev: dict, store: Store, quelle: str) -> None:
+    """Tagger aus Textfeldern entfernen und den Vorfall protokollieren.
+
+    Invariante für ALLE Adapter (Feed wie Regeln): kein Markup in der Datenbank.
+    Bereinigt wird sichtbar — ein stiller Fix würde den Regel-Fehler verstecken.
+    """
+    for feld, wert in list(ev.items()):
+        if not isinstance(wert, str) or not _MARKUP_RX.search(wert):
+            continue
+        sauber = re.sub(r"\s+", " ", _MARKUP_RX.sub(" ", wert)).strip()
+        store.log_error(quelle, f"{feld} enthielt Markup, bereinigt: {wert[:70]!r}")
+        ev[feld] = sauber
 
 
 def scrape(store: Store, quelle: str = "jup-berlin", *, online: bool = True,
@@ -193,6 +213,8 @@ def _scrape_mit_adapter(store, adapter, quelle, *, online, geo,
         evs_ = (zu_events(row, det, jetzt) if zu_events
                 else [adapter.zu_event(row, det, jetzt)])
         for ev in evs_:
+          # Invariante: kein Markup in Anzeigetexten (bereinigt + protokolliert).
+          _markup_bereinigen(ev, store, quelle)
           if horizont:
             ev_start = datetime.fromisoformat(ev["start_iso"])
             if not _im_fenster(ev_start, von, bis):
