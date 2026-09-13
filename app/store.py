@@ -165,6 +165,21 @@ CREATE TABLE IF NOT EXISTS termine_manuell (
 );
 CREATE INDEX IF NOT EXISTS idx_termine_manuell_schule ON termine_manuell(schule_bsn);
 CREATE INDEX IF NOT EXISTS idx_termine_manuell_status ON termine_manuell(status);
+-- Change 012: jeder Brave-Aufruf wird VOR dem Absenden verbucht (Reservierung),
+-- nach der Antwort um HTTP-Code/Treffer/Fehler ergaenzt. Das Monats- und
+-- Tagesbudget wird daraus gezaehlt — kein Zaehler in den Einstellungen, der
+-- driften koennte.
+CREATE TABLE IF NOT EXISTS brave_aufrufe (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    monat TEXT NOT NULL,
+    tag TEXT,
+    query TEXT NOT NULL,
+    zeitpunkt TEXT NOT NULL,
+    http_code INTEGER,
+    treffer INTEGER,
+    fehler TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_brave_aufrufe_monat ON brave_aufrufe(monat);
 CREATE TABLE IF NOT EXISTS schul_recherche_lauf (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     bsn TEXT NOT NULL,
@@ -769,6 +784,51 @@ class Store:
                                    [(r["id"],) for r in zu_loeschen])
             self._conn.commit()
         return zu_loeschen
+
+    # --- Change 012: Brave-Websuche (Kontingent-Verwaltung) ------------------
+    def starte_brave_aufruf(self, monat: str, query: str) -> int:
+        """Aufruf reservieren (zählt gegen das Budget, auch wenn er scheitert)."""
+        jetzt = datetime.now(TZ_BERLIN)
+        with self._lock:
+            cur = self._conn.execute(
+                """INSERT INTO brave_aufrufe(monat, tag, query, zeitpunkt, http_code, treffer)
+                   VALUES (?,?,?,?,0,0)""",
+                (monat, jetzt.strftime("%Y-%m-%d"), query[:300],
+                 iso_utc(jetzt)))
+            self._conn.commit()
+            return int(cur.lastrowid or 0)
+
+    def beende_brave_aufruf(self, aufruf_id: int, *, http_code: int | None,
+                            treffer: int, fehler: str | None = None) -> None:
+        with self._lock:
+            self._conn.execute(
+                "UPDATE brave_aufrufe SET http_code=?, treffer=?, fehler=? WHERE id=?",
+                (http_code, treffer, fehler, aufruf_id))
+            self._conn.commit()
+
+    def brave_verbrauch(self, heute=None) -> dict:
+        """Verbrauch aus den Aufrufen selbst (kein separater Zähler)."""
+        tag = (heute or datetime.now(TZ_BERLIN).date()).strftime("%Y-%m-%d")
+        mo = tag[:7]
+        with self._lock:
+            monat_anzahl = self._conn.execute(
+                "SELECT COUNT(*) c FROM brave_aufrufe WHERE monat=?", (mo,)).fetchone()["c"]
+            tag_anzahl = self._conn.execute(
+                "SELECT COUNT(*) c FROM brave_aufrufe WHERE tag=?", (tag,)).fetchone()["c"]
+            gesamt = self._conn.execute(
+                "SELECT COUNT(*) c FROM brave_aufrufe").fetchone()["c"]
+            fehler = self._conn.execute(
+                "SELECT COUNT(*) c FROM brave_aufrufe WHERE monat=? AND fehler IS NOT NULL",
+                (mo,)).fetchone()["c"]
+        return {"monat": mo, "monat_anzahl": monat_anzahl, "tag": tag,
+                "tag_anzahl": tag_anzahl, "gesamt": gesamt, "fehler_monat": fehler}
+
+    def brave_letzte(self, limit: int = 20) -> list[dict]:
+        with self._lock:
+            rows = self._conn.execute(
+                """SELECT id, monat, tag, query, zeitpunkt, http_code, treffer, fehler
+                   FROM brave_aufrufe ORDER BY id DESC LIMIT ?""", (int(limit),)).fetchall()
+        return [dict(r) for r in rows]
 
     # --- Change 011: Dubletten über Quellen hinweg ---------------------------
     def _quellen_liste(self, roh: str | None) -> list[dict]:

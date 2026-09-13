@@ -1155,6 +1155,74 @@ $("#rechercheStart").onclick = async () => {
   } catch (e) { meldung(msg, e.message, false); }
 };
 
+/* ---------- Websuche / Brave-Kontingent (Change 012) ---------- */
+let braveStatus = {};
+
+function braveStatusZeigen(d) {
+  const box = $("#bravePanel");
+  box.classList.remove("hidden");
+  const letzte = (d.letzte || []).map((a) => `<li class="klein">${esc(a.zeitpunkt.slice(0, 16))}
+      HTTP ${esc(String(a.http_code))} · ${esc(String(a.treffer))} Treffer ·
+      ${esc(a.query)}
+      ${a.fehler ? `<span class="rot">· ${esc(a.fehler)}</span>` : ""}</li>`).join("");
+  box.innerHTML = `<p style="margin:0 0 6px">
+      <strong>${d.verbraucht_monat} von ${d.monats_limit}</strong> Anfragen diesen Monat
+      (${d.rest_monat} frei) · heute ${d.verbraucht_heute}${d.tages_limit ? " von " + d.tages_limit : ""}
+      · insgesamt ${d.verbraucht_gesamt} (≈ ${d.kosten_usd} $ laut Brave-Tarif)
+      ${d.fehler_monat ? ` · <span class="rot">${d.fehler_monat} Fehlversuche im Monat</span>` : ""}</p>
+    <p style="margin:0 0 6px">${d.budget_fehler
+        ? `<span class="rot">${esc(d.budget_fehler)}</span>`
+        : (d.aktiv ? "Websuche ist im Lauf aktiv." : "Websuche ist im Lauf ausgeschaltet.")}
+      ${d.key_gesetzt ? "" : ' <span class="rot">Kein API-Key hinterlegt.</span>'}</p>
+    ${letzte ? `<p class="muted klein" style="margin:6px 0 2px">Letzte Aufrufe:</p>
+      <ul style="margin:0">${letzte}</ul>` : ""}`;
+}
+
+async function loadBrave() {
+  try {
+    braveStatus = await api("/api/admin/brave");
+    const s = await api("/api/admin/settings");
+    $("#setBraveMonat").value = s.brave_monat_limit || "900";
+    $("#setBraveTag").value = s.brave_tages_limit ?? "30";
+    $("#setBraveRate").value = s.brave_anfragen_pro_s || "1";
+    $("#setBraveAktiv").checked = ["1", "true", "ja", "on"].includes(
+      (s.brave_websuche_aktiv || "0").trim().toLowerCase());
+    braveStatusZeigen(braveStatus);
+  } catch (e) { fehlerZeigen(`Websuche-Status: ${e.message}`); }
+}
+
+$("#braveSpeichern").onclick = async () => {
+  const msg = $("#braveMsg");
+  const body = {
+    brave_monat_limit: $("#setBraveMonat").value,
+    brave_tages_limit: $("#setBraveTag").value,
+    brave_anfragen_pro_s: $("#setBraveRate").value,
+    brave_websuche_aktiv: $("#setBraveAktiv").checked ? "1" : "0",
+  };
+  const key = $("#setBraveKey").value.trim();
+  if (key) body.brave_api_key = key;
+  try {
+    await api("/api/admin/settings", { method: "PUT", body: JSON.stringify(body) });
+    $("#setBraveKey").value = "";
+    meldung(msg, "Websuche gespeichert.");
+    loadBrave();
+  } catch (e) { meldung(msg, e.message, false); }
+};
+
+$("#braveTesten").onclick = async () => {
+  const msg = $("#braveMsg");
+  msg.className = "msg";
+  msg.textContent = "Testanfrage läuft …";
+  const key = $("#setBraveKey").value.trim();
+  try {
+    const d = await api("/api/admin/brave/test",
+      { method: "POST", body: JSON.stringify(key ? { brave_api_key: key } : {}) });
+    if (!d.ok) { meldung(msg, `Fehlgeschlagen: ${d.fehler}`, false); }
+    else { meldung(msg, `OK — ${d.treffer} Treffer (${d.verbraucht_monat}/${d.monats_limit} verbraucht).`); }
+    loadBrave();
+  } catch (e) { meldung(msg, e.message, false); }
+};
+
 /* ---------- Dubletten (Change 011) ---------- */
 function dedupeBerichtZeigen(d) {
   const box = $("#dedupePanel");
@@ -1194,6 +1262,6 @@ $("#dedupeAnwenden").onclick = async () => {
 
 /* ---------- Init ---------- */
 fuelleSchulFilter();
-Promise.all([loadQuellen(), loadRuns(), loadFehler(), loadSettings(), ladeTags(), fuelleTerminQuellen(), loadLlm()])
+Promise.all([loadQuellen(), loadRuns(), loadFehler(), loadSettings(), ladeTags(), fuelleTerminQuellen(), loadLlm(), loadBrave()])
   .catch((e) => fehlerZeigen(e.message));
 baueUnterTabs(); // Quellen-Tab ist beim Laden aktiv → Unter-Tabs sofort bauen

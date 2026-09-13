@@ -230,7 +230,9 @@ def settings_put(body: dict, request: Request):
                "smtp_reply_to", "mail_vorlage",
                # Change 010: LLM-Endpunkt der Schul-Recherche (frei konfigurierbar)
                "llm_base_url", "llm_model", "llm_api_key", "llm_timeout_s",
-               "llm_extra_json", "recherche_aktiv", "recherche_max_schulen"}
+               "llm_extra_json", "recherche_aktiv", "recherche_max_schulen",
+               "brave_api_key", "brave_monat_limit", "brave_tages_limit",
+               "brave_anfragen_pro_s", "brave_websuche_aktiv"}
     unbekannt = set(body) - erlaubt
     fehler = []
     for k in sorted(unbekannt):
@@ -387,6 +389,55 @@ def recherche_letzter_lauf(request: Request):
         return {"vorhanden": False, "fehler": "gespeicherter Lauf ist kein JSON"}
     d["vorhanden"] = True
     return d
+
+
+# --- Websuche (Brave) mit Kontingent-Verwaltung (Change 012) -----------------
+def _int_oder_none(wert):
+    try:
+        return int(str(wert).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+@router.get("/brave")
+def brave_status(request: Request):
+    """Verbrauch gegen Budget + letzte Aufrufe (Grundlage der Drosselung)."""
+    from .recherche import websearch
+    store = _store(request)
+    st = websearch.status(store)
+    st["budget_fehler"] = websearch.budget_fehler(st)
+    st["letzte"] = store.brave_letzte(limit=15)
+    return st
+
+
+@router.post("/brave/test")
+def brave_test(request: Request, body: dict | None = None):
+    """Eine echte Testsuche — zählt als eine Anfrage und wird so ausgewiesen."""
+    from .recherche import websearch
+    store = _store(request)
+    body = body or {}
+    konfig = websearch.konfiguration(store)
+    if (body.get("brave_api_key") or "").strip():
+        konfig["brave_api_key"] = body["brave_api_key"].strip()
+    if not str(konfig.get("brave_api_key") or "").strip():
+        return {"ok": False, "fehler": "Kein API-Key hinterlegt."}
+    frage = (body.get("query") or "").strip() or '"Tag der offenen Tür" Berlin Grundschule 2026'
+    try:
+        suche = websearch.BraveSuche(store, konfig)
+        daten = suche.suche(frage, count=3)
+    except websearch.BraveFehler as e:
+        st = websearch.status(store)
+        return {"ok": False, "fehler": str(e), "query": frage,
+                "verbraucht_monat": st["verbraucht_monat"], "monats_limit": st["monats_limit"]}
+    urls = websearch.ergebnis_urls(daten)
+    return {"ok": True, "query": frage, "treffer": len(urls), "urls": urls,
+            "verbraucht_monat": websearch.status(store)["verbraucht_monat"],
+            "monats_limit": websearch.status(store)["monats_limit"]}
+
+
+@router.get("/brave/letzte")
+def brave_letzte(request: Request, limit: int = Query(50, le=500)):
+    return _store(request).brave_letzte(limit=limit)
 
 
 # --- Dubletten über Quellen hinweg (Change 011) -----------------------------

@@ -332,6 +332,43 @@
       </div>
     </details>
 
+    <details class="klapp" id="braveKlapp">
+      <summary>Websuche (Brave) — fehlende Termine finden, mit Kontingent-Verwaltung</summary>
+      <div class="klappbody">
+        <p class="muted" style="margin-top:0">
+          Die Websuche findet Termine, die auf der Schul-Seite selbst nicht auffindbar
+          sind — vor allem <strong>tiefe Unterseiten</strong> (z.&nbsp;B.
+          „…/tag-der-offenen-tuer-am-18-9-2026"). Sie läuft nur, wenn die eigenen Seiten
+          nichts hergeben, damit sie nur dort Kontingent kostet.
+          Tarif laut Brave: 5&nbsp;$ je 1.000 Anfragen, 5&nbsp;$ Guthaben gratis pro Monat
+          (≈ 1.000 Anfragen). <strong>Bei erreichtem Budget wird hart gestoppt</strong>,
+          damit keine Kosten entstehen.
+        </p>
+        <div class="formgrid">
+          <label for="setBraveKey">API-Key</label>
+          <div><input id="setBraveKey" type="password" autocomplete="off"
+                 placeholder="leer = gespeicherten Schlüssel behalten">
+            <span id="braveKeyMsg" class="msg klein"></span></div>
+          <label for="setBraveMonat">Anfragen je Monat</label>
+          <div><input id="setBraveMonat" type="number" min="1" max="100000" style="width:7em"></div>
+          <label for="setBraveTag">Anfragen je Tag</label>
+          <div><input id="setBraveTag" type="number" min="0" max="10000" style="width:7em">
+            <span class="muted klein">0 = kein Tageslimit</span></div>
+          <label for="setBraveRate">Anfragen pro Sekunde</label>
+          <div><input id="setBraveRate" type="number" min="1" max="50" style="width:7em">
+            <span class="muted klein">Brave erlaubt bis 50/s — höflich bleiben</span></div>
+          <label for="setBraveAktiv">Websuche nutzen</label>
+          <div><label><input id="setBraveAktiv" type="checkbox"> im Recherche-Lauf verwenden</label></div>
+        </div>
+        <div class="btnrow">
+          <button id="braveSpeichern" type="button" class="primary">Websuche speichern</button>
+          <button id="braveTesten" type="button">Verbindung testen (zählt als 1 Anfrage)</button>
+          <span id="braveMsg" class="msg"></span>
+        </div>
+        <div id="bravePanel" class="panel hidden" style="margin-top:8px"></div>
+      </div>
+    </details>
+
     <details class="klapp" id="dedupeKlapp">
       <summary>Dubletten — dieselbe Veranstaltung bei mehreren Quellen</summary>
       <div class="klappbody">
