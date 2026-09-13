@@ -274,8 +274,11 @@
       ".naehe-label{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#9aa4b2}" +
       // Schieberegler statt fester km-Schaltflächen: die Knöpfe waren in der
       // Höhe angeschnitten (Rückmeldung), außerdem sind Zwischenwerte möglich.
-      ".naehe-slider{flex:1 1 auto;-webkit-appearance:none;appearance:none;height:6px;" +
-      "border-radius:3px;background:linear-gradient(90deg,rgba(46,160,67,.55),rgba(46,160,67,.18));outline:none}" +
+      ".naehe-slider{flex:1 1 auto;-webkit-appearance:none;appearance:none;height:22px;" +
+      "border-radius:3px;outline:none;" +
+      // Die Spur wird als 6px hohes Band mittig gezeichnet, das Element bleibt
+      // 22px hoch — sonst schneidet das Feld den 20px-Griff ab (gemessen).
+      "background:linear-gradient(90deg,rgba(46,160,67,.55),rgba(46,160,67,.18)) center/100% 6px no-repeat}" +
       ".naehe-slider::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;" +
       "background:#4ac26b;border:2px solid #0d1117;cursor:pointer}" +
       ".naehe-slider::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:#4ac26b;" +
