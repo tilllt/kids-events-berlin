@@ -20,6 +20,7 @@
   var STD_KM = 2;
   var KM_WAHL = [1, 2, 5, 10];
   var merker = { lat: null, lon: null, km: null };
+  var letzteGj = null;   // letzte GeoJSON-Antwort (für Nachbereitung nach dem Aufbau)
   var kreis = null;
   var standortPunkt = null;
 
@@ -79,6 +80,7 @@
     if (typeof window.renderGeo !== "function") return;
     var orig = window.renderGeo;
     window.renderGeo = function (gj) {
+      letzteGj = gj;
       var r = orig.apply(this, arguments);
       try { nachbereiten(gj); } catch (e) { zeigeFehler("Nähe-Anzeige: " + e.message); }
       return r;
@@ -100,22 +102,33 @@
     if (draussen) teile.push(draussen + " liegen außerhalb");
     setzeInfo(teile.join(" · "), "ok");
 
-    // Entfernung an die Listeneinträge schreiben (die App kennzeichnet sie mit
-    // data-ev-id) — fehlt das Attribut, passiert einfach nichts.
-    var entf = {};
-    (gj.features || []).forEach(function (f) {
-      var p = f.properties || {};
-      if (p.id != null && p.entfernung_km != null) entf[String(p.id)] = p.entfernung_km;
+    // Entfernung an die Listeneinträge schreiben. Die <li> der App tragen KEINE
+    // Kennung (nur class/title) — verbunden wird deshalb über den Titel. Bei
+    // gleichen Titeln bekommen beide Einträge dieselbe Entfernung; das ist
+    // vertretbar, weil der Abstand praktisch derselbe Ort ist.
+    var liProTitel = {};
+    Array.prototype.forEach.call(document.querySelectorAll("#eventlist li"), function (li) {
+      var h = li.querySelector("h3");
+      if (h) liProTitel[(h.textContent || "").trim()] = li;
     });
-    Array.prototype.forEach.call(document.querySelectorAll("[data-ev-id]"), function (li) {
-      var alt = li.querySelector(".naehe-km");
-      if (alt) alt.remove();
-      var d = entf[li.getAttribute("data-ev-id")];
-      if (d == null) return;
-      var s = el("span", { class: "naehe-km" }, String(d).replace(".", ",") + " km");
-      var ziel = li.querySelector(".ev-kopf, .ev-titel, h3") || li.firstElementChild || li;
-      ziel.appendChild(s);
-    });
+    var setzeEntfernungen = function () {
+      (gj.features || []).forEach(function (f) {
+        var p = f.properties || {};
+        if (p.entfernung_km == null || !p.titel) return;
+        var li = liProTitel[String(p.titel).trim()];
+        if (!li) return;
+        var s = li.querySelector(".naehe-km");
+        if (!s) {
+          s = el("span", { class: "naehe-km" }, "");
+          (li.querySelector(".li-meta") || li).appendChild(s);
+        }
+        s.textContent = String(p.entfernung_km).replace(".", ",") + " km";
+      });
+    };
+    setzeEntfernungen();
+    // Die App füllt die Liste erst nach der Karte — deshalb kurz danach noch
+    // einmal (doppelte Einträge verhindert die Prüfung oben).
+    setTimeout(function () { try { setzeEntfernungen(); } catch (e) { /* egal */ } }, 400);
 
     zeichneKreis();
     syncUi();
@@ -354,14 +367,21 @@
   /* ---------- Start ---------- */
 
   function start() {
-    ausUrl();
     if (!baueUi()) return;
-    haengeEin();
-    haengeRenderEin();
     syncUi();
+    if (letzteGj) { try { nachbereiten(letzteGj); } catch (e) { /* egal */ } }
     setTimeout(standortWennErlaubt, 800);
-    if (merker.lat) load();
   }
+
+  // WICHTIG: Zustand aus der URL lesen und die Funktionen der App SOFORT beim
+  // Laden dieses Skripts einhängen — nicht erst bei DOMContentLoaded. Die App
+  // startet ihre erste Abfrage in ihrem eigenen DOMContentLoaded-Handler, der
+  // vor unserem läuft. Ohne diese Reihenfolge fehlte der ersten Abfrage der
+  // Umkreis (die Liste zeigte alle Termine statt der nahen), und ein zweiter
+  // Ladeaufruf überholte sich mit dem ersten.
+  ausUrl();
+  haengeEin();
+  haengeRenderEin();
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", start);
