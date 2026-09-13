@@ -91,7 +91,12 @@ def _mail_vorlage(store) -> str:
 
 
 class AnfrageBody(BaseModel):
+    # Getrennte Felder (User-Vorgabe): Betreff und Nachricht einzeln, dazu ein
+    # optionales Reply-To. `text` bleibt für Aufrufer, die alles in einem Feld
+    # schicken (erste Zeile "Betreff: …" wird dann als Subject gelesen).
     text: str = ""
+    betreff: str = ""
+    reply_to: str = ""
 
 TYPEN = {"feed", "regeln", "intern"}
 QUELLE_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,63}$")
@@ -696,6 +701,26 @@ def schule_delete(bsn: str, request: Request):
         raise HTTPException(404, str(e)) from None
 
 
+@router.get("/schulen/{bsn}/anfrage/vorschau", status_code=200)
+def schule_mail_vorschau(bsn: str, request: Request):
+    """Fertige Mail in getrennten Feldern: An, Reply-To, Betreff, Nachricht.
+
+    Platzhalter ({schule}, {schulform}, {bezirk}, {jahr}) sind hier schon
+    ersetzt — die Oberfläche zeigt also den Text, der wirklich rausgeht, und
+    muss ihn nicht selbst zusammensetzen.
+    """
+    store = _store(request)
+    sch = store.get_schule(bsn)
+    if not sch:
+        raise HTTPException(404, f"Unbekannte Schule: {bsn}")
+    betreff, nachricht = _mail_betreff(_mail_mit_platzhaltern(store, sch, ""),
+                                       sch.get("name") or bsn)
+    return {"an": (sch.get("email") or "").strip(), "schule": sch.get("name") or bsn,
+            "reply_to": (store.get_setting("smtp_reply_to") or "").strip(),
+            "betreff": betreff, "text": nachricht,
+            "hat_email": bool((sch.get("email") or "").strip())}
+
+
 @router.post("/schulen/{bsn}/anfrage", status_code=200)
 def schule_mail_anfrage(bsn: str, body: AnfrageBody, request: Request):
     """Sendet eine Termin-Anfrage-Mail an die Schule (SMTP aus Einstellungen).
@@ -713,12 +738,20 @@ def schule_mail_anfrage(bsn: str, body: AnfrageBody, request: Request):
     empfaenger = (sch.get("email") or "").strip()
     if not empfaenger:
         raise HTTPException(422, {"fehler": ["Schule hat keine E-Mail-Adresse hinterlegt."]})
-    text = _mail_mit_platzhaltern(store, sch, (body.text or "").strip())
-    betreff, nachricht = _mail_betreff(text, sch.get("name") or bsn)
-    _sende_mail(store, empfaenger, betreff, nachricht)
+    if (body.betreff or "").strip():
+        # Getrennte Felder: Betreff wie eingegeben, Text ist bereits der Nachrichtentext
+        betreff = _mail_mit_platzhaltern(store, sch, body.betreff.strip())
+        betreff = " ".join(betreff.split())[:200]
+        nachricht = _mail_mit_platzhaltern(store, sch, body.text or "")
+    else:
+        text = _mail_mit_platzhaltern(store, sch, (body.text or "").strip())
+        betreff, nachricht = _mail_betreff(text, sch.get("name") or bsn)
+    _sende_mail(store, empfaenger, betreff, nachricht,
+                reply_to=(body.reply_to or "").strip() or None)
     store.set_schule_angefragt(bsn, iso_utc(datetime.now(TZ_BERLIN)))
     return {"status": "gesendet", "schule": bsn, "an_": empfaenger,
             "betreff": betreff,
+            "reply_to": (body.reply_to or store.get_setting("smtp_reply_to") or "").strip(),
             "angefragt_am": store.get_schule(bsn)["angefragt_am"]}
 
 
@@ -747,7 +780,8 @@ def _mail_betreff(text: str, schulname: str) -> tuple[str, str]:
     return f"Termin-Anfrage: {schulname}", text
 
 
-def _sende_mail(store, empfaenger: str, betreff: str, nachricht: str) -> None:
+def _sende_mail(store, empfaenger: str, betreff: str, nachricht: str,
+                reply_to: str | None = None) -> None:
     import smtplib
     from email.message import EmailMessage
     host = (store.get_setting("smtp_host") or "").strip()
@@ -766,8 +800,9 @@ def _sende_mail(store, empfaenger: str, betreff: str, nachricht: str) -> None:
     msg["Subject"] = betreff
     msg["From"] = von
     msg["To"] = empfaenger
-    reply_to = (store.get_setting("smtp_reply_to") or "").strip()
-    if reply_to:
+    antwort_an = (reply_to or store.get_setting("smtp_reply_to") or "").strip()
+    if antwort_an:
+        reply_to = antwort_an
         msg["Reply-To"] = reply_to
     msg.set_content(nachricht)
     grund = store.mail_versand_bremse_grund()

@@ -594,38 +594,52 @@ function mailFormularZeigen(s) {
   p.classList.remove("hidden");
   p.innerHTML = `
     <h3>Termin-Anfrage an ${esc(s.name)}</h3>
-    <p class="muted" style="margin-top:0">An: <strong>${esc(s.email)}</strong>. Die Vorlage aus den
-      Einstellungen wird unten angezeigt und kann je Schule angepasst werden.</p>
-    <textarea id="m_text" class="mail" spellcheck="false"></textarea>
+    <div class="formgrid" style="max-width:780px">
+      <label for="m_an">An</label>
+      <div><input id="m_an" type="email" readonly>
+        <span class="muted klein">Empfänger aus dem Schuldatensatz</span></div>
+      <label for="m_replyto">Reply-To</label>
+      <div><input id="m_replyto" type="email" style="width:20em">
+        <span class="muted klein">hierhin antwortet die Schule (Vorgabe aus den Einstellungen)</span></div>
+      <label for="m_betreff">Betreff</label>
+      <div><input id="m_betreff" type="text" style="width:34em"></div>
+      <label for="m_text">Nachricht</label>
+      <div><textarea id="m_text" class="mail" spellcheck="false" style="min-height:14em"></textarea>
+        <span class="muted klein">Platzhalter sind schon durch die Schuldaten ersetzt — hier direkt änderbar.</span></div>
+    </div>
     <div class="btnrow" style="margin-top:10px">
-      <button id="m_vorlage" type="button" class="ghost">Vorlage neu laden</button>
+      <button id="m_vorlage" type="button" class="ghost">Vorschau neu laden</button>
       <button id="m_senden" type="button" class="primary">Senden</button>
       <button id="m_abort" type="button" class="ghost">Schließen</button>
     </div>
     <div id="m_msg"></div>`;
-  async function ladeVorlage() {
+  async function ladeVorschau() {
     try {
-      const s2 = await api("/api/admin/settings");
-      const vorlage = s2.mail_vorlage || "";
-      if (vorlage) { $("#m_text").value = vorlage; }
-      else {
-        // Fallback: Standardtext ohne Server-Roundtrip bauen
-        $("#m_text").value = `Betreff: Tage der offenen Tür ${new Date().getFullYear()} – Bitte um Terminmitteilung\n\n` +
-          `Sehr geehrte Damen und Herren,\n\nwir betreiben den Veranstaltungskalender „kinderkram“ …\n\n` +
-          `Für die ${s.schulform || "Schule"} ${s.name} (${s.bezirk || ""}) bitten wir um Mitteilung der Termine …`;
+      const d = await api(`/api/admin/schulen/${encodeURIComponent(s.bsn)}/anfrage/vorschau`);
+      $("#m_an").value = d.an || "";
+      $("#m_replyto").value = d.reply_to || "";
+      $("#m_betreff").value = d.betreff || "";
+      $("#m_text").value = d.text || "";
+      if (!d.hat_email) {
+        meldung($("#m_msg"), "Diese Schule hat keine E-Mail-Adresse hinterlegt.", false);
       }
     } catch (e) { meldung($("#m_msg"), e.message, false); }
   }
-  ladeVorlage();
+  ladeVorschau();
   $("#m_abort").onclick = () => p.classList.add("hidden");
-  $("#m_vorlage").onclick = ladeVorlage;
+  $("#m_vorlage").onclick = ladeVorschau;
   $("#m_senden").onclick = async () => {
     const msg = $("#m_msg");
     const btn = $("#m_senden");
     btn.disabled = true;
     try {
       await api(`/api/admin/schulen/${encodeURIComponent(s.bsn)}/anfrage`, {
-        method: "POST", body: JSON.stringify({ text: $("#m_text").value }),
+        method: "POST",
+        body: JSON.stringify({
+          betreff: $("#m_betreff").value,
+          text: $("#m_text").value,
+          reply_to: $("#m_replyto").value.trim(),
+        }),
       });
       meldung(msg, "Mail gesendet ✓");
       p.classList.add("hidden");
