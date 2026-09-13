@@ -82,6 +82,19 @@ def test_geojson_meldet_ehrlich_was_fehlt(tmp_path):
     assert gj["anzahl"] == 2
 
 
+def test_geojson_features_haben_immer_koordinaten(tmp_path):
+    """Kein Feature ohne Koordinaten — sonst bricht Leaflet ab und die Liste
+    bleibt leer (realer Fehler 2026-09-13, im Browser gefunden)."""
+    c, _ = _client(tmp_path)
+    for pfad in ("/api/events.geojson", "/api/events.geojson?bezirk=mitte"):
+        gj = c.get(pfad).json()
+        for f in gj["features"]:
+            lon, lat = f["geometry"]["coordinates"]
+            assert isinstance(lat, (int, float)) and isinstance(lon, (int, float)), \
+                f"Feature ohne Koordinaten: {f['properties'].get('titel')}"
+        assert len(gj["ohne_position"]) >= 1        # der Termin ohne Position
+
+
 def test_plz_zentrum_aus_eigenem_bestand(tmp_path):
     c, _ = _client(tmp_path)
     r = c.get("/api/plz/13587").json()

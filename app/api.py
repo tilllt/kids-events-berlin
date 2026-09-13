@@ -307,6 +307,11 @@ def events_geojson(request: Request,
         if e.get("lat") is None or e.get("lon") is None:
             ohne.append(_ev_public(e))
     for e in im:
+        if e.get("lat") is None or e.get("lon") is None:
+            # Ohne Position keine Kartenmarke: Leaflet bricht sonst mit
+            # „Cannot read properties of null" ab und die Liste bleibt leer
+            # (real passiert am 2026-09-13, vom Browser-Test gefunden).
+            continue
         pub = _ev_public(e)
         if e["id"] in entf:
             pub["entfernung_km"] = entf[e["id"]]
