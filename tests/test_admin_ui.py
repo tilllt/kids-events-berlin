@@ -107,13 +107,16 @@ def test_schulrecherche_hat_eigenen_obertab():
     assert 'id="tab-schulrecherche"' in HTML, "Tab-Sektion fehlt"
     i_tab = HTML.index('id="tab-schulrecherche"')
     i_einst = HTML.index('id="tab-einstellungen"')
-    for block in ("llmKlapp", "rechercheKlapp", "braveKlapp", "mailKlapp"):
+    for block in ("llmKlapp", "rechercheKlapp", "mailKlapp"):
         pos = HTML.index(f'id="{block}"')
         assert i_tab < pos < i_einst, f"{block} liegt noch in den Einstellungen"
-    # Reihenfolge: LLM-Endpunkt, Recherche, Websuche, E-Mail
-    reihe = sorted(("llmKlapp", "rechercheKlapp", "braveKlapp", "mailKlapp"),
+    # Reihenfolge: LLM-Endpunkt, KI-Recherche, Terminanfrage per E-Mail
+    reihe = sorted(("llmKlapp", "rechercheKlapp", "mailKlapp"),
                    key=lambda b: HTML.index(f'id="{b}"'))
-    assert reihe == ["llmKlapp", "rechercheKlapp", "braveKlapp", "mailKlapp"]
+    assert reihe == ["llmKlapp", "rechercheKlapp", "mailKlapp"]
+    # Die Websuche bleibt bewusst bei den Einstellungen
+    assert HTML.index('id="braveKlapp"') > i_einst, "Websuche gehört in die Einstellungen"
+    assert "KI-gestützte Recherche" in HTML and "Terminanfrage per E-Mail" in HTML
     # Dubletten-Prüfung bleibt bei den Einstellungen
     assert HTML.index('id="dedupeKlapp"') > i_einst
     assert 'b.dataset.tab === "schulrecherche"' in JS, "Tab lädt die Zustände nicht nach"

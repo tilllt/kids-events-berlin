@@ -102,10 +102,15 @@ def test_fehlgeschlagener_aufruf_zaehlt_als_reservierung(tmp_path):
 
 # --- Rate Limit und Fehlerbehandlung ---------------------------------------
 def test_rate_limit_haelt_den_abstand_ein(tmp_path, monkeypatch):
+    """Abstand wird eingehalten — mit einer Uhr NUR im Modul websearch.
+
+    (Früher wurde das globale time-Modul gepatcht; das leckte in andere Tests.)
+    """
+    import types
     geschlafen: list[float] = []
     uhr = {"t": 100.0}
-    monkeypatch.setattr(websearch.time, "monotonic", lambda: uhr["t"])
-    monkeypatch.setattr(websearch.time, "sleep", lambda s: geschlafen.append(s))
+    monkeypatch.setattr(websearch, "time", types.SimpleNamespace(
+        monotonic=lambda: uhr["t"], sleep=lambda s: geschlafen.append(s)))
     s = _store(tmp_path, brave_anfragen_pro_s=2)  # 0,5 s Abstand
     suche = websearch.BraveSuche(s, websearch.konfiguration(s), client=_client(_ok))
     suche.suche("a")

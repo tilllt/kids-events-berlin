@@ -25,3 +25,5 @@ data/
 .idea/
 .vscode/
 *.swp
+core
+core.*
