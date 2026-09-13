@@ -157,7 +157,9 @@ def schul_kandidaten(store, *, limit: int | None = None,
                                         bezirk=bezirk, schulform=schulform)
 
 
-def seiten_aus_websuche(suche, schule: dict, kandidaten: list[dict]) -> dict:
+def seiten_aus_websuche(suche, schule: dict, kandidaten: list[dict],
+                        store=None, konfig: dict | None = None) -> dict:
+    """`konfig` ist die BRAVE-Konfiguration (Default: aus den Einstellungen)."""
     """Websuche als Link-Finder für tiefe Unterseiten (Change 012).
 
     Läuft erst, wenn die eigenen Seiten nichts hergegeben haben — so kostet eine
@@ -165,6 +167,13 @@ def seiten_aus_websuche(suche, schule: dict, kandidaten: list[dict]) -> dict:
     sind zugelassen, stehen aber hinter den Seiten der Schule selbst (siehe
     `websearch.ergebnis_urls`).
     """
+    bsn = schule.get("bsn")
+    if store is not None:
+        grund = websearch.zuletzt_gesucht(store, bsn,
+                                          konfig or websearch.konfiguration(store))
+        if grund:  # Kontingent-Schutz: nicht dieselbe Schule jeden Tag fragen
+            return {"kandidaten": [], "anfragen": 0, "treffer": 0, "fehler": None,
+                    "hinweis": grund}
     domain = (schule.get("website") or "").split("//")[-1].split("/")[0].removeprefix("www.")
     name = schule.get("name") or schule.get("bsn") or ""
     fragen = ([f'"{name}" Berlin "Tag der offenen Tür"',
@@ -175,7 +184,7 @@ def seiten_aus_websuche(suche, schule: dict, kandidaten: list[dict]) -> dict:
     anfragen, treffer, fehler = 0, 0, None
     try:
         for frage in fragen:
-            daten = suche.suche(frage)
+            daten = suche.suche(frage, bsn=bsn)
             anfragen += 1
             urls = websearch.ergebnis_urls(daten, domain=domain)
             treffer += len(urls)
@@ -189,7 +198,8 @@ def seiten_aus_websuche(suche, schule: dict, kandidaten: list[dict]) -> dict:
                 break  # Treffer auf der Schul-Seite reicht als Einstieg
     except websearch.BraveFehler as e:
         fehler = str(e)
-    return {"kandidaten": neu, "anfragen": anfragen, "treffer": treffer, "fehler": fehler}
+    return {"kandidaten": neu, "anfragen": anfragen, "treffer": treffer,
+            "fehler": fehler, "hinweis": None}
 
 
 def _seiten_holen(kandidaten: list[dict], html_start: str | None, schlaf_s: float,
@@ -249,9 +259,12 @@ def verarbeite_schule(store, schule: dict, konfig: dict, client: httpx.Client,
     # Kontingent — sie liefert tiefe Unterseiten, die die Heuristik übersieht.
     websuche_info = {"anfragen": 0, "treffer": 0, "fehler": None, "urls": []}
     if not fenster and suche is not None:
-        w = seiten_aus_websuche(suche, schule, eigene)
+        # Bewusst OHNE die LLM-Konfiguration: die Brave-Einstellungen kommen aus
+        # den Einstellungen (sonst greift z. B. brave_wiederholung_tage nie).
+        w = seiten_aus_websuche(suche, schule, eigene, store=store)
         websuche_info = {"anfragen": w["anfragen"], "treffer": w["treffer"],
-                         "fehler": w["fehler"], "urls": [k["url"] for k in w["kandidaten"]]}
+                         "fehler": w["fehler"], "hinweis": w.get("hinweis"),
+                         "urls": [k["url"] for k in w["kandidaten"]]}
         if w["kandidaten"]:
             neue_seiten, gefunden = _seiten_holen(w["kandidaten"], None, schlaf_s, client)
             seiten += neue_seiten
@@ -263,6 +276,8 @@ def verarbeite_schule(store, schule: dict, konfig: dict, client: httpx.Client,
             grund += f" · Websuche: {websuche_info['fehler']}"
         elif websuche_info["anfragen"]:
             grund += f" · Websuche: {websuche_info['treffer']} Treffer, keiner mit Terminstelle"
+        elif websuche_info.get("hinweis"):
+            grund += f" · {websuche_info['hinweis']}"
         ergebnis.update(status=STATUS_KEIN_INDIZ, url=website, grund=grund)
         return ergebnis
 

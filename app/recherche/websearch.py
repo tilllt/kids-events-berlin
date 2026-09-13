@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import threading
 import time
-from datetime import date
+from datetime import date, datetime
 
 import httpx
 
@@ -43,6 +43,7 @@ KONFIG_STANDARD = {
     "brave_tages_limit": "30",      # verteilt das Monatsbudget über den Monat
     "brave_anfragen_pro_s": "1",
     "brave_websuche_aktiv": "0",    # erst einschalten, wenn der Key geprüft ist
+    "brave_wiederholung_tage": "30",  # dieselbe Schule höchstens 1× je 30 Tage fragen
 }
 
 
@@ -85,6 +86,7 @@ def status(store, konfig: dict | None = None, heute: date | None = None) -> dict
         "aktiv": str(k.get("brave_websuche_aktiv", "0")).strip() in ("1", "true", "ja", "on"),
         "key_gesetzt": bool(str(k.get("brave_api_key") or "").strip()),
         "anfragen_pro_s": _int(k.get("brave_anfragen_pro_s"), 1),
+        "wiederholung_tage": _int(k.get("brave_wiederholung_tage"), 30),
     }
 
 
@@ -98,6 +100,32 @@ def budget_fehler(st: dict) -> str | None:
     if st["tages_limit"] and st["verbraucht_heute"] >= st["tages_limit"]:
         return (f"Tagesbudget erreicht ({st['verbraucht_heute']}/{st['tages_limit']} Anfragen) "
                 f"— die restlichen Schulen kommen morgen oder per Mail-Anfrage.")
+    return None
+
+
+def zuletzt_gesucht(store, bsn: str, konfig: dict | None = None,
+                    heute: date | None = None) -> str | None:
+    """Grund, warum dieselbe Schule gerade nicht noch einmal gesucht wird.
+
+    Kontingent-Schutz: dieselbe Schule wird höchstens alle
+    `brave_wiederholung_tage` Tage befragt (0 = immer). Verhindert, dass ein
+    täglicher Lauf dieselbe Schule 30-mal im Monat bezahlt, ohne neuen Befund.
+    """
+    tage = _int((konfig or {}).get("brave_wiederholung_tage", KONFIG_STANDARD[
+        "brave_wiederholung_tage"]), 30)
+    if tage <= 0:
+        return None
+    zuletzt = store.brave_letzte_suche(bsn)
+    if not zuletzt:
+        return None
+    try:
+        d = datetime.fromisoformat(zuletzt).date()
+    except ValueError:
+        return None
+    alter = ((heute or date.today()) - d).days
+    if alter < tage:
+        return (f"Websuche für diese Schule erst vor {alter} Tagen gelaufen "
+                f"(Wiederholung nach {tage} Tagen) — Kontingent geschont.")
     return None
 
 
@@ -124,8 +152,9 @@ class BraveSuche:
     """Brave-Aufrufe mit Budget-Prüfung, Reservierung, Rate Limit und Audit."""
 
     def __init__(self, store, konfig: dict | None = None, client: httpx.Client | None = None,
-                 heute_fn=date.today):
+                 heute_fn=date.today, bsn: str | None = None):
         self.store = store
+        self.bsn = bsn
         self.konfig = konfig or konfiguration(store)
         self.client = client or httpx.Client(timeout=20.0)
         self.heute_fn = heute_fn
@@ -139,13 +168,14 @@ class BraveSuche:
         if warte > 0:
             time.sleep(warte)
 
-    def suche(self, query: str, count: int = 5) -> dict:
+    def suche(self, query: str, count: int = 5, bsn: str | None = None) -> dict:
         """Eine Websuche. Wirft BraveFehler mit Klartext, wenn sie nicht geht."""
         st = status(self.store, self.konfig, heute=self.heute_fn())
         grund = budget_fehler(st)
         if grund:
             raise BraveFehler(grund)
-        aufruf_id = self.store.starte_brave_aufruf(monat(self.heute_fn()), query)
+        aufruf_id = self.store.starte_brave_aufruf(monat(self.heute_fn()), query,
+                                                   bsn or self.bsn)
         treffer, fehler, code = 0, None, 0
         try:
             for versuch in (1, 2):

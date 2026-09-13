@@ -1185,6 +1185,7 @@ async function loadBrave() {
     $("#setBraveMonat").value = s.brave_monat_limit || "900";
     $("#setBraveTag").value = s.brave_tages_limit ?? "30";
     $("#setBraveRate").value = s.brave_anfragen_pro_s || "1";
+    $("#setBraveWdh").value = s.brave_wiederholung_tage ?? "30";
     $("#setBraveAktiv").checked = ["1", "true", "ja", "on"].includes(
       (s.brave_websuche_aktiv || "0").trim().toLowerCase());
     braveStatusZeigen(braveStatus);
@@ -1197,6 +1198,7 @@ $("#braveSpeichern").onclick = async () => {
     brave_monat_limit: $("#setBraveMonat").value,
     brave_tages_limit: $("#setBraveTag").value,
     brave_anfragen_pro_s: $("#setBraveRate").value,
+    brave_wiederholung_tage: $("#setBraveWdh").value,
     brave_websuche_aktiv: $("#setBraveAktiv").checked ? "1" : "0",
   };
   const key = $("#setBraveKey").value.trim();

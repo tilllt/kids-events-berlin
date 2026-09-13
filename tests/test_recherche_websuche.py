@@ -173,16 +173,32 @@ in der Aula.</p></body></html>"""
 
 
 class FakeSuche:
-    """Wie BraveSuche, aber ohne Netz — zählt Aufrufe für die Budget-Prüfung."""
+    """Wie BraveSuche, aber ohne Netz.
 
-    def __init__(self, ergebnis):
+    Mit `store` verbucht sie Aufrufe wie das Original (Reservierung + Abschluss),
+    damit Tests die echte Kontingent-Zählung prüfen — ohne Brave anzurufen.
+    """
+
+    def __init__(self, ergebnis, store=None):
         self.ergebnis = ergebnis
+        self.store = store
         self.aufrufe: list[str] = []
 
-    def suche(self, query, count=5):
+    def suche(self, query, count=5, bsn=None):
         self.aufrufe.append(query)
+        aufruf_id = None
+        if self.store is not None:
+            aufruf_id = self.store.starte_brave_aufruf(
+                websearch.monat(date.today()), query, bsn)
         if isinstance(self.ergebnis, Exception):
+            if self.store is not None:
+                self.store.beende_brave_aufruf(aufruf_id, http_code=0, treffer=0,
+                                               fehler=str(self.ergebnis))
             raise self.ergebnis
+        if self.store is not None:
+            self.store.beende_brave_aufruf(aufruf_id, http_code=200,
+                                           treffer=len(websearch.ergebnis_urls(self.ergebnis)),
+                                           fehler=None)
         return self.ergebnis
 
 
@@ -253,6 +269,42 @@ def test_aufgebrauchtes_budget_ist_an_der_schule_sichtbar(tmp_path):
     assert zusammen["websuche_fehler"] == 1
     assert "Monatsbudget aufgebraucht" in zusammen["schulen"][0]["grund"]
     assert zusammen["schulen"][0]["websuche"]["fehler"].startswith("Monatsbudget")
+    s.close()
+
+
+def test_wiederholung_schuetzt_das_kontingent(tmp_path):
+    """Dieselbe Schule wird nicht täglich erneut gesucht (Kontingent-Schutz)."""
+    s = _store(tmp_path, brave_wiederholung_tage=30)
+    _schule(s, bsn="02G94")
+    suche = FakeSuche(TREFFER, store=s)
+    client = _lauf_client({"schul.example.org": SEITE_OHNE_TERMIN}, [])
+    kern.lauf(s, limit=1, dry_run=True, suche=suche, client=client)
+    # Treffer auf der Schul-Domain im ersten Ergebnis → zweite Frage entfällt
+    assert len(suche.aufrufe) == 1, "erster Lauf soll fragen"
+    assert s.brave_verbrauch()["monat_anzahl"] == 1
+
+    # zweiter Lauf: gleiche Schule, gleicher Tag → kein einziger Aufruf
+    zusammen = kern.lauf(s, limit=1, dry_run=True, suche=suche, client=client)
+    assert len(suche.aufrufe) == 1, "zweiter Lauf hat erneut Kontingent verbraucht"
+    assert "vor 0 Tagen" in zusammen["schulen"][0]["grund"]
+    assert s.brave_verbrauch()["monat_anzahl"] == 1
+
+    # 0 Tage = bewusst jedes Mal suchen
+    s.set_setting("brave_wiederholung_tage", "0")
+    kern.lauf(s, limit=1, dry_run=True, suche=suche, client=client)
+    assert len(suche.aufrufe) == 2
+    s.close()
+
+
+def test_wiederholungsgrenze_laeuft_ab(tmp_path):
+    from datetime import date, timedelta
+    s = _store(tmp_path, brave_wiederholung_tage=30)
+    k = websearch.konfiguration(s)
+    assert websearch.zuletzt_gesucht(s, "02G95", k) is None          # nie gesucht
+    s.starte_brave_aufruf("2026-01", "q", bsn="02G95")
+    assert websearch.zuletzt_gesucht(s, "02G95", k, heute=date.today()) is not None
+    k0 = dict(k, brave_wiederholung_tage="0")
+    assert websearch.zuletzt_gesucht(s, "02G95", k0) is None
     s.close()
 
 

@@ -232,7 +232,8 @@ def settings_put(body: dict, request: Request):
                "llm_base_url", "llm_model", "llm_api_key", "llm_timeout_s",
                "llm_extra_json", "recherche_aktiv", "recherche_max_schulen",
                "brave_api_key", "brave_monat_limit", "brave_tages_limit",
-               "brave_anfragen_pro_s", "brave_websuche_aktiv"}
+               "brave_anfragen_pro_s", "brave_websuche_aktiv",
+               "brave_wiederholung_tage"}
     unbekannt = set(body) - erlaubt
     fehler = []
     for k in sorted(unbekannt):

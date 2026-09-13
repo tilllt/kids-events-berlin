@@ -173,6 +173,7 @@ CREATE TABLE IF NOT EXISTS brave_aufrufe (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     monat TEXT NOT NULL,
     tag TEXT,
+    bsn TEXT,
     query TEXT NOT NULL,
     zeitpunkt TEXT NOT NULL,
     http_code INTEGER,
@@ -243,6 +244,11 @@ class Store:
             # die dieselbe Veranstaltung gelistet haben).
             if "quellen_json" not in ev_cols:
                 self._conn.execute("ALTER TABLE events ADD COLUMN quellen_json TEXT")
+            # Change 012: Schulenbezug je Brave-Aufruf (Wiederholungs-Schutz)
+            br_cols = {r["name"] for r in self._conn.execute(
+                "PRAGMA table_info(brave_aufrufe)").fetchall()}
+            if br_cols and "bsn" not in br_cols:
+                self._conn.execute("ALTER TABLE brave_aufrufe ADD COLUMN bsn TEXT")
             # schulen.schulzweig_id (Link auf das offizielle Schulportrait)
             sc_cols = {r["name"] for r in self._conn.execute(
                 "PRAGMA table_info(schulen)").fetchall()}
@@ -786,17 +792,24 @@ class Store:
         return zu_loeschen
 
     # --- Change 012: Brave-Websuche (Kontingent-Verwaltung) ------------------
-    def starte_brave_aufruf(self, monat: str, query: str) -> int:
+    def starte_brave_aufruf(self, monat: str, query: str, bsn: str | None = None) -> int:
         """Aufruf reservieren (zählt gegen das Budget, auch wenn er scheitert)."""
         jetzt = datetime.now(TZ_BERLIN)
         with self._lock:
             cur = self._conn.execute(
-                """INSERT INTO brave_aufrufe(monat, tag, query, zeitpunkt, http_code, treffer)
-                   VALUES (?,?,?,?,0,0)""",
-                (monat, jetzt.strftime("%Y-%m-%d"), query[:300],
-                 iso_utc(jetzt)))
+                """INSERT INTO brave_aufrufe(monat, tag, bsn, query, zeitpunkt, http_code, treffer)
+                   VALUES (?,?,?,?,?,0,0)""",
+                (monat, jetzt.strftime("%Y-%m-%d"), bsn, query[:300], iso_utc(jetzt)))
             self._conn.commit()
             return int(cur.lastrowid or 0)
+
+    def brave_letzte_suche(self, bsn: str) -> str | None:
+        """Zeitpunkt der letzten Websuche zu dieser Schule (Wiederholungs-Schutz)."""
+        with self._lock:
+            r = self._conn.execute(
+                """SELECT zeitpunkt FROM brave_aufrufe WHERE bsn=?
+                   ORDER BY id DESC LIMIT 1""", (bsn,)).fetchone()
+        return r["zeitpunkt"] if r else None
 
     def beende_brave_aufruf(self, aufruf_id: int, *, http_code: int | None,
                             treffer: int, fehler: str | None = None) -> None:
