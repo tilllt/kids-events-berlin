@@ -210,15 +210,31 @@
 
   /* ---------- Kalender-Abo ---------- */
 
-  var ABO_FILTER = { bezirk: "Bezirk", altersband: "Altersgruppe", uhrzeit: "Uhrzeit",
-                     kostenlos: "Kostenlos", quelle: "Quelle", q: "Suche", ort: "Ort" };
+  /* Beschriftungen für die Anzeige im Fenster — die Schlüssel sind die der App.
+     `zeitstufe` heißt in der Oberfläche „Uhrzeit". */
+  var ANZEIGE = { bezirk: "Bezirk", altersband: "Altersgruppe", uhrzeit: "Uhrzeit",
+                  zeitstufe: "Uhrzeit",
+                  kostenlos: "Nur kostenlose Termine", quelle: "Quelle", q: "Suche",
+                  ort: "Ort", umkreis_km: "Umkreis", wochen: "Zeitraum" };
 
-  /* Abo-Adresse: dieselbe Auswahl, aber OHNE Zeitraum. Heute/Morgen/Demnächst sind
-     Ansichtssache — das Abo deckt immer die nächsten 21 Tage ab. */
+  /* Zeitraum-Filter gehören nicht ins Abo: Heute/Morgen/Demnächst sind
+     Ansichtssache, das Abo deckt immer die nächsten 21 Tage ab. */
+  var NICHT_IM_ABO = ["zeitraum", "von", "bis", "limit", "seite", "lat", "lon", "umkreis_km"];
+
+  /* Die App nennt den Uhrzeit-Filter in ihrer Adresse `zeitstufe`, die
+     Kalender-Schnittstelle liest `uhrzeit`. Ohne diese Übersetzung kam der
+     Filter im Abo nie an (gemessen: 579 statt 222 Termine). */
+  var ABO_UMBENENNEN = { zeitstufe: "uhrzeit" };
+
+  /* Abo-Adresse aus der Adresse der aktuellen Ansicht — mit AUSSCHLUSSliste,
+     nicht mit Positivliste: Eine feste Liste hat hier zuletzt stillschweigend
+     den Uhrzeit-Filter (zeitstufe) verschluckt. So kommt jeder Filter mit, auch
+     künftige. */
   function aboPfad(p) {
     var abo = new URLSearchParams();
-    Object.keys(ABO_FILTER).forEach(function (k) {
-      if (p.get(k)) abo.set(k, p.get(k));
+    p.forEach(function (wert, key) {
+      if (!wert || NICHT_IM_ABO.indexOf(key) !== -1) return;
+      abo.set(ABO_UMBENENNEN[key] || key, wert);
     });
     if (aktiv()) {
       abo.set("lat", merker.lat); abo.set("lon", merker.lon);
@@ -258,12 +274,16 @@
 
     var liste = el("ul", { class: "naehe-modal-filter" });
     liste.appendChild(el("li", {}, "Zeitraum: die nächsten 21 Tage (fest)"));
-    Object.keys(ABO_FILTER).forEach(function (k) {
-      if (p.get(k)) liste.appendChild(el("li", {}, ABO_FILTER[k] + ": " + p.get(k)));
+    // Jeden Filter zeigen, der in der Adresse steht — nichts stillschweigend
+    // weglassen. Unbekannte Schlüssel werden mit ihrem Namen genannt.
+    p.forEach(function (wert, key) {
+      if (!wert || key === "wochen" || key === "lat" || key === "lon") return;
+      if (key === "umkreis_km") {
+        liste.appendChild(el("li", {}, "Umkreis: " + wert + " km um den gewählten Punkt"));
+        return;
+      }
+      liste.appendChild(el("li", {}, (ANZEIGE[key] || key) + ": " + wert));
     });
-    if (p.get("umkreis_km")) {
-      liste.appendChild(el("li", {}, "Umkreis: " + p.get("umkreis_km") + " km um den gewählten Punkt"));
-    }
     kasten.appendChild(liste);
 
     var feld = el("input", { type: "text", readonly: "readonly", class: "naehe-modal-url",
