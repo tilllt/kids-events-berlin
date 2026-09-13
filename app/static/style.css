@@ -186,23 +186,26 @@ main > * { min-width: 0; }
 .btn:hover { border-color: var(--accent); color: var(--accent); }
 .btn.primary { background: #14324f; border-color: var(--accent); color: var(--accent); }
 .popup-detail-btn { margin-top: 6px; }
-/* Mobile: normale Dokumentfolge statt festgeklemmter Bildschirmhöhe.
-   Aufgeklappte Filter schieben die Liste nach unten, statt sie zu verdecken
-   oder in einen Rest-Streifen zu quetschen; die Seite scrollt als Ganzes. */
+/* Mobile: Kopfzeile fest, der Hauptbereich passt sich der Bildschirmhöhe an.
+   Die Terminliste zeigt so viele Einträge wie Platz ist (Richtung fünf) und die
+   Karte darunter bleibt ohne Scrollen im Bild. Klappt man Filter auf, wächst der
+   Inhalt und `main` scrollt — die Filter schieben also alles nach unten, ohne
+   Liste oder Karte zu verdecken. */
 @media (max-width: 820px) {
-  html, body { height: auto; }
-  body { display: block; }
-  main { display: block; }
-  #filters { border-right: 0; border-bottom: 1px solid var(--border);
-             max-height: none; overflow: visible; }
-  /* Hauptbereich scrollt (nicht die Seite): so schieben aufgeklappte Filter
-     alles nach unten, ohne den Kopf wegzuschieben. */
-  main { flex: 1; min-height: 0; overflow-y: auto; }
-  #content { display: block; min-height: 0; }
-  /* Liste zeigt etwa fünf Termine und scrollt in sich — die Karte darunter
-     bleibt damit ohne Scrollen im Bild (User-Vorgabe). */
-  #eventlist { overflow-y: auto; max-height: min(36vh, 300px); }
-  #mapwrap { flex: none; height: 30vh; min-height: 190px; margin-top: 8px;
+  html, body { height: 100%; }
+  body { display: flex; flex-direction: column; }
+  main { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0;
+         overflow-y: auto; }
+  #filters { flex: none; border-right: 0; border-bottom: 1px solid var(--border);
+             max-height: none; overflow: visible; padding: 8px 10px; }
+  .suche-sektion { margin-bottom: 6px; }
+  #content { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+  #liststate { flex: none; margin: 3px 0 2px; padding: 2px 8px; font-size: 11px; }
+  #eventlist { flex: 1 1 auto; min-height: 150px; max-height: min(36vh, 285px);
+               overflow-y: auto; }
+  #eventlist li { padding-top: 5px; padding-bottom: 5px; }
+  #eventlist li .li-actions { flex-direction: row; gap: 6px; align-items: center; }
+  #mapwrap { flex: none; height: min(24vh, 185px); min-height: 150px; margin-top: 6px;
              border-top: 1px solid var(--border); }
   #map { height: 100%; }
 }
