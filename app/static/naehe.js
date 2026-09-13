@@ -101,12 +101,16 @@
     // Kennung (nur class/title) — verbunden wird deshalb über den Titel. Bei
     // gleichen Titeln bekommen beide Einträge dieselbe Entfernung; das ist
     // vertretbar, weil der Abstand praktisch derselbe Ort ist.
-    var liProTitel = {};
-    Array.prototype.forEach.call(document.querySelectorAll("#eventlist li"), function (li) {
-      var h = li.querySelector("h3");
-      if (h) liProTitel[(h.textContent || "").trim()] = li;
-    });
+    //
+    // Der Titel-Index wird bei JEDEM Durchlauf neu gebaut: die App füllt die
+    // Liste erst NACH der Karte, beim ersten Durchlauf ist sie noch leer
+    // (realer Fehler 2026-09-13: dadurch gab es nie Entfernungslabels).
     var setzeEntfernungen = function () {
+      var liProTitel = {};
+      Array.prototype.forEach.call(document.querySelectorAll("#eventlist li"), function (li) {
+        var h = li.querySelector("h3");
+        if (h) liProTitel[(h.textContent || "").trim()] = li;
+      });
       (gj.features || []).forEach(function (f) {
         var p = f.properties || {};
         if (p.entfernung_km == null || !p.titel) return;
@@ -121,9 +125,14 @@
       });
     };
     setzeEntfernungen();
-    // Die App füllt die Liste erst nach der Karte — deshalb kurz danach noch
-    // einmal (doppelte Einträge verhindert die Prüfung oben).
-    setTimeout(function () { try { setzeEntfernungen(); } catch (e) { /* egal */ } }, 400);
+    // Mehrere Nachläufe: Liste und Zeile über ihr entstehen in der App NACH der
+    // Karte, und renderList setzt den Text der Zeile neu — dabei geht der
+    // Abo-Link verloren. Deshalb hier beides erneut setzen.
+    [400, 1500, 3000].forEach(function (ms) {
+      setTimeout(function () {
+        try { setzeEntfernungen(); setzeAboLink(); } catch (e) { /* egal */ }
+      }, ms);
+    });
 
     zeichneKreis();
     syncUi();

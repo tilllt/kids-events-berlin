@@ -275,7 +275,7 @@ def kalender_ics(request: Request,
             gewaehlt.append(e)
     name = "kinderkram – Veranstaltungen"
     if umkreis_km:
-        name += f" (Umkreis {umkreis_km} km)"
+        name += f" (Umkreis {umkreis_km:g} km)"
     if bezirk:
         name += f" ({bezirk})"
     text = ical.kalender([_ev_public(e) for e in gewaehlt], name=name,

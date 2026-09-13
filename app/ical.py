@@ -142,4 +142,8 @@ def kalender(events: list[dict], *, name: str = "kinderkram",
         entf = (entfernungen or {}).get(ev.get("id"))
         zeilen.extend(vevent(ev, entfernung_km=entf, stand=stand))
     zeilen.append("END:VCALENDAR")
-    return "\r\n".join(zeilen) + "\r\n"
+    text = "\r\n".join(zeilen) + "\r\n"
+    # RFC 5545 verlangt CRLF. Innere Zeilenumbrüche (z. B. im VTIMEZONE-Block)
+    # brachten sonst 16 Zeilen mit nur LF in die Datei — manche Kalenderclients
+    # stolpern darüber.
+    return text.replace("\r\n", "\n").replace("\n", "\r\n")

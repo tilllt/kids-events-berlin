@@ -107,6 +107,16 @@ def test_naehe_js_benutzt_dieselben_parameternamen_wie_die_api():
         assert falsch not in js, f"alter Name im Frontend: {falsch}"
 
 
+def test_kalender_ics_hat_durchgaengig_crlf(tmp_path):
+    """RFC 5545 verlangt CRLF. Der VTIMEZONE-Block brachte am 2026-09-13
+    16 Zeilen mit nur LF in die Datei — manche Kalenderclients stolpern."""
+    c, _ = _client(tmp_path)
+    roh = c.get("/api/kalender.ics").content
+    assert b"\r\n" in roh
+    ohne_crlf = roh.replace(b"\r\n", b"")
+    assert b"\n" not in ohne_crlf, "Zeilen mit nur LF im Kalender"
+
+
 def test_plz_zentrum_aus_eigenem_bestand(tmp_path):
     c, _ = _client(tmp_path)
     r = c.get("/api/plz/13587").json()
