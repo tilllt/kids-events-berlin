@@ -351,6 +351,11 @@ $("#tabs").addEventListener("click", (ev) => {
   if (!b) return;
   tabAktiv(b.dataset.tab);
   if (b.dataset.tab === "einstellungen") loadTags();
+  if (b.dataset.tab === "schulrecherche") {   // eigener Tab: Zustände frisch holen
+    if (typeof loadRecherche === "function") loadRecherche();
+    if (typeof loadBrave === "function") loadBrave();
+    if (typeof loadMail === "function") loadMail();
+  }
 });
 
 /* Unter-Tabs aus den aktiven Quellen bauen: Übersicht + je Quelle + Schulen */
@@ -406,7 +411,25 @@ async function quelleEventsLaden(quelleKey) {
 }
 
 /* ---------- Schulen ---------- */
-let schulFilter = { q: "", bezirk: "", schulform: "" };
+let schulFilter = { q: "", bezirk: "", schulform: "", ohne_termin: false, mit_email: false };
+/* Mehrfachauswahl für Sammel-Mail und Sammel-Recherche */
+let schulAuswahl = new Set();
+
+function schulAuswahlZaehlen() {
+  const n = schulAuswahl.size;
+  $("#schulAuswahlZaehler").textContent = `${n} ausgewählt`;
+  $("#schulMailBatch").disabled = n === 0;
+  $("#schulRechercheBatch").disabled = n === 0;
+  $("#schulMailBatch").textContent = n ? `Ausgewählte anschreiben (${n})…` : "Ausgewählte anschreiben…";
+  $("#schulRechercheBatch").textContent = n ? `Ausgewählte recherchieren (${n})` : "Ausgewählte recherchieren";
+}
+
+function schulAuswahlAufraeumen(sichtbare) {
+  // Auswahl nur für sichtbare Schulen behalten — sonst verschwinden Häkchen still
+  const menge = new Set(sichtbare);
+  [...schulAuswahl].forEach((bsn) => { if (!menge.has(bsn)) schulAuswahl.delete(bsn); });
+  schulAuswahlZaehlen();
+}
 
 function schulAdresse(s) {
   const teile = [s.strasse, [s.plz, s.ortsteil].filter(Boolean).join(" ")].filter(Boolean);
@@ -442,28 +465,37 @@ async function loadSchulen() {
   if (schulFilter.q) qs.set("q", schulFilter.q);
   if (schulFilter.bezirk) qs.set("bezirk", schulFilter.bezirk);
   if (schulFilter.schulform) qs.set("schulform", schulFilter.schulform);
+  if (schulFilter.ohne_termin) qs.set("ohne_termin", "true");
+  if (schulFilter.mit_email) qs.set("nur_mit_email", "true");
   const tb = $("#schuleListe tbody");
-  tb.innerHTML = '<tr><td colspan="6" class="muted">Lade Schulen…</td></tr>';
+  tb.innerHTML = '<tr><td colspan="7" class="muted">Lade Schulen…</td></tr>';
   try {
     const list = await api("/api/admin/schulen?" + qs.toString());
     tb.innerHTML = "";
     if (!list.length) {
-      tb.innerHTML = '<tr><td colspan="6" class="muted">Keine Schulen gefunden.</td></tr>';
+      tb.innerHTML = '<tr><td colspan="7" class="muted">Keine Schulen gefunden.</td></tr>';
       $("#schulZaehler").textContent = "";
+      schulAuswahl.clear();
+      schulAuswahlZaehlen();
       return;
     }
-    $("#schulZaehler").textContent = `${list.length} Schulen`;
+    const ohneTermin = list.filter((s) => !s.hat_termin).length;
+    $("#schulZaehler").textContent = `${list.length} Schulen · ${ohneTermin} ohne Termin`;
+    schulAuswahlAufraeumen(list.map((s) => s.bsn));
     list.forEach((s) => {
       const tr = document.createElement("tr");
-      tr.className = "schule";
+      tr.className = "schule" + (schulAuswahl.has(s.bsn) ? " gewaehlt" : "");
       tr.dataset.bsn = s.bsn;
       const nTermine = s.n_termine ?? 0;
       tr.innerHTML = `
+        <td class="wahl"><input type="checkbox" class="schulwahl" data-bsn="${esc(s.bsn)}"
+          ${schulAuswahl.has(s.bsn) ? "checked" : ""} /></td>
         <td><strong>${esc(s.name)}</strong><br/><span class="muted">BSN ${esc(s.bsn)}</span></td>
         <td>${esc(s.schulform || "—")}</td>
         <td class="adr">${schulAdresse(s)}</td>
         <td class="klein">${s.email ? esc(s.email) + "<br/>" : ""}${s.website ? `<a href="${esc(s.website)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Website ↗</a>` : "—"}</td>
-        <td><span class="badge ${nTermine ? "ok" : "off"}">${nTermine} Termine</span></td>
+        <td><span class="badge ${s.hat_termin ? "ok" : "off"}">${s.hat_termin ? "Termin " + esc(isoNachDe(s.naechster_termin)) : "kein Termin"}</span>
+          <div class="muted klein">${nTermine} Eintrag/Einträge</div></td>
         <td><div class="btnrow">
           <button data-bsn="${esc(s.bsn)}" data-act="oeffnen">Termine verwalten</button>
           ${s.email ? `<button data-bsn="${esc(s.bsn)}" data-act="mail">E-Mail</button>` : ""}
@@ -651,8 +683,119 @@ function mailFormularZeigen(s) {
   };
 }
 
+/* Sammel-Mail an mehrere Schulen: erst prüfen, dann senden */
+function batchErgebnisZeigen(d, msgEl) {
+  const zeilen = (d.ergebnisse || []).map((e) => `<tr>
+      <td>${esc(e.schule || e.bsn)}</td>
+      <td class="klein">${esc(e.an || "—")}</td>
+      <td>${e.ok ? '<span class="badge ok">gesendet</span>' : `<span class="badge off">nicht gesendet</span>`}</td>
+      <td class="klein">${esc(e.grund || "")}</td>
+    </tr>`).join("");
+  $("#batchErgebnis").innerHTML = `<p style="margin:8px 0 4px">
+      ${d.trocken ? "Prüflauf" : "Versand"}: <strong>${d.gesendet}</strong> von ${d.ausgewaehlt} zugestellt
+      ${d.uebersprungen ? `· <span class="rot">${d.uebersprungen} nicht gesendet</span>` : ""}
+      ${d.abbruch ? `<br><span class="rot">${esc(d.abbruch)}</span>` : ""}</p>
+    <table><thead><tr><th>Schule</th><th>Empfänger</th><th>Status</th><th>Grund</th></tr></thead>
+    <tbody>${zeilen}</tbody></table>`;
+  if (msgEl) meldung(msgEl, d.trocken
+    ? `${d.gesendet} Empfänger geprüft — es wurde nichts gesendet.`
+    : `${d.gesendet} Mails gesendet${d.uebersprungen ? `, ${d.uebersprungen} nicht` : ""}.`,
+    d.gesendet > 0 || d.trocken);
+}
+
+async function sammelMailFenster(bsns) {
+  if (!bsns.length) return;
+  const p = $("#schulBatchForm");
+  p.classList.remove("hidden");
+  p.innerHTML = `
+    <h3>Termin-Anfrage an ${bsns.length} ausgewählte Schulen</h3>
+    <p class="muted" style="margin-top:0">Platzhalter werden je Schule ersetzt.
+      Mit „Empfänger prüfen" siehst du vorab, wer angeschrieben wird und wer keine
+      E-Mail-Adresse hat — dabei geht nichts raus.</p>
+    <div class="formgrid">
+      <label>Reply-To — hierhin antworten die Schulen
+        <input id="batchReplyTo" type="email"></label>
+      <label>Betreff
+        <input id="batchBetreff" type="text"></label>
+    </div>
+    <label style="margin-top:10px">Nachricht
+      <span class="muted klein">Platzhalter: {schule} {schulform} {bezirk} {jahr}</span>
+      <textarea id="batchText" class="mail" spellcheck="false"></textarea></label>
+    <div class="btnrow">
+      <button id="batchPruefen" type="button">Empfänger prüfen (keine Mail senden)</button>
+      <button id="batchSenden" type="button" class="primary">Jetzt senden</button>
+      <button id="batchAbort" type="button" class="ghost">Schließen</button>
+      <span id="batchMsg" class="msg"></span>
+    </div>
+    <div id="batchErgebnis"></div>`;
+  try {
+    const s = await api("/api/admin/settings");
+    $("#batchBetreff").value = s.mail_betreff || "";
+    $("#batchText").value = s.mail_text || "";
+    $("#batchReplyTo").value = s.smtp_reply_to || "";
+  } catch (e) { meldung($("#batchMsg"), e.message, false); }
+
+  const koerper = (trocken) => JSON.stringify({
+    bsn: bsns,
+    betreff: $("#batchBetreff").value,
+    text: $("#batchText").value,
+    reply_to: $("#batchReplyTo").value.trim(),
+    trocken,
+  });
+  $("#batchAbort").onclick = () => p.classList.add("hidden");
+  $("#batchPruefen").onclick = async () => {
+    const btn = $("#batchPruefen");
+    btn.disabled = true;
+    try {
+      batchErgebnisZeigen(await api("/api/admin/schulen/mail-batch",
+        { method: "POST", body: koerper(true) }), $("#batchMsg"));
+    } catch (e) { meldung($("#batchMsg"), e.message, false); }
+    btn.disabled = false;
+  };
+  $("#batchSenden").onclick = async () => {
+    const btn = $("#batchSenden");
+    if (!confirm(`Jetzt ${bsns.length} Schulen anschreiben?`)) return;
+    btn.disabled = true;
+    try {
+      const d = await api("/api/admin/schulen/mail-batch",
+        { method: "POST", body: koerper(false) });
+      batchErgebnisZeigen(d, $("#batchMsg"));
+      loadSchulen();
+      if (typeof loadMail === "function") loadMail();
+    } catch (e) { meldung($("#batchMsg"), e.message, false); }
+    btn.disabled = false;
+  };
+}
+
+/* Sammel-Recherche für die ausgewählten Schulen */
+async function sammelRecherche(bsns) {
+  if (!bsns.length) return;
+  const msg = $("#schulBatchMsg");
+  msg.className = "msg";
+  msg.textContent = `Recherche für ${bsns.length} Schulen wird gestartet …`;
+  try {
+    const r = await api("/api/admin/recherche/lauf", {
+      method: "POST",
+      body: JSON.stringify({ bsn: bsns, dry_run: $("#rechercheDry") ? $("#rechercheDry").checked : false }),
+    });
+    meldung(msg, `Lauf für ${r.anzahl_auswahl || bsns.length} ausgewählte Schulen gestartet` +
+      `${r.dry_run ? " (Probelauf)" : ""}. Ergebnisse in der Recherche-Tabelle.`);
+    setTimeout(() => { if (typeof loadRecherche === "function") loadRecherche(); }, 8000);
+  } catch (e) { meldung(msg, e.message, false); }
+}
+
 /* Schulen-Liste: Klicks (Zeile + Aktionen) */
 $("#schuleListe").addEventListener("click", async (ev) => {
+  const box = ev.target.closest("input.schulwahl");
+  if (box) {
+    ev.stopPropagation();
+    const tr = box.closest("tr.schule");
+    if (box.checked) { schulAuswahl.add(box.dataset.bsn); tr.classList.add("gewaehlt"); }
+    else { schulAuswahl.delete(box.dataset.bsn); tr.classList.remove("gewaehlt"); }
+    $("#schulAlleBox").checked = false;
+    schulAuswahlZaehlen();
+    return;
+  }
   const btn = ev.target.closest("button[data-act]");
   const zeile = ev.target.closest("tr.schule");
   if (btn) {
@@ -717,16 +860,48 @@ $("#schulForm").addEventListener("change", () => {
   loadSchulen();
 });
 async function fuelleSchulFilter() {
-  // Bezirke + Schulformen aus einer ungefilterten Stichprobe (max. 200 reichen für die Optionsmengen)
+  // Bezirke mit denselben Bezeichnungen wie im Frontend, Schulformen aus dem Bestand
   try {
-    const alle = await api("/api/admin/schulen?q=");
-    const bezirke = [...new Set(alle.map((s) => s.bezirk).filter(Boolean))].sort();
-    const formen = [...new Set(alle.map((s) => s.schulform).filter(Boolean))].sort();
-    $("#schulBezirk").innerHTML = '<option value="">Alle Bezirke</option>' +
-      bezirke.map((b) => `<option>${esc(b)}</option>`).join("");
-    $("#schulForm").innerHTML = '<option value="">Alle Schulformen</option>' +
-      formen.map((f) => `<option>${esc(f)}</option>`).join("");
+    const f = await api("/api/admin/schul-filter");
+    const optionen = (liste, leer) => '<option value="">' + leer + '</option>' +
+      liste.map((x) => `<option value="${esc(x.key ?? x)}">${esc(x.label ?? x)}</option>`).join("");
+    const bezirke = optionen(f.bezirke || [], "Alle Bezirke");
+    const formen = optionen((f.schulformen || []).map((s) => ({ key: s, label: s })), "Alle Schulformen");
+    for (const id of ["schulBezirk", "rechercheBezirk"]) { if ($("#" + id)) $("#" + id).innerHTML = bezirke; }
+    for (const id of ["schulForm", "rechercheForm"]) { if ($("#" + id)) $("#" + id).innerHTML = formen; }
   } catch (e) { /* Filter optional — Fehler nicht blockierend */ }
+
+  // Gemeinsame Filter der Recherche spiegeln beim Start (siehe rechercheStart)
+  ["schulOhneTermin", "schulMitEmail"].forEach((id) => {
+    const el = $("#" + id);
+    if (el) el.addEventListener("change", () => {
+      schulFilter.ohne_termin = $("#schulOhneTermin").checked;
+      schulFilter.mit_email = $("#schulMitEmail").checked;
+      loadSchulen();
+    });
+  });
+  $("#schulAlleWaehlen").onclick = () => {
+    $("#schuleListe").querySelectorAll("tr.schule").forEach((tr) => {
+      schulAuswahl.add(tr.dataset.bsn);
+      tr.classList.add("gewaehlt");
+      const box = tr.querySelector("input.schulwahl");
+      if (box) box.checked = true;
+    });
+    schulAuswahlZaehlen();
+  };
+  $("#schulAlleBox").onchange = () => {
+    if ($("#schulAlleBox").checked) $("#schulAlleWaehlen").click();
+    else $("#schulKeineWaehlen").click();
+  };
+  $("#schulKeineWaehlen").onclick = () => {
+    schulAuswahl.clear();
+    $("#schuleListe").querySelectorAll("input.schulwahl").forEach((b) => { b.checked = false; });
+    $("#schuleListe").querySelectorAll("tr.schule").forEach((tr) => tr.classList.remove("gewaehlt"));
+    schulAuswahlZaehlen();
+  };
+  $("#schulMailBatch").onclick = () => sammelMailFenster([...schulAuswahl]);
+  $("#schulRechercheBatch").onclick = () => sammelRecherche([...schulAuswahl]);
+  schulAuswahlZaehlen();
 }
 
 /* ---------- Termine: ALLE Events (gescrapt + manuell) ---------- */
@@ -1130,9 +1305,14 @@ $("#rechercheStart").onclick = async () => {
       body: JSON.stringify({
         limit: parseInt($("#rechercheUmfang").value, 10),
         dry_run: $("#rechercheDry").checked,
+        bezirk: $("#rechercheBezirk") ? $("#rechercheBezirk").value : "",
+        schulform: $("#rechercheForm") ? $("#rechercheForm").value : "",
+        ohne_termin: $("#rechercheOhneTermin") ? $("#rechercheOhneTermin").checked : false,
+        bsn: ($("#rechercheNurAuswahl") && $("#rechercheNurAuswahl").checked)
+          ? [...schulAuswahl] : [],
       }),
     });
-    meldung(msg, `Lauf gestartet (${r.limit} Schulen${r.dry_run ? ", Probelauf" : ""}). ` +
+    meldung(msg, `Lauf gestartet (${r.anzahl_auswahl || r.limit} Schulen${r.dry_run ? ", Probelauf" : ""}). ` +
       "Er antwortet seitenweise — Liste in ein paar Sekunden aktualisieren.");
     setTimeout(loadRecherche, 8000);
   } catch (e) { meldung(msg, e.message, false); }

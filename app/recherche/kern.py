@@ -151,10 +151,16 @@ def _prompt(schulname: str, jahr: int, fenster: str) -> str:
 
 def schul_kandidaten(store, *, limit: int | None = None,
                      nur_bsn: str | None = None, bezirk: str | None = None,
-                     schulform: str | None = None) -> list[dict]:
-    """Schulen mit Website, die am längsten nicht geprüft wurden (nie zuerst)."""
+                     schulform: str | None = None,
+                     bsn_liste: list[str] | None = None) -> list[dict]:
+    """Schulen mit Website, die am längsten nicht geprüft wurden (nie zuerst).
+
+    `bsn_liste` = Auswahl aus der Oberfläche (Mehrfachauswahl): dann werden genau
+    diese Schulen geprüft, unabhängig von Reihenfolge und Umfang.
+    """
     return store.schulen_fuer_recherche(limit=limit, nur_bsn=nur_bsn,
-                                        bezirk=bezirk, schulform=schulform)
+                                        bezirk=bezirk, schulform=schulform,
+                                        bsn_liste=bsn_liste)
 
 
 def seiten_aus_websuche(suche, schule: dict, kandidaten: list[dict],
@@ -326,7 +332,7 @@ def verarbeite_schule(store, schule: dict, konfig: dict, client: httpx.Client,
 def lauf(store, *, limit: int = 20, nur_bsn: str | None = None, dry_run: bool = False,
          bezirk: str | None = None, schulform: str | None = None,
          konfig: dict | None = None, client: httpx.Client | None = None,
-         suche=None) -> dict:
+         suche=None, bsn_liste: list[str] | None = None) -> dict:
     """Recherche-Lauf über die am längsten ungeprüften Schulen."""
     from .llm import konfiguration
     konfig = konfig or konfiguration(store)
@@ -339,6 +345,7 @@ def lauf(store, *, limit: int = 20, nur_bsn: str | None = None, dry_run: bool = 
     heute = datetime.now(TZ_BERLIN).date()
     t0 = time.time()
     kandidaten = schul_kandidaten(store, limit=limit, nur_bsn=nur_bsn,
+                                  bsn_liste=bsn_liste,
                                   bezirk=bezirk, schulform=schulform)
     zusammen = {"geprueft": 0, "schulen": [], "llm_calls": 0, "belegt": 0,
                 "verworfen": {}, "fehler": 0, "status": {},

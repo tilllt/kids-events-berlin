@@ -457,11 +457,17 @@ def recherche_lauf_starten(request: Request, body: dict | None = None):
     bezirk = (body.get("bezirk") or "").strip().lower() or None
     schulform = (body.get("schulform") or "").strip() or None
     dry_run = bool(body.get("dry_run"))
+    bsn_liste = [str(b).strip() for b in (body.get("bsn") or []) if str(b).strip()]
+    if bsn_liste:
+        # Mehrfachauswahl aus der Oberfläche: genau diese Schulen prüfen
+        limit = max(1, len(bsn_liste))
+    ohne_termin = bool(body.get("ohne_termin"))
 
     def _lauf():
         try:
             zusammen = kern.lauf(store, limit=limit, nur_bsn=nur_bsn, dry_run=dry_run,
-                                 bezirk=bezirk, schulform=schulform)
+                                 bezirk=bezirk, schulform=schulform,
+                                 bsn_liste=bsn_liste or None)
             store.set_setting("recherche_letzter_lauf", json.dumps(zusammen, ensure_ascii=False))
             print(f"[recherche] Lauf fertig: {zusammen['geprueft']} Schulen, "
                   f"{zusammen['belegt']} belegt, {zusammen['status']}", flush=True)
@@ -471,6 +477,7 @@ def recherche_lauf_starten(request: Request, body: dict | None = None):
 
     threading.Thread(target=_lauf, name="schul-recherche", daemon=True).start()
     return {"status": "gestartet", "limit": limit, "nur_bsn": nur_bsn,
+            "anzahl_auswahl": len(bsn_liste), "ohne_termin": ohne_termin,
             "bezirk": bezirk, "schulform": schulform, "dry_run": dry_run}
 
 
@@ -641,8 +648,109 @@ def source_scrape(quelle: str, request: Request):
 # --- Schulen / Kategorien / manuelle Termine / Mail -------------------------
 @router.get("/schulen")
 def schulen_list(request: Request, bezirk: str | None = None,
-                 schulform: str | None = None, q: str | None = None):
-    return _store(request).list_schulen(bezirk=bezirk, schulform=schulform, q=q)
+                 schulform: str | None = None, q: str | None = None,
+                 ohne_termin: bool = Query(False), nur_mit_email: bool = Query(False),
+                 nur_ohne_fund: bool = Query(False)):
+    """Schulliste mit denselben Filtern wie im Frontend (Bezirk, Schulform).
+
+    ohne_termin blendet Schulen aus, die schon einen Termin haben (Vorschlag oder
+    freigegeben); jede Zeile trägt `naechster_termin` und `hat_termin` mit.
+    """
+    return _store(request).list_schulen(
+        bezirk=(bezirk or "").strip().lower() or None,
+        schulform=(schulform or "").strip() or None, q=q,
+        ohne_termin=ohne_termin, nur_mit_email=nur_mit_email,
+        nur_ohne_fund=nur_ohne_fund)
+
+
+@router.get("/schul-filter")
+def schul_filter(request: Request):
+    """Auswahllisten der Schul-Filter — Bezirke mit denselben Bezeichnungen wie
+    im Frontend (BEZIRK_LABELS), Schulformen aus dem Bestand."""
+    from .api import BEZIRK_LABELS
+    store = _store(request)
+    vorhanden = set(store.bezirke_liste())
+    bezirke = [{"key": k, "label": v} for k, v in BEZIRK_LABELS.items()
+               if not vorhanden or k in vorhanden]
+    return {"bezirke": bezirke, "schulformen": store.schulformen_liste()}
+
+
+class MailBatchBody(BaseModel):
+    bsn: list[str] = []
+    betreff: str = ""
+    text: str = ""
+    reply_to: str = ""
+    trocken: bool = False
+    max_anzahl: int = 100
+
+
+@router.post("/schulen/mail-batch")
+def schulen_mail_batch(body: MailBatchBody, request: Request):
+    """Dieselbe Mail an mehrere ausgewählte Schulen — mit Einzelergebnis.
+
+    Ablauf je Schule: Empfänger prüfen (ohne Adresse = übersprungen, sichtbarer
+    Grund), Text mit den Schuldaten füllen, senden. Ist die Tages-/Stundengrenze
+    erreicht, wird abgebrochen und für die restlichen Schulen „nicht gesendet"
+    gemeldet — nichts läuft still ins Leere. `trocken=true` prüft nur.
+    """
+    store = _store(request)
+    auswahl = [b.strip() for b in (body.bsn or []) if str(b).strip()]
+    if not auswahl:
+        raise HTTPException(422, {"fehler": ["Keine Schulen ausgewählt."]})
+    if len(auswahl) > 100:
+        raise HTTPException(422, {"fehler": ["Höchstens 100 Schulen je Durchgang — "
+                                            "bitte in zwei Schritten senden."]})
+    ergebnisse: list[dict] = []
+    gesendet = 0
+    abbruch: str | None = None
+    for bsn in auswahl:
+        if abbruch:
+            ergebnisse.append({"bsn": bsn, "ok": False, "grund": "nicht gesendet: " + abbruch})
+            continue
+        sch = store.get_schule(bsn)
+        if not sch:
+            ergebnisse.append({"bsn": bsn, "ok": False, "grund": "unbekannte Schule"})
+            continue
+        name = sch.get("name") or bsn
+        empfaenger = (sch.get("email") or "").strip()
+        if not empfaenger:
+            ergebnisse.append({"bsn": bsn, "schule": name, "ok": False,
+                               "grund": "keine E-Mail-Adresse hinterlegt"})
+            continue
+        grund = store.mail_versand_bremse_grund()
+        if grund:
+            abbruch = grund
+            ergebnisse.append({"bsn": bsn, "schule": name, "ok": False,
+                               "grund": "nicht gesendet: " + grund})
+            continue
+        if (body.betreff or "").strip():
+            betreff = " ".join(_mail_mit_platzhaltern(store, sch, body.betreff).split())[:200]
+            nachricht = _mail_mit_platzhaltern(store, sch, body.text or "")
+        else:
+            betreff, nachricht = _mail_betreff(
+                _mail_mit_platzhaltern(store, sch, (body.text or "").strip()), name)
+        if body.trocken:
+            ergebnisse.append({"bsn": bsn, "schule": name, "an": empfaenger, "ok": True,
+                               "trocken": True, "betreff": betreff})
+            continue
+        try:
+            _sende_mail(store, empfaenger, betreff, nachricht,
+                        reply_to=(body.reply_to or "").strip() or None)
+        except HTTPException as e:
+            detail = e.detail
+            text = (detail.get("fehler", [detail])[0] if isinstance(detail, dict) else str(detail))
+            ergebnisse.append({"bsn": bsn, "schule": name, "an": empfaenger, "ok": False,
+                               "grund": text})
+            continue
+        store.set_schule_angefragt(bsn, iso_utc(datetime.now(TZ_BERLIN)))
+        gesendet += 1
+        ergebnisse.append({"bsn": bsn, "schule": name, "an": empfaenger, "ok": True,
+                           "betreff": betreff})
+    return {"ausgewaehlt": len(auswahl), "gesendet": gesendet,
+            "uebersprungen": sum(1 for e in ergebnisse if not e["ok"]),
+            "trocken": body.trocken, "abbruch": abbruch, "ergebnisse": ergebnisse,
+            "versand": store.mail_versand_zaehler(),
+            "reply_to": (body.reply_to or store.get_setting("smtp_reply_to") or "").strip()}
 
 
 @router.get("/schulen/{bsn}")

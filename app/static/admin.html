@@ -39,6 +39,9 @@
     label.zeile input[type="checkbox"] { flex: 0 0 auto; }
     label .klein { font-size: 11.5px; }
     label:has(textarea) { grid-column: 1 / -1; }
+    th.wahl, td.wahl { width: 28px; text-align: center; }
+    td.wahl input { width: auto; }
+    tr.schule.gewaehlt td { background: rgba(46,160,67,.10); }
     input, select, textarea { background: #0f131a; color: var(--text); border: 1px solid var(--border);
       border-radius: 5px; padding: 6px 8px; font-size: 13px; font-family: inherit; }
     input[type="checkbox"] { accent-color: var(--accent); width: auto; }
@@ -103,6 +106,7 @@
   <nav class="tabs" id="tabs">
     <button data-tab="quellen" class="aktiv">Quellen</button>
     <button data-tab="termine">Termine</button>
+    <button data-tab="schulrecherche">Schul-Recherche</button>
     <button data-tab="einstellungen">Einstellungen</button>
   </nav>
 
@@ -155,15 +159,28 @@
     <!-- Unter-Tab: Schulen (manuelle Quelle) -->
     <div id="unter-schulen" class="hidden">
       <div id="schuleUebersicht">
-        <div class="btnrow" style="margin-bottom:8px">
-          <input id="schulSuche" type="search" placeholder="Schule oder BSN suchen…" style="min-width:240px" />
+        <div class="btnrow" style="margin-bottom:8px;flex-wrap:wrap">
+          <input id="schulSuche" type="search" placeholder="Schule oder BSN suchen…" style="min-width:200px" />
           <select id="schulBezirk"><option value="">Alle Bezirke</option></select>
           <select id="schulForm"><option value="">Alle Schulformen</option></select>
+          <label class="zeile"><input id="schulOhneTermin" type="checkbox" />
+            <span>ohne Termin</span></label>
+          <label class="zeile"><input id="schulMitEmail" type="checkbox" />
+            <span>nur mit E-Mail</span></label>
           <span class="muted" id="schulZaehler"></span>
         </div>
+        <div class="btnrow" style="margin-bottom:8px;flex-wrap:wrap">
+          <button id="schulAlleWaehlen" type="button" class="ghost">Alle sichtbaren auswählen</button>
+          <button id="schulKeineWaehlen" type="button" class="ghost">Auswahl aufheben</button>
+          <span class="muted" id="schulAuswahlZaehler">0 ausgewählt</span>
+          <button id="schulMailBatch" type="button" class="primary" disabled>Ausgewählte anschreiben…</button>
+          <button id="schulRechercheBatch" type="button" disabled>Ausgewählte recherchieren</button>
+          <span id="schulBatchMsg" class="msg"></span>
+        </div>
+        <div id="schulBatchForm" class="panel hidden" style="margin-bottom:10px"></div>
         <div id="schuleListe" style="max-height:70vh; overflow:auto; border:1px solid var(--border); border-radius:8px;">
           <table>
-            <thead><tr><th>Schule</th><th>Schulform</th><th>Adresse</th><th>Kontakt</th><th>Termine</th><th>Aktionen</th></tr></thead>
+            <thead><tr><th class="wahl"><input type="checkbox" id="schulAlleBox" title="Alle sichtbaren auswählen" /></th><th>Schule</th><th>Schulform</th><th>Adresse</th><th>Kontakt</th><th>Termine</th><th>Aktionen</th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -199,27 +216,14 @@
     </div>
   </section>
 
-  <!-- ===================== OBER-TAB: EINSTELLUNGEN ===================== -->
-  <section class="tabinhalt hidden" id="tab-einstellungen">
-    <details class="klapp" open>
-      <summary>Scrape-Zeitplan</summary>
-      <div class="klappbody">
-        <div class="formgrid" style="max-width:520px">
-          <label>Scrape täglich um (Europe/Berlin, HH:MM)
-            <input type="text" id="setAt" placeholder="05:30" title="Leer lassen für Intervall-Modus" />
-          </label>
-          <label>…oder Scrape-Intervall (Stunden, nur wenn Uhrzeit leer)
-            <input type="number" id="setInterval" min="0.5" max="168" step="0.5" />
-          </label>
-        </div>
-        <p class="hint" style="max-width:520px;margin:6px 0 0;font-size:12px;color:var(--muted)">
-          Ohne Einstellung scrapet die App täglich um 05:30 — die Termine der Quellen
-          erscheinen meist erst tagesnah, deshalb läuft der Scrape von selbst.
-        </p>
-        <div style="margin-top:10px"><button id="settingsBtn" type="button" class="primary">Einstellungen speichern</button>
-        <span id="settingsMsg"></span></div>
-      </div>
-    </details>
+  <!-- ============ OBER-TAB: SCHUL-RECHERCHE (Websuche + Recherche + E-Mail) ==== -->
+  <section class="tabinhalt hidden" id="tab-schulrecherche">
+    <p class="muted" style="margin-top:0">
+      Alles rund um die Termine der Schulen: die Recherche liest Schul-Webseiten
+      und lässt Termine extrahieren, die Websuche findet zusätzlich tiefe Unterseiten
+      (mit Kontingent-Verwaltung), und über das Postfach werden die Schulen gefragt,
+      bei denen beides nichts ergeben hat. Veröffentlicht wird erst nach Freigabe.
+    </p>
 
     <details class="klapp" id="llmKlapp">
       <summary>LLM-Endpunkt — für die Schul-Recherche (Tage der offenen Tür)</summary>
@@ -274,7 +278,7 @@
       </div>
     </details>
 
-    <details class="klapp" id="rechercheKlapp">
+    <details class="klapp" id="rechercheKlapp" open>
       <summary>Schul-Recherche — Lauf starten und Stand je Schule</summary>
       <div class="klappbody">
         <div class="btnrow">
@@ -285,8 +289,14 @@
             <option value="150">150 Schulen</option>
             <option value="722">alle Schulen mit Website</option>
           </select>
-          <label style="display:flex;gap:6px;align-items:center">
-            <input type="checkbox" id="rechercheDry" style="width:auto" /> nur prüfen (nichts eintragen)
+          <select id="rechercheBezirk"><option value="">Alle Bezirke</option></select>
+          <select id="rechercheForm"><option value="">Alle Schulformen</option></select>
+          <label class="zeile"><input type="checkbox" id="rechercheOhneTermin" />
+            <span>ohne Termin</span></label>
+          <label class="zeile"><input type="checkbox" id="rechercheNurAuswahl" />
+            <span>nur die in der Schulliste ausgewählten</span></label>
+          <label class="zeile">
+            <input type="checkbox" id="rechercheDry" /> nur prüfen (nichts eintragen)
           </label>
           <span id="rechercheMsg"></span>
         </div>
@@ -306,6 +316,50 @@
             <th>Ort/Vermerk</th></tr></thead>
           <tbody></tbody>
         </table>
+      </div>
+    </details>
+
+
+    <details class="klapp" id="braveKlapp" open>
+      <summary>Websuche (Brave) — fehlende Termine finden, mit Kontingent-Verwaltung</summary>
+      <div class="klappbody">
+        <p class="muted" style="margin-top:0">
+          Die Websuche findet Termine, die auf der Schul-Seite selbst nicht auffindbar
+          sind — vor allem <strong>tiefe Unterseiten</strong> (z.&nbsp;B.
+          „…/tag-der-offenen-tuer-am-18-9-2026"). Sie läuft nur, wenn die eigenen Seiten
+          nichts hergeben, damit sie nur dort Kontingent kostet.
+          Tarif laut Brave: 5&nbsp;$ je 1.000 Anfragen, 5&nbsp;$ Guthaben gratis pro Monat
+          (≈ 1.000 Anfragen). <strong>Bei erreichtem Budget wird hart gestoppt</strong>,
+          damit keine Kosten entstehen.
+        </p>
+        <div class="formgrid">
+          <label>API-Key
+            <input id="setBraveKey" type="password" autocomplete="off"
+                   placeholder="leer = gespeicherten Schlüssel behalten">
+          </label>
+          <label>Anfragen je Monat
+            <input id="setBraveMonat" type="number" min="1" max="100000" placeholder="900">
+          </label>
+          <label>Anfragen je Tag (0 = kein Limit)
+            <input id="setBraveTag" type="number" min="0" max="10000" placeholder="30">
+          </label>
+          <label>Anfragen pro Sekunde (Brave erlaubt bis 50)
+            <input id="setBraveRate" type="number" min="1" max="50" placeholder="1">
+          </label>
+          <label>Wiederholung je Schule in Tagen (0 = jedes Mal)
+            <input id="setBraveWdh" type="number" min="0" max="365" placeholder="30">
+          </label>
+          <label class="zeile">
+            <input id="setBraveAktiv" type="checkbox">
+            <span>Websuche im Recherche-Lauf verwenden</span>
+          </label>
+        </div>
+        <div class="btnrow">
+          <button id="braveSpeichern" type="button" class="primary">Websuche speichern</button>
+          <button id="braveTesten" type="button">Verbindung testen (zählt als 1 Anfrage)</button>
+          <span id="braveMsg" class="msg"></span>
+        </div>
+        <div id="bravePanel" class="panel hidden" style="margin-top:8px"></div>
       </div>
     </details>
 
@@ -383,46 +437,29 @@
       </div>
     </details>
 
-    <details class="klapp" id="braveKlapp" open>
-      <summary>Websuche (Brave) — fehlende Termine finden, mit Kontingent-Verwaltung</summary>
+
+
+  </section>
+
+  <!-- ===================== OBER-TAB: EINSTELLUNGEN ===================== -->
+  <section class="tabinhalt hidden" id="tab-einstellungen">
+    <details class="klapp" open>
+      <summary>Scrape-Zeitplan</summary>
       <div class="klappbody">
-        <p class="muted" style="margin-top:0">
-          Die Websuche findet Termine, die auf der Schul-Seite selbst nicht auffindbar
-          sind — vor allem <strong>tiefe Unterseiten</strong> (z.&nbsp;B.
-          „…/tag-der-offenen-tuer-am-18-9-2026"). Sie läuft nur, wenn die eigenen Seiten
-          nichts hergeben, damit sie nur dort Kontingent kostet.
-          Tarif laut Brave: 5&nbsp;$ je 1.000 Anfragen, 5&nbsp;$ Guthaben gratis pro Monat
-          (≈ 1.000 Anfragen). <strong>Bei erreichtem Budget wird hart gestoppt</strong>,
-          damit keine Kosten entstehen.
+        <div class="formgrid" style="max-width:520px">
+          <label>Scrape täglich um (Europe/Berlin, HH:MM)
+            <input type="text" id="setAt" placeholder="05:30" title="Leer lassen für Intervall-Modus" />
+          </label>
+          <label>…oder Scrape-Intervall (Stunden, nur wenn Uhrzeit leer)
+            <input type="number" id="setInterval" min="0.5" max="168" step="0.5" />
+          </label>
+        </div>
+        <p class="hint" style="max-width:520px;margin:6px 0 0;font-size:12px;color:var(--muted)">
+          Ohne Einstellung scrapet die App täglich um 05:30 — die Termine der Quellen
+          erscheinen meist erst tagesnah, deshalb läuft der Scrape von selbst.
         </p>
-        <div class="formgrid">
-          <label>API-Key
-            <input id="setBraveKey" type="password" autocomplete="off"
-                   placeholder="leer = gespeicherten Schlüssel behalten">
-          </label>
-          <label>Anfragen je Monat
-            <input id="setBraveMonat" type="number" min="1" max="100000" placeholder="900">
-          </label>
-          <label>Anfragen je Tag (0 = kein Limit)
-            <input id="setBraveTag" type="number" min="0" max="10000" placeholder="30">
-          </label>
-          <label>Anfragen pro Sekunde (Brave erlaubt bis 50)
-            <input id="setBraveRate" type="number" min="1" max="50" placeholder="1">
-          </label>
-          <label>Wiederholung je Schule in Tagen (0 = jedes Mal)
-            <input id="setBraveWdh" type="number" min="0" max="365" placeholder="30">
-          </label>
-          <label class="zeile">
-            <input id="setBraveAktiv" type="checkbox">
-            <span>Websuche im Recherche-Lauf verwenden</span>
-          </label>
-        </div>
-        <div class="btnrow">
-          <button id="braveSpeichern" type="button" class="primary">Websuche speichern</button>
-          <button id="braveTesten" type="button">Verbindung testen (zählt als 1 Anfrage)</button>
-          <span id="braveMsg" class="msg"></span>
-        </div>
-        <div id="bravePanel" class="panel hidden" style="margin-top:8px"></div>
+        <div style="margin-top:10px"><button id="settingsBtn" type="button" class="primary">Einstellungen speichern</button>
+        <span id="settingsMsg"></span></div>
       </div>
     </details>
 

@@ -104,7 +104,8 @@ def test_recherche_lauf_startet_und_schreibt_letzten_lauf(tmp_path, monkeypatch)
     _schule(store)
     gesehen = {}
 
-    def fake_lauf(store_, *, limit, nur_bsn, dry_run, bezirk=None, schulform=None):
+    def fake_lauf(store_, *, limit, nur_bsn, dry_run, bezirk=None, schulform=None,
+                  bsn_liste=None):
         gesehen.update(limit=limit, nur_bsn=nur_bsn, dry_run=dry_run,
                        bezirk=bezirk, schulform=schulform)
         return {"geprueft": 1, "belegt": 1, "llm_calls": 1, "verworfen": {},

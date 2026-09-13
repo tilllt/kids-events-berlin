@@ -99,3 +99,21 @@ def test_dialog_im_js_nutzt_dieselbe_layout_regel():
     """Auch der Mail-Dialog (per innerHTML gebaut) muss Labels als Felder nutzen."""
     kinder = _formgrid_kinder(JS)
     assert kinder and set(kinder) == {"label"}, f"Dialog-formgrid: {kinder}"
+
+
+def test_schulrecherche_hat_eigenen_obertab():
+    """Websuche, Schul-Recherche und E-Mail liegen zusammen in einem eigenen Tab."""
+    assert '<button data-tab="schulrecherche">' in HTML, "Obertab-Knopf fehlt"
+    assert 'id="tab-schulrecherche"' in HTML, "Tab-Sektion fehlt"
+    i_tab = HTML.index('id="tab-schulrecherche"')
+    i_einst = HTML.index('id="tab-einstellungen"')
+    for block in ("llmKlapp", "rechercheKlapp", "braveKlapp", "mailKlapp"):
+        pos = HTML.index(f'id="{block}"')
+        assert i_tab < pos < i_einst, f"{block} liegt noch in den Einstellungen"
+    # Reihenfolge: LLM-Endpunkt, Recherche, Websuche, E-Mail
+    reihe = sorted(("llmKlapp", "rechercheKlapp", "braveKlapp", "mailKlapp"),
+                   key=lambda b: HTML.index(f'id="{b}"'))
+    assert reihe == ["llmKlapp", "rechercheKlapp", "braveKlapp", "mailKlapp"]
+    # Dubletten-Prüfung bleibt bei den Einstellungen
+    assert HTML.index('id="dedupeKlapp"') > i_einst
+    assert 'b.dataset.tab === "schulrecherche"' in JS, "Tab lädt die Zustände nicht nach"

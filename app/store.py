@@ -1188,7 +1188,15 @@ class Store:
 
     # --- Admin: Schulen / Kategorien / manuelle Termine ----------------------
     def list_schulen(self, bezirk: str | None = None, schulform: str | None = None,
-                     q: str | None = None) -> list[dict]:
+                     q: str | None = None, ohne_termin: bool = False,
+                     nur_mit_email: bool = False,
+                     nur_ohne_fund: bool = False) -> list[dict]:
+        """Schulen für die Verwaltung — mit denselben Filtern wie im Frontend.
+
+        `ohne_termin` blendet Schulen aus, die schon einen Termin haben (Vorschlag
+        oder freigegeben, Datum heute oder später). `naechster_termin` steht in
+        jeder Zeile, damit die Oberfläche den Grund zeigen kann.
+        """
         where, args = [], []
         if bezirk:
             where.append("bezirk = ?")
@@ -1199,17 +1207,42 @@ class Store:
         if q:
             where.append("(name LIKE ? OR bsn LIKE ?)")
             args.extend([f"%{q}%", f"%{q}%"])
-        sql = "SELECT * FROM schulen" + (f" WHERE {' AND '.join(where)}" if where else "") + " ORDER BY name"
+        if nur_mit_email:
+            where.append("TRIM(COALESCE(email, '')) <> ''")
+        if nur_ohne_fund:
+            where.append("COALESCE(recherche_status, '') <> 'gefunden'")
+        heute = datetime.now(TZ_BERLIN).strftime("%Y-%m-%d")
+        sql = ("SELECT s.*, "
+               "(SELECT COUNT(*) FROM termine_manuell t WHERE t.schule_bsn = s.bsn) AS n_termine, "
+               "(SELECT MIN(t.start_datum) FROM termine_manuell t WHERE t.schule_bsn = s.bsn "
+               "   AND t.start_datum >= ?) AS naechster_termin "
+               "FROM schulen s" +
+               (f" WHERE {' AND '.join(where)}" if where else "") + " ORDER BY name")
         with self._lock:
-            rows = self._conn.execute(sql, args).fetchall()
+            rows = self._conn.execute(sql, [heute] + args).fetchall()
         out = []
         for r in rows:
             d = dict(r)
-            d["n_termine"] = int(self._conn.execute(
-                "SELECT COUNT(*) c FROM termine_manuell WHERE schule_bsn=?", (d["bsn"],)
-            ).fetchone()["c"])
+            d["hat_termin"] = bool(d.get("naechster_termin"))
+            if ohne_termin and d["hat_termin"]:
+                continue
             out.append(d)
         return out
+
+    def bezirke_liste(self) -> list[str]:
+        """Vorkommende Bezirke im Schulbestand (Filterliste der Oberfläche)."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT DISTINCT bezirk FROM schulen WHERE TRIM(COALESCE(bezirk, '')) <> '' "
+                "ORDER BY bezirk").fetchall()
+        return [r["bezirk"] for r in rows]
+
+    def schulformen_liste(self) -> list[str]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT DISTINCT schulform FROM schulen "
+                "WHERE TRIM(COALESCE(schulform, '')) <> '' ORDER BY schulform").fetchall()
+        return [r["schulform"] for r in rows]
 
     def get_schule(self, bsn: str) -> dict | None:
         with self._lock:
@@ -1276,12 +1309,17 @@ class Store:
     def schulen_fuer_recherche(self, limit: int | None = None,
                               nur_bsn: str | None = None,
                               bezirk: str | None = None,
-                              schulform: str | None = None) -> list[dict]:
+                              schulform: str | None = None,
+                              bsn_liste: list[str] | None = None) -> list[dict]:
         """Schulen mit Website; nie geprüfte zuerst, dann die ältesten Prüfungen."""
         where, args = ["website IS NOT NULL", "TRIM(website) <> ''"], []
         if nur_bsn:
             where.append("bsn = ?")
             args.append(nur_bsn)
+        if bsn_liste:
+            platzhalter = ",".join("?" * len(bsn_liste))
+            where.append(f"bsn IN ({platzhalter})")
+            args.extend(list(bsn_liste))
         if bezirk:
             where.append("bezirk = ?")
             args.append(str(bezirk).strip().lower())
