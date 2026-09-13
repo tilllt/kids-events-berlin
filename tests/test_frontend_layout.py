@@ -53,6 +53,23 @@ def test_ortsfilter_im_frontend_vorhanden():
     assert "#ort-list" in CSS and "max-height" in CSS
 
 
+def test_filter_tabs_markieren_gesetzte_filter_mit_x():
+    """Gesetzte Filter müssen am Tab sichtbar sein (Markierung + Zahl) und dort
+    einzeln löschbar (kleines ✕) — Nutzer-Vorgabe: „wenn Filter in den tabs
+    gesetzt sind markiere die Tabs bei denen gefiltert wird und mache ein
+    kleines x zum Löschen"."""
+    assert "updateTabMarkierungen" in JS
+    assert "function tabLeeren(" in JS and "TAB_FELDER" in JS
+    assert 'classList.toggle("has-filter"' in JS
+    # Das ✕ stoppt den Klick, sonst würde der Tab zusätzlich umgeschaltet.
+    assert 'x.addEventListener("click", ausloesen)' in JS and "ev.stopPropagation();" in JS
+    # Löschen setzt nur diesen Tab zurück und wendet die Filter neu an.
+    assert 'tabLeeren(tab.dataset.panel);' in JS and "apply();" in JS
+    assert ".tab-badge" in CSS and ".tab-x" in CSS and "has-filter" in CSS
+    # Auf schmalen Bildschirmen darf die Markierung den Tab nicht sprengen.
+    assert "max-width: 480px" in CSS
+
+
 def test_mobile_filter_schieben_die_liste_nach_unten():
     """Mobil: Kopfzeile fest, main scrollt, Liste ~5 Einträge, Karte im Bild."""
     block = _block(r"@media \(max-width: 820px\)\s*\{.*?\n\}")

@@ -221,6 +221,23 @@ main > * { min-width: 0; }
   cursor: pointer; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .filter-tab.on { background: var(--panel); color: var(--text); border-color: var(--accent); border-bottom: 2px solid var(--accent); font-weight: 600; }
+/* Gesetzte Filter markieren den Tab (Zahl der gesetzten Werte) und bieten ein
+   kleines ✕ zum Löschen genau dieses Filters — sichtbar, ohne das Panel
+   aufzuklappen. Das ✕ sitzt im Tab-Button und stoppt den Klick (sonst würde
+   zusätzlich umgeschaltet). */
+.filter-tab { display: inline-flex; align-items: center; justify-content: center; gap: 3px; }
+.filter-tab.has-filter { color: var(--text); border-color: var(--accent); background: var(--panel); }
+.filter-tab .tab-badge {
+  background: var(--accent); color: #08131e; border-radius: 8px;
+  font-size: 10px; font-weight: 700; line-height: 15px; padding: 0 4px;
+}
+.filter-tab .tab-x { font-size: 13px; line-height: 1; color: var(--muted); cursor: pointer; padding: 0 2px; border-radius: 3px; }
+.filter-tab .tab-x:hover, .filter-tab .tab-x:focus-visible { color: var(--accent); background: var(--panel2); }
+@media (max-width: 480px) {
+  .filter-tab { font-size: 11px; padding: 5px 1px; }
+  .filter-tab .tab-badge { font-size: 9.5px; padding: 0 3px; }
+  .filter-tab .tab-x { font-size: 12px; padding: 0 1px; }
+}
 .filter-panel { border: 1px solid var(--border); border-radius: 0 6px 6px 6px; padding: 10px; background: var(--panel); margin-bottom: 6px; }
 .filter-panel .rowline { margin-top: 10px; }
 .filter-count-txt {

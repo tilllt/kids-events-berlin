@@ -40,6 +40,23 @@ Treffer unterscheidet nicht zwischen Ort und Beschreibung.
   selbst zählt nicht mit, Frontend-Regression (Tab, Panel, Request-Parameter).
 - Live: siehe Messung unten.
 
+## Nachtrag — Filter-Tabs markieren und einzeln löschen (2026-09-13)
+
+Nutzer-Vorgabe: „wenn Filter in den tabs gesetzt sind markiere die Tabs bei
+denen gefiltert wird und mache ein kleines x zum Löschen".
+
+- Ein Tab mit gesetztem Filter bekommt die Klasse `has-filter` (Akzentfarbe) und
+  ein **Zahl-Badge** mit der Anzahl der gesetzten Werte (Bezirk/Ort/Alter/Uhrzeit
+  bzw. Zeitraum+Zeitraumgrenzen+Legendenstufe beim „Wann“-Tab).
+- Rechts im Tab ein kleines **✕**, das **nur diesen Tab** zurücksetzt
+  (`tabLeeren`) und die Filter neu anwendet — nicht alle Filter wie
+  „Filter zurücksetzen“. Das ✕ stoppt den Klick (`stopPropagation`), sonst würde
+  der Tab zusätzlich auf-/zuklappen; Tastaturbedienung (Enter/Leertaste) ist dabei.
+- Bei 0 gesetzten Werten verschwinden Markierung und ✕ wieder, der `aria-label`
+  des Tabs beschreibt den Zustand („Bezirk: 2 Filter aktiv“).
+- Auf Bildschirmen unter 480 px sind Badge und ✕ kleiner, damit fünf Tabs in
+  einer Zeile bleiben.
+
 ## Offen
 
 1. Ortsnamen sind Quelltexte, keine normalisierten Einrichtungen — dieselbe

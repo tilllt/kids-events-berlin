@@ -153,6 +153,7 @@ async function loadMeta() {
   const ortSuche = $("#ort-suche");
   if (ortSuche) ortSuche.addEventListener("input", renderOrte);
   loadOrte();  // Ortsauswahl beim Start füllen
+  updateTabMarkierungen();  // gesetzte Filter aus der URL markieren
   $("#retrybtn").addEventListener("click", () => { $("#errorbar").classList.add("hidden"); load(); });
   const note = $("#meta-note");
   const nq = (state.meta.quellen || []).length;
@@ -532,8 +533,85 @@ async function load() {
   }
 }
 
+/* ---------- Markierung der Filter-Tabs ----------
+ * Ein Tab, in dem etwas gefiltert wird, bekommt eine Zahl (wie viele Werte)
+ * und ein kleines ✕ zum Löschen genau dieses Filters. So ist ohne Aufklappen
+ * sichtbar, wo gerade eingegrenzt wird — und man kommt mit einem Klick wieder
+ * heraus, ohne alle Filter zurückzusetzen.
+ */
+const TAB_FELDER = {
+  bezirk: "bezirk",
+  ort: "orte",
+  alter: "altersband",
+  uhrzeit: "uhrzeit",
+};
+
+/* Anzahl gesetzter Filter je Tab (der „Wann“-Tab hat mehrere Teile). */
+function tabZahl(pane) {
+  if (pane === "wann") {
+    let n = 0;
+    if (!["heute", "demnächst"].includes(state.zeitraum)) n += 1;
+    if (state.von || state.bis) n += 1;
+    if (state.zeitstufe) n += 1;
+    return n;
+  }
+  const key = TAB_FELDER[pane];
+  return key ? state[key].length : 0;
+}
+
+function tabLeeren(pane) {
+  if (pane === "wann") {
+    state.zeitraum = "demnächst";
+    state.von = "";
+    state.bis = "";
+    state.zeitstufe = null;
+    syncZeitraumUI();
+    syncLegendeUI();
+  } else {
+    state[TAB_FELDER[pane]] = [];
+    if (pane === "bezirk") $$("#bezirk-list input").forEach((i) => (i.checked = false));
+    if (pane === "ort") $$("#ort-list input").forEach((i) => (i.checked = false));
+    $$(`#panel-${pane} .chips button`).forEach((b) => b.classList.remove("on"));
+  }
+  apply();
+}
+
+function updateTabMarkierungen() {
+  $$(".filter-tab").forEach((tab) => {
+    // Erst aufräumen, dann den Beschriftungstext lesen — sonst wandert die
+    // Zahl der vorigen Runde in den aria-Text.
+    tab.querySelectorAll(".tab-badge, .tab-x").forEach((el) => el.remove());
+    const label = tab.textContent.trim();
+    const n = tabZahl(tab.dataset.panel);
+    tab.classList.toggle("has-filter", n > 0);
+    tab.setAttribute("aria-label", n > 0 ? `${label}: ${n} Filter aktiv` : label);
+    if (!n) return;
+    const badge = document.createElement("span");
+    badge.className = "tab-badge";
+    badge.textContent = String(n);
+    const x = document.createElement("span");
+    x.className = "tab-x";
+    x.setAttribute("role", "button");
+    x.setAttribute("tabindex", "0");
+    x.setAttribute("aria-label", `${label}-Filter löschen`);
+    x.textContent = "×";
+    const ausloesen = (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      tabLeeren(tab.dataset.panel);
+    };
+    x.addEventListener("click", ausloesen);
+    x.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter" || ev.key === " ") ausloesen(ev);
+    });
+    tab.appendChild(badge);
+    tab.appendChild(x);
+  });
+}
+
 function apply() {
   updateFilterCount();
+  updateTabMarkierungen();
   load();
   // Ortsliste an den neuen Filterkontext anpassen (Bezirk/Alter/Uhrzeit/Zeitraum).
   loadOrte();
