@@ -1155,6 +1155,43 @@ $("#rechercheStart").onclick = async () => {
   } catch (e) { meldung(msg, e.message, false); }
 };
 
+/* ---------- Dubletten (Change 011) ---------- */
+function dedupeBerichtZeigen(d) {
+  const box = $("#dedupePanel");
+  box.classList.remove("hidden");
+  const gruppen = (d.beispiele || []).map((b) => `<li><strong>${esc(b.behalten)}</strong>
+      <span class="klein muted">(bleibt, Quelle ${esc(b.behalten_quelle)})</span>
+      <ul>${b.entfernt.map((e) => `<li class="klein">entfernt: ${esc(e.titel)}
+      <span class="muted">(${esc(e.quelle)})</span></li>`).join("")}</ul></li>`).join("");
+  const verdacht = (d.verdachtsfaelle || []).map((v) => `<li class="klein">${esc(v.datum)}
+      ${esc(v.titel)} <span class="muted">· ${esc(v.grund)}</span></li>`).join("");
+  box.innerHTML = `<p style="margin:0 0 6px">${d.geprueft} Events geprüft ·
+      <strong>${d.gruppen} Gruppen</strong> · ${d.entfernbar} überzählige Datensätze ·
+      ${d.verdacht} Verdachtsfälle${d.dry_run ? " · Probelauf" : ""}</p>
+    ${gruppen ? `<ul style="margin:6px 0">${gruppen}</ul>` : ""}
+    ${verdacht ? `<p class="muted" style="margin:6px 0 0">Verdacht (nicht zusammengeführt,
+      weil Uhrzeit oder Ort abweicht):</p><ul style="margin:4px 0">${verdacht}</ul>` : ""}`;
+}
+
+$("#dedupePruefen").onclick = async () => {
+  const msg = $("#dedupeMsg");
+  try {
+    const d = await api("/api/admin/dedupe");
+    meldung(msg, d.entfernbar ? `${d.entfernbar} Datensätze könnten zusammengeführt werden.`
+                              : "Keine Dubletten gefunden.");
+    dedupeBerichtZeigen(d);
+  } catch (e) { meldung(msg, e.message, false); }
+};
+$("#dedupeAnwenden").onclick = async () => {
+  const msg = $("#dedupeMsg");
+  try {
+    const d = await api("/api/admin/dedupe/anwenden", { method: "POST", body: JSON.stringify({}) });
+    meldung(msg, `${d.entfernt} Datensätze zusammengeführt, ${d.felder_ergaenzt} Felder ergänzt.`);
+    dedupeBerichtZeigen(d);
+    loadRuns(); loadQuellen();
+  } catch (e) { meldung(msg, e.message, false); }
+};
+
 /* ---------- Init ---------- */
 fuelleSchulFilter();
 Promise.all([loadQuellen(), loadRuns(), loadFehler(), loadSettings(), ladeTags(), fuelleTerminQuellen(), loadLlm()])

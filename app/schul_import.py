@@ -78,6 +78,13 @@ def _zeile_zu_termin(zeile: str, url: str | None, heute: date) -> dict | None:
             "start_zeit": zeit, "url": url, "beleg": zeile[:400]}
 
 
+def _saeubern(wert) -> str | None:
+    """Steuerzeichen/Whitespace entfernen — der WFS-Stamm liefert beides mit
+    (real: Websites mit führendem \\r, die dann jeden Abruf sprengen)."""
+    s = re.sub(r"[\x00-\x1f\x7f]", "", str(wert or "")).strip()
+    return s or None
+
+
 def _norm_bezirk(name: str) -> str:
     """'Charlottenburg-Wilmersdorf' → 'charlottenburg-wilmersdorf' (Slug)."""
     return (name or "").strip().lower()
@@ -113,8 +120,8 @@ def import_schulen(store, geo_json_pfad: str) -> dict:
             "ortsteil": (p.get("ortsteil") or "").strip(),
             "plz": (p.get("plz") or "").strip(),
             "strasse": strasse,
-            "email": (p.get("email") or "").strip() or None,
-            "website": (p.get("internet") or "").strip() or None,
+            "email": _saeubern(p.get("email")),
+            "website": _saeubern(p.get("internet")),
             "notiz": f"Quelle: Schul-WFS Berlin (dl-de-zero-2.0), Stand {p.get('schuljahr') or 'unbekannt'}",
         }
         if not sch["bsn"] or not sch["name"]:

@@ -16,6 +16,7 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from . import dedupe
 from .model import (BEZIRK_BERLINWEIT, BEZIRK_UNBEKANNT, TZ_BERLIN, iso_utc,
                     make_event_id)
 
@@ -47,7 +48,9 @@ CREATE TABLE IF NOT EXISTS events (
     source_url TEXT NOT NULL,
     geholt_am TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'auto',
-    manuell INTEGER NOT NULL DEFAULT 0
+    manuell INTEGER NOT NULL DEFAULT 0,
+    -- Change 011: weitere Quellen, die dieselbe Veranstaltung gelistet haben
+    quellen_json TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_events_start ON events(start_iso);
 CREATE INDEX IF NOT EXISTS idx_events_start_local ON events(start_local);
@@ -221,6 +224,10 @@ class Store:
             if "manuell" not in ev_cols:
                 self._conn.execute(
                     "ALTER TABLE events ADD COLUMN manuell INTEGER NOT NULL DEFAULT 0")
+            # Change 011: Provenienz zusammengeführter Dubletten (weitere Quellen,
+            # die dieselbe Veranstaltung gelistet haben).
+            if "quellen_json" not in ev_cols:
+                self._conn.execute("ALTER TABLE events ADD COLUMN quellen_json TEXT")
             # schulen.schulzweig_id (Link auf das offizielle Schulportrait)
             sc_cols = {r["name"] for r in self._conn.execute(
                 "PRAGMA table_info(schulen)").fetchall()}
@@ -282,18 +289,56 @@ class Store:
                         """INSERT INTO events (id, titel, beschreibung_kurz, start_iso, ende_iso,
                            start_local, ende_local, ganztags, ort, adresse, bezirk, lat, lon,
                            altersband_min, altersband_max, alters_familie, kategorien, kostenlos,
-                           quelle, source_event_id, source_url, geholt_am, status, manuell)
-                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                           quelle, source_event_id, source_url, geholt_am, status, manuell,
+                           quellen_json)
+                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                         self._ev_tuple(ev),
                     )
                     self._conn.commit()
                     return False, True
+                # Change 011: dieselbe Veranstaltung — auch aus einer anderen
+                # Quelle und auch bei abweichender Orts-Schreibweise — wird
+                # zusammengeführt statt ein zweites Mal eingefügt.
+                if not ev.get("manuell"):
+                    self._conn.commit()  # Zwilling-Suche sieht den aktuellen Stand
+                    zwilling = self._zwilling_identisch(ev)
+                    if zwilling is not None:
+                        neuer_ist_besser = dedupe.quelle_prio(ev["quelle"]) < dedupe.quelle_prio(
+                            zwilling["quelle"])
+                        if neuer_ist_besser:
+                            # Amtliche Quelle kommt später dazu: alten Satz als
+                            # Provenienz übernehmen und durch den neuen ersetzen.
+                            quellen = self._quellen_liste(zwilling.get("quellen_json"))
+                            dedupe.provenienz_ergaenzen(quellen, zwilling["quelle"],
+                                                        zwilling.get("source_url"),
+                                                        zwilling.get("source_event_id"))
+                            ev["quellen_json"] = json.dumps(quellen, ensure_ascii=False)
+                            for feld, wert in dedupe.fehlende_felder(ev, zwilling).items():
+                                ev.setdefault(feld, wert)
+                            self._conn.execute("DELETE FROM events WHERE id=?",
+                                               (zwilling["id"],))
+                        else:
+                            # Bestehender Satz bleibt kanonisch: fehlende Felder
+                            # ergänzen, fremde Quelle als Provenienz vermerken.
+                            quellen = self._quellen_liste(zwilling.get("quellen_json"))
+                            if ev["quelle"] != zwilling["quelle"]:
+                                dedupe.provenienz_ergaenzen(quellen, ev["quelle"],
+                                                            ev.get("source_url"),
+                                                            ev.get("source_event_id"))
+                            fuellung = dedupe.fehlende_felder(zwilling, ev)
+                            sets = "".join(f", {k}=?" for k in fuellung)
+                            self._conn.execute(
+                                f"UPDATE events SET quellen_json=?{sets} WHERE id=?",
+                                (json.dumps(quellen, ensure_ascii=False),
+                                 *fuellung.values(), zwilling["id"]))
+                            self._conn.commit()
+                            return False, True
                 self._conn.execute(
                     """INSERT INTO events (id, titel, beschreibung_kurz, start_iso, ende_iso,
                        start_local, ende_local, ganztags, ort, adresse, bezirk, lat, lon,
                        altersband_min, altersband_max, alters_familie, kategorien, kostenlos,
-                       quelle, source_event_id, source_url, geholt_am, status, manuell)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                       quelle, source_event_id, source_url, geholt_am, status, manuell, quellen_json)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     self._ev_tuple(ev),
                 )
                 self._conn.commit()
@@ -345,7 +390,7 @@ class Store:
             int(ev.get("alters_familie", False)), ev["kategorien"],
             ev.get("kostenlos"), ev["quelle"], ev["source_event_id"],
             ev["source_url"], ev["geholt_am"], ev.get("status", "auto"),
-            int(ev.get("manuell", 0)),
+            int(ev.get("manuell", 0)), ev.get("quellen_json"),
         )
 
     def list_events_admin(self, quelle: str | None = None,
@@ -724,6 +769,106 @@ class Store:
                                    [(r["id"],) for r in zu_loeschen])
             self._conn.commit()
         return zu_loeschen
+
+    # --- Change 011: Dubletten über Quellen hinweg ---------------------------
+    def _quellen_liste(self, roh: str | None) -> list[dict]:
+        if not roh:
+            return []
+        try:
+            d = json.loads(roh)
+        except json.JSONDecodeError:
+            return []
+        return d if isinstance(d, list) else []
+
+    def merge_doppelte_events(self, *, dry_run: bool = False,
+                              nur_quelle: str | None = None) -> dict:
+        """Dieselbe Veranstaltung aus mehreren Quellen zu einem Datensatz.
+
+        Kanon = manuell gepflegt > amtliche Quelle > Einrichtung > Aggregator,
+        bei Gleichstand der datenreichere Satz. Leere Felder des Kanons werden
+        aus der Dublette gefüllt (real: Endzeit stand nur in einer Quelle), die
+        weiteren Quellen wandern als Provenienz in `quellen_json`. Manuell
+        gepflegte Datensätze werden nie entfernt.
+
+        Rückgabe: Zähler + Listen für Bericht/Status (kein stiller Eingriff).
+        """
+        with self._lock:
+            rows = [dict(r) for r in self._conn.execute("SELECT * FROM events").fetchall()]
+        if nur_quelle:
+            rows = [r for r in rows if r["quelle"] == nur_quelle]
+        bericht = dedupe.finde_dubletten(rows)
+        ergebnis = {"geprueft": len(rows), "gruppen": len(bericht["merges"]),
+                    "entfernbar": bericht["entfernbar"], "entfernt": 0,
+                    "felder_ergaenzt": 0, "verdacht": len(bericht["verdacht"]),
+                    "dry_run": dry_run,
+                    "beispiele": [{"behalten": m["kanon"]["titel"],
+                                   "behalten_quelle": m["kanon"]["quelle"],
+                                   "entfernt": [{"quelle": d["quelle"], "titel": d["titel"]}
+                                                for d in m["dubletten"]][:5]}
+                                  for m in bericht["merges"][:10]],
+                    "verdachtsfaelle": [{"titel": v["kandidat"]["titel"],
+                                         "datum": (v["kandidat"].get("start_local") or "")[:16],
+                                         "grund": v["grund"]} for v in bericht["verdacht"][:10]]}
+        if dry_run or not bericht["merges"]:
+            return ergebnis
+        for m in bericht["merges"]:
+            kanon = m["kanon"]
+            entfernbar = [d for d in m["dubletten"] if not d.get("manuell")]
+            if not entfernbar:
+                continue
+            quellen = self._quellen_liste(kanon.get("quellen_json"))
+            fuellung: dict = {}
+            for d in entfernbar:
+                dedupe.provenienz_ergaenzen(quellen, d["quelle"], d.get("source_url"),
+                                            d.get("source_event_id"))
+                for feld, wert in dedupe.fehlende_felder(kanon, d).items():
+                    if feld in fuellung:
+                        continue
+                    fuellung[feld] = wert
+                    kanon[feld] = wert  # damit weitere Dubletten denselben Stand sehen
+            with self._lock:
+                if fuellung:
+                    sets = ", ".join(f"{k}=?" for k in fuellung)
+                    self._conn.execute(
+                        f"UPDATE events SET {sets}, quellen_json=? WHERE id=?",
+                        (*fuellung.values(), json.dumps(quellen, ensure_ascii=False),
+                         kanon["id"]))
+                else:
+                    self._conn.execute(
+                        "UPDATE events SET quellen_json=? WHERE id=?",
+                        (json.dumps(quellen, ensure_ascii=False), kanon["id"]))
+                self._conn.executemany("DELETE FROM events WHERE id=?",
+                                       [(d["id"],) for d in entfernbar])
+                self._conn.commit()
+            ergebnis["entfernt"] += len(entfernbar)
+            ergebnis["felder_ergaenzt"] += len(fuellung)
+        return ergebnis
+
+    def _zwilling_identisch(self, ev: dict) -> dict | None:
+        """Bestehender Datensatz (jede Quelle), der DIESELBE Termin ist.
+
+        Schützt strukturell davor, dass dieselbe Veranstaltung mehrfach in die
+        Datenbank kommt (real: ein Tag der offenen Tür 57× im Bestand). Die
+        Identitätsregeln stehen in `app.dedupe` — u. a. gleicher Titel, gleicher
+        Tag, gleiche Uhrzeit und ein verträglicher Ort (damit unterschiedliche
+        Veranstaltungen am selben Ort zur selben Zeit getrennt bleiben).
+
+        ACHTUNG: wird nur aus `upsert_event` aufgerufen und läuft dort bereits
+        unter `self._lock` — deshalb hier KEIN erneutes Lock (sonst Deadlock,
+        weil `threading.Lock` nicht wiedereintrittsfähig ist).
+        """
+        rows = [dict(r) for r in self._conn.execute(
+            """SELECT * FROM events WHERE start_iso=? AND lower(trim(titel))=?
+               AND id != ?""",
+            (ev["start_iso"], (ev.get("titel") or "").strip().lower(),
+             ev["id"])).fetchall()]
+        for r in rows:
+            if r.get("manuell") and not ev.get("manuell"):
+                continue  # manuell gepflegte Sätze werden nicht als Zwilling benutzt
+            gleich, _ = dedupe.gleiche_veranstaltung(r, ev)
+            if gleich:
+                return r
+        return None
 
     def get_venue_cache(self, key: str) -> dict | None:
         with self._lock:

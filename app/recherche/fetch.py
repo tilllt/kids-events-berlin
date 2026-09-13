@@ -34,13 +34,29 @@ MONAT_RE = re.compile(
     r"oktober|november|dezember)\b", re.I)
 
 
+def url_saeubern(url: str | None) -> str:
+    """Website-Angabe aus dem Stamm in eine abrufbare URL bringen.
+
+    Der Schul-WFS-Stamm enthält Werte mit Steuerzeichen und ohne Schema
+    (real: „\rhttps://…", „www.schule.de") — httpx bricht bei so etwas mit
+    `InvalidURL` ab und riss im ersten Feldlauf den ganzen Lauf mit.
+    """
+    u = re.sub(r"[\x00-\x1f\x7f]", "", (url or "")).strip()
+    if u and not u.startswith(("http://", "https://")):
+        u = "http://" + u
+    return u
+
+
 def hole(url: str, client: httpx.Client) -> tuple[str | None, str]:
     """(html, status) — Fehler werden als Text zurückgegeben, nicht geworfen."""
+    url = url_saeubern(url)
+    if not url:
+        return None, "keine URL"
     try:
         r = client.get(url, headers={"User-Agent": UA,
                                      "Accept-Language": "de-DE,de;q=0.9"},
                        follow_redirects=True)
-    except httpx.HTTPError as e:
+    except Exception as e:  # auch InvalidURL/UnicodeError: sichtbar, nicht still
         return None, f"{type(e).__name__}: {e}"
     if r.status_code >= 400:
         return None, f"HTTP {r.status_code}"

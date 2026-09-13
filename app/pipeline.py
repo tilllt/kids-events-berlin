@@ -277,6 +277,15 @@ def _scrape_mit_adapter(store, adapter, quelle, *, online, geo,
         print(f"[dedup] {quelle}: {len(entfernt)} überlappende Serien-Zwillinge "
               f"entfernt", flush=True)
 
+    # Quellen-übergreifende Dubletten (Change 011): dieselbe Veranstaltung bei
+    # mehreren Quellen (real: ein Tag der offenen Tür 57×) wird zu einem
+    # Datensatz mit Provenienz-Zeiger auf die übrigen Quellen.
+    dub = store.merge_doppelte_events()
+    if dub["entfernt"] or dub["verdacht"]:
+        print(f"[dedup] quellenübergreifend: {dub['entfernt']} Dubletten entfernt, "
+              f"{dub['verdacht']} Verdachtsfälle (nicht automatisch gemergt)",
+              flush=True)
+
     # Stale-Bereinigung: Events der Quelle, deren Start > 3 Tage zurückliegt
     cutoff = (jetzt - timedelta(days=3)).astimezone(ZoneInfo("UTC")).isoformat()
     store.prune_stale(quelle, cutoff)
@@ -293,6 +302,8 @@ def _scrape_mit_adapter(store, adapter, quelle, *, online, geo,
         "n_geaendert": n_geaendert,
         "n_fehler": n_fehler,
         "n_zwillinge_entfernt": len(entfernt),
+        "n_dubletten_entfernt": dub["entfernt"],
+        "n_dubletten_verdacht": dub["verdacht"],
         "seiten": n_pages,
     }
 

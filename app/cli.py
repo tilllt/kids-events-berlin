@@ -59,6 +59,15 @@ def main(argv: list[str] | None = None) -> int:
     rec.add_argument("--json-out", default=None, help="Ergebnis als JSON ablegen")
     rec.set_defaults(fn=cmd_recherche_schulen)
 
+    dd = sub.add_parser("dedupe-audit",
+                        help="Dieselbe Veranstaltung bei mehreren Quellen finden/zusammenführen")
+    dd.add_argument("--db", default="data/events.db")
+    dd.add_argument("--apply", action="store_true",
+                    help="Zusammenführen (ohne Flag: nur Bericht)")
+    dd.add_argument("--quelle", default=None, help="Nur diese Quelle betrachten")
+    dd.add_argument("--json-out", default=None)
+    dd.set_defaults(fn=cmd_dedupe_audit)
+
     args = p.parse_args(argv)
     return args.fn(args)
 
@@ -154,6 +163,36 @@ def cmd_recherche_schulen(args) -> int:
         with open(args.json_out, "w", encoding="utf-8") as f:
             _json.dump(zusammen, f, ensure_ascii=False, indent=1)
         print(f"Ergebnis: {args.json_out}")
+    return 0
+
+
+def cmd_dedupe_audit(args) -> int:
+    """Bericht (und optional Zusammenführung) quellenübergreifender Dubletten."""
+    import json as _json
+    from .store import Store
+    s = Store(args.db)
+    try:
+        erg = s.merge_doppelte_events(dry_run=not args.apply, nur_quelle=args.quelle)
+    finally:
+        s.close()
+    print(f"Dubletten-Prüfung: {erg['geprueft']} Events, {erg['gruppen']} Gruppen, "
+          f"{erg['entfernbar']} überzählige Datensätze, {erg['verdacht']} Verdachtsfälle"
+          + ("" if args.apply else " (Probelauf — nichts geändert)"))
+    for b in erg["beispiele"]:
+        print(f"  behalten: {b['behalten'][:60]} ({b['behalten_quelle']})")
+        for e in b["entfernt"]:
+            print(f"    entfernt: {e['titel'][:60]} ({e['quelle']})")
+    if erg["verdachtsfaelle"]:
+        print("  Verdacht (nicht gemergt):")
+        for v in erg["verdachtsfaelle"]:
+            print(f"    {v['datum']} {v['titel'][:55]} · {v['grund']}")
+    if args.apply:
+        print(f"Zusammengeführt: {erg['entfernt']} entfernt, "
+              f"{erg['felder_ergaenzt']} Felder ergänzt")
+    if args.json_out:
+        with open(args.json_out, "w", encoding="utf-8") as f:
+            _json.dump(erg, f, ensure_ascii=False, indent=1)
+        print(f"Bericht: {args.json_out}")
     return 0
 
 

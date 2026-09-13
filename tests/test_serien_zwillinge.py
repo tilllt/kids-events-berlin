@@ -98,15 +98,29 @@ def test_manuell_gepflegte_events_bleiben(tmp_path):
 
 
 def test_nur_die_gescrapte_quelle_wird_bereinigt(tmp_path):
+    """Serien-Bereinigung wirkt nur auf die genannte Quelle.
+
+    Change 011 ergänzt: die identische Veranstaltung aus einer ZWEITEN Quelle
+    wird schon beim Schreiben zusammengeführt (jup-berlin hat Vorrang vor zlb),
+    ihre Herkunft bleibt als Provenienz am Datensatz. `entferne_ueberlappende_
+    zwillinge` rührt fremde Quellen weiterhin nicht an.
+    """
     store = Store(tmp_path / "events.db")
     titel = "Doppelter Titel"
     store.upsert_event(_ev(QUELLE, titel, _d(5, 10), _d(9, 16), nummer=1))
     store.upsert_event(_ev(QUELLE, titel, _d(6, 10), _d(10, 16), nummer=2))
     store.upsert_event(_ev("zlb", titel, _d(5, 10), _d(9, 16), nummer=3))
     store.upsert_event(_ev("zlb", titel, _d(6, 10), _d(10, 16), nummer=4))
+
+    # Quellenübergreifend zusammengeführt: keine zlb-Zeile mehr, aber Provenienz
+    assert [e["quelle"] for e in store.query_events({})] == [QUELLE, QUELLE]
+    for e in store.query_events({}):
+        assert "zlb" in (e.get("quellen_json") or "")
+
     entfernt = store.entferne_ueberlappende_zwillinge(QUELLE)
     assert len(entfernt) == 1
-    assert len([e for e in store.query_events({}) if e["quelle"] == "zlb"]) == 2
+    # Fremde Quelle hat nichts zu bereinigen — sie ist hier schon zusammengeführt
+    assert store.entferne_ueberlappende_zwillinge("zlb") == []
     store.close()
 
 

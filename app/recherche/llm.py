@@ -100,7 +100,11 @@ def chat(konfig: dict, prompt: str, *, max_tokens: int = 800,
         r = c.post(_url(konfig), json=payload, headers=_kopfzeilen(konfig))
         if r.status_code >= 400:
             raise LLMFehler(f"Endpunkt antwortet HTTP {r.status_code}: {r.text[:200]}")
-        d = r.json()
+        try:
+            d = r.json()
+        except ValueError as e:  # z. B. HTML-Fehlerseite eines Proxys
+            raise LLMFehler(f"Antwort ist kein JSON ({r.headers.get('content-type')}): "
+                            f"{r.text[:200]}") from e
     except httpx.HTTPError as e:
         raise LLMFehler(f"Endpunkt nicht erreichbar ({_url(konfig)}): {e}") from e
     finally:

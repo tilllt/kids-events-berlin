@@ -224,6 +224,25 @@ def test_abruf_fehler_und_fehlender_website_eintrag(tmp_path):
     store.close()
 
 
+def test_llm_liefert_html_statt_json(tmp_path):
+    """Ein Proxy-Fehlerseite statt JSON muss ein klarer LLM-Fehler sein."""
+    store = Store(tmp_path / "html.db")
+    _schule(store, bsn="02G54", name="Schule", website="https://html.example.org")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST":
+            return httpx.Response(200, text="<html>Bad Gateway</html>",
+                                  headers={"content-type": "text/html"})
+        return httpx.Response(200, text=SEITE_ELIASHOF, headers={"content-type": "text/html"})
+
+    zusammen = kern.lauf(store, limit=1, konfig={
+        "llm_base_url": "http://test/v1", "llm_model": "m", "llm_extra_json": "{}"},
+        client=httpx.Client(transport=httpx.MockTransport(handler)))
+    assert zusammen["status"] == {"fehler": 1}
+    assert "kein JSON" in zusammen["schulen"][0]["grund"]
+    store.close()
+
+
 def test_llm_fehler_wird_zur_schule_notiz(tmp_path):
     store = Store(tmp_path / "llmfail.db")
     _schule(store, bsn="02G96", name="Langsame Schule", website="https://llm.example.org")
@@ -260,4 +279,55 @@ def test_schulen_ohne_website_werden_uebersprungen(tmp_path):
     store = Store(tmp_path / "nur_website.db")
     store.upsert_schule({"bsn": "02G95", "name": "Ohne Website", "schulform": "Grundschule"})
     assert store.schulen_fuer_recherche() == []
+    store.close()
+
+
+def test_dreckige_website_wird_gesaeubert(tmp_path):
+    """WFS-Stamm liefert Websites mit Steuerzeichen — real brach das den Lauf ab."""
+    assert fetch.url_saeubern("\rhttps://schule.example.org") == "https://schule.example.org"
+    assert fetch.url_saeubern("  www.schule.de \n") == "http://www.schule.de"
+    assert fetch.url_saeubern("\x00") == ""
+
+    store = Store(tmp_path / "dreck.db")
+    store.upsert_schule({"bsn": "02G50", "name": "Schule mit Dreck-URL",
+                         "schulform": "Grundschule",
+                         "website": "\rhttps://www.grundschule-im-eliashof.de"})
+    gesehen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST":  # LLM-Aufruf
+            return httpx.Response(200, json={"model": "m", "choices": [
+                {"finish_reason": "stop", "message": {"content": '{"termine": []}'}}]})
+        gesehen.append(str(request.url))
+        return httpx.Response(200, text=SEITE_ELIASHOF, headers={"content-type": "text/html"})
+
+    zusammen = kern.lauf(store, limit=1, dry_run=True,
+                         client=httpx.Client(transport=httpx.MockTransport(handler)))
+    assert gesehen and gesehen[0].startswith("https://www.grundschule-im-eliashof.de")
+    assert zusammen["status"] == {"keinFund": 1}, zusammen["status"]
+    store.close()
+
+
+def test_eine_kaputte_schule_stoppt_den_lauf_nicht(tmp_path, monkeypatch):
+    """Eine unerwartete Ausnahme darf nicht 34 Schulen abwürgen (real passiert)."""
+    store = Store(tmp_path / "weiter.db")
+    _schule(store, bsn="02G51", name="Kaputt", website="https://kaputt.example.org")
+    _schule(store, bsn="02G52", name="Gut", website="https://gut.example.org")
+    echt = kern.verarbeite_schule
+    aufrufe = {"n": 0}
+
+    def mit_ausnahme(store_, schule, *a, **k):
+        aufrufe["n"] += 1
+        if aufrufe["n"] == 1:
+            raise UnicodeError("kaputte Zeile")
+        return echt(store_, schule, *a, **k)
+
+    monkeypatch.setattr(kern, "verarbeite_schule", mit_ausnahme)
+    zusammen = kern.lauf(store, limit=2, dry_run=True,
+                         client=httpx.Client(transport=httpx.MockTransport(
+                             lambda r: httpx.Response(200, text=SEITE_OHNE_TERMIN,
+                                                      headers={"content-type": "text/html"}))))
+    assert zusammen["geprueft"] == 2, "Lauf wurde durch eine kaputte Schule beendet"
+    assert zusammen["fehler"] == 1 and zusammen["status"].get("keinIndiz") == 1
+    assert "kaputte Zeile" in zusammen["schulen"][0]["grund"]
     store.close()

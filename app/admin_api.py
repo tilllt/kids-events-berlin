@@ -389,6 +389,20 @@ def recherche_letzter_lauf(request: Request):
     return d
 
 
+# --- Dubletten über Quellen hinweg (Change 011) -----------------------------
+@router.get("/dedupe")
+def dedupe_pruefen(request: Request, quelle: str | None = Query(None)):
+    """Bericht: dieselbe Veranstaltung bei mehreren Quellen (nichts wird geändert)."""
+    return _store(request).merge_doppelte_events(dry_run=True, nur_quelle=quelle)
+
+
+@router.post("/dedupe/anwenden")
+def dedupe_anwenden(request: Request, body: dict | None = None):
+    """Führt die gefundenen Dubletten zusammen (Provenienz bleibt erhalten)."""
+    quelle = ((body or {}).get("quelle") or "").strip() or None
+    return _store(request).merge_doppelte_events(dry_run=False, nur_quelle=quelle)
+
+
 # --- Lauf auslösen ---------------------------------------------------------
 @router.post("/sources/{quelle}/scrape", status_code=202)
 def source_scrape(quelle: str, request: Request):

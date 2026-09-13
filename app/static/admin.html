@@ -332,6 +332,27 @@
       </div>
     </details>
 
+    <details class="klapp" id="dedupeKlapp">
+      <summary>Dubletten — dieselbe Veranstaltung bei mehreren Quellen</summary>
+      <div class="klappbody">
+        <p class="muted" style="margin-top:0">
+          Mehrere Quellen listen oft dieselbe Veranstaltung (z.&nbsp;B. Familienportal
+          und Kinderkulturkalender). Zusammengeführt wird nur, was wirklich dieselbe
+          Veranstaltung ist: <strong>gleicher Tag, gleicher Titel, gleiche Uhrzeit</strong>
+          und ein verträglicher Ort. Unterschiedliche Titel am selben Ort zur selben
+          Zeit bleiben getrennt — das ZLB bietet bewusst mehrere Veranstaltungen
+          gleichzeitig an; Stundenblöcke mit gleichem Titel werden als Verdacht
+          gemeldet, nicht automatisch zusammengeworfen.
+        </p>
+        <div class="btnrow">
+          <button id="dedupePruefen" type="button">Prüfen (nichts ändern)</button>
+          <button id="dedupeAnwenden" type="button" class="primary">Gefundene zusammenführen</button>
+          <span id="dedupeMsg"></span>
+        </div>
+        <div id="dedupePanel" class="panel hidden" style="margin-top:8px"></div>
+      </div>
+    </details>
+
     <details class="klapp" id="tagsKlapp">
       <summary>Tags — Schlagworte für alle Termine</summary>
       <div class="klappbody">

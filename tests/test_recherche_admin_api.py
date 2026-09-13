@@ -203,3 +203,50 @@ def test_letzter_lauf_ohne_daten(tmp_path):
     store.set_setting("recherche_letzter_lauf", json.dumps({"belegt": 2}))
     assert c.get("/api/admin/recherche/letzter-lauf").json()["belegt"] == 2
     store.close()
+
+
+# --- Dubletten (Change 011) ------------------------------------------------
+def test_dedupe_bericht_und_anwenden(tmp_path):
+    """Admin sieht die Dubletten und kann sie zusammenführen."""
+    from datetime import datetime
+    from app.model import TZ_BERLIN, make_event_id
+
+    c, store = _client(tmp_path)
+    titel = "Tag der offenen Tür der Klax Kinderkrippe"
+
+    def ev(quelle, nummer):
+        seid = f"{titel}#{quelle}#{nummer}"
+        return {"id": make_event_id(quelle, seid), "titel": titel, "beschreibung_kurz": None,
+                "start_iso": "2026-09-26T10:00:00", "ende_iso": None,
+                "start_local": "2026-09-26T10:00:00", "ende_local": None,
+                "ganztags": False, "ort": "Klax Kinderkrippe", "adresse": None,
+                "bezirk": None, "lat": 52.5019, "lon": 13.5701, "altersband_min": None,
+                "altersband_max": None, "alters_familie": 0, "kategorien": "[]",
+                "kostenlos": None, "quelle": quelle, "source_event_id": seid,
+                "source_url": f"https://{quelle}.example.org/{nummer}",
+                "geholt_am": datetime.now(TZ_BERLIN).isoformat(), "manuell": 0,
+                "quellen_json": None}
+
+    # Altbestand am Write-Path vorbei einfügen (vor Change 011 entstanden)
+    for i, quelle in enumerate(("familienportal", "kinderkulturkalender", "zlb")):
+        store._conn.execute(
+            """INSERT INTO events (id, titel, beschreibung_kurz, start_iso, ende_iso,
+               start_local, ende_local, ganztags, ort, adresse, bezirk, lat, lon,
+               altersband_min, altersband_max, alters_familie, kategorien, kostenlos,
+               quelle, source_event_id, source_url, geholt_am, status, manuell, quellen_json)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            store._ev_tuple(ev(quelle, i)))
+    store._conn.commit()
+
+    bericht = c.get("/api/admin/dedupe").json()
+    assert bericht["gruppen"] == 1 and bericht["entfernbar"] == 2
+    assert len(store.query_events({})) == 3            # Probelauf ändert nichts
+
+    erg = c.post("/api/admin/dedupe/anwenden", json={}).json()
+    assert erg["entfernt"] == 2
+    events = store.query_events({})
+    assert len(events) == 1 and events[0]["quelle"] == "familienportal"
+    assert len(events[0]["quellen_json"] or "") > 0     # Provenienz bleibt erhalten
+    # Verdachtsfälle sind sichtbar (hier: keine, alles gemergt)
+    assert erg["verdacht"] == 0
+    store.close()

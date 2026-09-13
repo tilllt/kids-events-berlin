@@ -258,7 +258,14 @@ def lauf(store, *, limit: int = 20, nur_bsn: str | None = None, dry_run: bool = 
                 "bezirk": bezirk, "schulform": schulform}
     try:
         for schule in kandidaten:
-            erg = verarbeite_schule(store, schule, konfig, c, heute, dry_run=dry_run)
+            try:
+                erg = verarbeite_schule(store, schule, konfig, c, heute, dry_run=dry_run)
+            except Exception as e:  # eine kaputte Zeile stoppt nicht 34 Schulen
+                erg = {"bsn": schule.get("bsn"), "schule": schule.get("name"),
+                       "status": STATUS_FEHLER, "llm_calls": 0, "n_roh": 0, "n_belegt": 0,
+                       "verworfen": {}, "url": schule.get("website"), "grund":
+                       f"unerwarteter Fehler: {type(e).__name__}: {e}",
+                       "vorschlaege": []}
             zusammen["geprueft"] += 1
             zusammen["llm_calls"] += erg["llm_calls"]
             zusammen["belegt"] += erg["n_belegt"]
