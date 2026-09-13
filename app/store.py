@@ -217,6 +217,14 @@ UHRZEIT_SQL = {
     "abend": ("17:00", "24:00"),
 }
 
+# Ein Termin ist ganztägig, wenn er so markiert ist ODER um 00:00 beginnt.
+# Quellen, die nur ein Datum ohne Uhrzeit liefern (z. B. Umweltkalender,
+# Festivals), landen auf 00:00 — solche Termine müssen in jedem Zeitband
+# auftauchen, sonst verschwindet ein Tagesfest beim Filter „nachmittags“.
+# Achtung: SQLites time() liefert „HH:MM:SS“ — der Vergleich gegen das
+# frühere „'00:00'“ war deshalb immer falsch (Gleichheit griff nie).
+GANZTAGS_SQL = "(ganztags = 1 OR time(start_local) < '00:01')"
+
 
 class Store:
     def __init__(self, path: str | Path):
@@ -558,12 +566,17 @@ class Store:
             band_or: list[str] = []
             band_args: list = []
             for band in filters["uhrzeit"]:
-                # Ganztägige Events (ganztags=1, Start 00:00) passen zu jedem Band.
+                # Ganztägige Termine gehören in JEDES Zeitband — ein Tagesfest
+                # ist nachmittags genauso relevant wie vormittags. Ein Termin
+                # gilt als ganztägig, wenn er so markiert ist ODER um 00:00
+                # beginnt (viele Quellen liefern "nur Datum" ohne Uhrzeit).
+                # Ohne den zweiten Teil fielen genau diese Termine stumm aus
+                # jedem Band außer "ganztags".
                 if band == "ganztags":
-                    band_or.append("(ganztags = 1 OR time(start_local) = '00:00')")
+                    band_or.append(GANZTAGS_SQL)
                 else:
                     lo, hi = UHRZEIT_SQL[band]
-                    band_or.append("ganztags = 1")
+                    band_or.append(GANZTAGS_SQL)
                     band_or.append("(time(start_local) >= ? AND time(start_local) < ?)")
                     band_args.extend([lo, hi])
             where.append("(" + " OR ".join(band_or) + ")")

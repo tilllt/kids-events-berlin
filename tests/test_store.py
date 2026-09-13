@@ -100,6 +100,21 @@ def test_filter_uhrzeit_bands_lokal(tmp_path):
     assert {e["titel"] for e in r} == {"Ganztags"}
 
 
+def test_filter_uhrzeit_ganztags_ohne_flag(tmp_path):
+    """Quellen ohne Uhrzeit liefern Start 00:00 und ganztags=0 — solche Termine
+    müssen in JEDEM Zeitband erscheinen (Nutzerhinweis: „nachmittags" zeigte
+    ganztägige Termine nicht an)."""
+    s = Store(tmp_path / "t.db")
+    tag = datetime(2026, 9, 12, 0, 0, tzinfo=TZ_BERLIN)
+    _ev(s, titel="Nur-Datum", start=tag, ganztags=False)
+    _ev(s, titel="Vormittag", start=tag.replace(hour=10))
+    for band in ("vormittag", "nachmittag", "abend", "ganztags"):
+        titel = {e["titel"] for e in s.query_events({"uhrzeit": [band]})}
+        assert "Nur-Datum" in titel, f"ganztägiger Termin fehlt im Band {band}: {titel}"
+    # Ein echter Vormittagstermin bleibt nachmittags weiterhin draußen.
+    assert "Vormittag" not in {e["titel"] for e in s.query_events({"uhrzeit": ["nachmittag"]})}
+
+
 def test_filter_datum_von_bis(tmp_path):
     s = Store(tmp_path / "t.db")
     _ev(s, titel="Heute", start=datetime.now(TZ_BERLIN))
