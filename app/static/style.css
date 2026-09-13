@@ -196,7 +196,9 @@ main > * { min-width: 0; }
   #filters { border-right: 0; border-bottom: 1px solid var(--border);
              max-height: none; overflow: visible; }
   #content { display: block; min-height: 0; }
-  #eventlist { overflow: visible; max-height: none; }
+  /* Liste bleibt sichtbar und scrollt in sich: mit allen Terminen würde sie
+     sonst zehntausende Pixel lang und die Karte wäre praktisch unerreichbar. */
+  #eventlist { overflow-y: auto; max-height: 60vh; }
   #mapwrap { flex: none; height: 42vh; min-height: 200px; margin-top: 10px;
              border-top: 1px solid var(--border); }
   #map { height: 100%; }

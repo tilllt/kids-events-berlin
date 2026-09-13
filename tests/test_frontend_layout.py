@@ -42,7 +42,9 @@ def test_mobile_filter_schieben_die_liste_nach_unten():
     assert "main { display: block; }" in block, "mobil normale Dokumentfolge nötig"
     assert re.search(r"#filters\s*\{[^}]*max-height:\s*none", block), \
         "Filter dürfen mobil nicht in einen Streifen gequetscht werden"
-    assert re.search(r"#eventlist\s*\{[^}]*overflow:\s*visible", block), \
-        "Liste muss mobil im Seitenfluss liegen (kein eigener Scrollbereich)"
+    liste = re.search(r"#eventlist\s*\{[^}]*\}", block)
+    assert liste, "mobile Listen-Regel fehlt"
+    assert "overflow-y: auto" in liste.group(0) and "max-height" in liste.group(0), \
+        "Liste braucht mobil eine eigene Höhengrenze mit Scrollen, sonst ist die Karte unerreichbar"
     assert re.search(r"#mapwrap\s*\{[^}]*height:\s*42vh", block), \
         "Karte braucht mobil eine eigene, feste Höhe"
