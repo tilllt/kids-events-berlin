@@ -546,12 +546,14 @@ const TAB_FELDER = {
   uhrzeit: "uhrzeit",
 };
 
-/* Anzahl gesetzter Filter je Tab (der „Wann“-Tab hat mehrere Teile). */
+/* Anzahl gesetzter Filter je Tab (der „Wann“-Tab hat mehrere Teile).
+ * „heute“ und „demnächst“ sind die Standardansichten und zählen nicht mit —
+ * sonst wäre der Tab immer markiert, weil die App von/bis automatisch aus dem
+ * gewählten Zeitraum ableitet. Nur eine echte Abweichung markiert den Tab. */
 function tabZahl(pane) {
   if (pane === "wann") {
     let n = 0;
     if (!["heute", "demnächst"].includes(state.zeitraum)) n += 1;
-    if (state.von || state.bis) n += 1;
     if (state.zeitstufe) n += 1;
     return n;
   }
