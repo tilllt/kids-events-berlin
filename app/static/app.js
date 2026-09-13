@@ -474,14 +474,15 @@ function renderList(gj) {
     return;
   }
   setzeStatus("auswahl", `${all.length} Termine${gj.ohne_position && gj.ohne_position.length ? ` (${gj.ohne_position.length} ohne Kartenposition)` : ""}`);
-  // Die Zeile über der Liste trägt nur noch die Aktionen — vorher stand dort
-  // zusätzlich die Anzahl (jetzt in der Statuszeile), und „URL kopieren“ war
-  // nur Text ohne Funktion.
+  // Die Zeile über der Liste trägt die Aktionen: „URL kopieren" und (von
+  // naehe.js eingehängt) „Kalender abonnieren". Die Abo-Adresse und die
+  // Erklaerung stehen im Fenster hinter dem Kalender-Knopf.
   ls.innerHTML = "";
   const teilen = document.createElement("button");
   teilen.type = "button";
   teilen.className = "ghost";
-  teilen.textContent = "Filter teilen: URL kopieren";
+  teilen.textContent = "URL kopieren";
+  teilen.title = "Adresse dieser Ansicht kopieren";
   teilen.addEventListener("click", async () => {
     const url = location.href;
     try {
@@ -491,7 +492,7 @@ function renderList(gj) {
       // Ohne Zwischenablage-Recht die URL zeigen, statt still zu scheitern.
       window.prompt("URL zum Kopieren:", url);
     }
-    setTimeout(() => { teilen.textContent = "Filter teilen: URL kopieren"; }, 2000);
+    setTimeout(() => { teilen.textContent = "URL kopieren"; }, 2000);
   });
   ls.appendChild(teilen);
   ls.classList.remove("hidden");

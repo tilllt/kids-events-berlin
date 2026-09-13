@@ -228,10 +228,10 @@
     return "/api/kalender.ics?" + abo.toString();
   }
 
-  function kopiere(text, knopf) {
+  function kopiere(text, knopf, zurueck) {
     var fertig = function () {
       knopf.textContent = "kopiert";
-      setTimeout(function () { knopf.textContent = "Adresse kopieren"; }, 2000);
+      setTimeout(function () { knopf.textContent = zurueck || "Adresse kopieren"; }, 2000);
     };
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(fertig, function () {
@@ -272,8 +272,8 @@
     kasten.appendChild(feld);
 
     var knopfreihe = el("div", { class: "naehe-modal-knoepfe" });
-    var kopie = el("button", { type: "button", class: "btn primary" }, "Adresse kopieren");
-    kopie.addEventListener("click", function () { kopiere(adresse, this); });
+    var kopie = el("button", { type: "button", class: "btn primary" }, "Abo-Adresse kopieren");
+    kopie.addEventListener("click", function () { kopiere(adresse, this, "Abo-Adresse kopieren"); });
     knopfreihe.appendChild(kopie);
     // Für iPhone/iPad: dort öffnet webcal:// den Abo-Dialog. Auf Android gibt es
     // dafür keinen Handler — dort ist der Kopier-Weg der richtige, deshalb steht
