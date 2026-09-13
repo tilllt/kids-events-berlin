@@ -169,6 +169,20 @@ CREATE INDEX IF NOT EXISTS idx_termine_manuell_status ON termine_manuell(status)
 -- nach der Antwort um HTTP-Code/Treffer/Fehler ergaenzt. Das Monats- und
 -- Tagesbudget wird daraus gezaehlt — kein Zaehler in den Einstellungen, der
 -- driften koennte.
+-- Change 013: Versand-Protokoll der Schul-Anfragen (Tagesbremse + Nachweis).
+CREATE TABLE IF NOT EXISTS mail_versand (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tag TEXT,
+    stunde TEXT,
+    an TEXT NOT NULL,
+    betreff TEXT,
+    schule_bsn TEXT,
+    zeitpunkt TEXT NOT NULL,
+    ok INTEGER,
+    fehler TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_mail_versand_tag ON mail_versand(tag);
+
 CREATE TABLE IF NOT EXISTS brave_aufrufe (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     monat TEXT NOT NULL,
@@ -790,6 +804,74 @@ class Store:
                                    [(r["id"],) for r in zu_loeschen])
             self._conn.commit()
         return zu_loeschen
+
+    # --- Change 013: Mail-Versand (Protokoll + Tagesbremse) ------------------
+    def starte_mail_versand(self, an: str, betreff: str, schule_bsn: str | None = None) -> int:
+        jetzt = datetime.now(TZ_BERLIN)
+        with self._lock:
+            cur = self._conn.execute(
+                """INSERT INTO mail_versand(tag, stunde, an, betreff, schule_bsn, zeitpunkt, ok)
+                   VALUES (?,?,?,?,?,?,0)""",
+                (jetzt.strftime("%Y-%m-%d"), jetzt.strftime("%Y-%m-%dT%H"), an[:200],
+                 betreff[:300], schule_bsn, iso_utc(jetzt)))
+            self._conn.commit()
+            return int(cur.lastrowid or 0)
+
+    def beende_mail_versand(self, eintrag_id: int, *, ok: bool, fehler: str | None) -> None:
+        with self._lock:
+            self._conn.execute(
+                "UPDATE mail_versand SET ok=?, fehler=? WHERE id=?",
+                (1 if ok else 0, fehler, eintrag_id))
+            self._conn.commit()
+
+    def mail_versand_zaehler(self) -> dict:
+        jetzt = datetime.now(TZ_BERLIN)
+        tag, stunde = jetzt.strftime("%Y-%m-%d"), jetzt.strftime("%Y-%m-%dT%H")
+        with self._lock:
+            heute = self._conn.execute(
+                "SELECT COUNT(*) c FROM mail_versand WHERE tag=?", (tag,)).fetchone()["c"]
+            diese_stunde = self._conn.execute(
+                "SELECT COUNT(*) c FROM mail_versand WHERE stunde=?", (stunde,)).fetchone()["c"]
+            gesamt = self._conn.execute(
+                "SELECT COUNT(*) c FROM mail_versand").fetchone()["c"]
+            fehler = self._conn.execute(
+                "SELECT COUNT(*) c FROM mail_versand WHERE ok=0").fetchone()["c"]
+        return {"tag": tag, "heute": heute, "diese_stunde": diese_stunde,
+                "gesamt": gesamt, "fehler_gesamt": fehler}
+
+    def mail_versand_bremse_grund(self) -> str | None:
+        """Warum gerade NICHT gesendet werden darf (None = frei).
+
+        Schützt davor, dass ein Fehllauf 700 Schulen anschreibt: Grenzen sind
+        `mail_max_pro_tag` (Standard 40) und `mail_absender_pro_stunde` (20).
+        """
+        def zahl(key, standard):
+            try:
+                return int(str(self.get_setting(key) or standard).strip())
+            except (TypeError, ValueError):
+                return standard
+        z = self.mail_versand_zaehler()
+        max_tag = zahl("mail_max_pro_tag", 40)
+        max_stunde = zahl("mail_absender_pro_stunde", 20)
+        if max_tag and z["heute"] >= max_tag:
+            return (f"Tagesgrenze für den Mail-Versand erreicht ({z['heute']}/{max_tag}) "
+                    f"— morgen geht es weiter.")
+        if max_stunde and z["diese_stunde"] >= max_stunde:
+            return (f"Stundengrenze für den Mail-Versand erreicht "
+                    f"({z['diese_stunde']}/{max_stunde}) — bitte kurz warten.")
+        return None
+
+    def mail_versand_erlaubt(self) -> bool:
+        return self.mail_versand_bremse_grund() is None
+
+    def mail_letzte(self, limit: int = 25) -> list[dict]:
+        with self._lock:
+            rows = self._conn.execute(
+                """SELECT id, tag, an, betreff, schule_bsn, zeitpunkt, ok, fehler
+                   FROM mail_versand ORDER BY id DESC LIMIT ?""", (int(limit),)).fetchall()
+        return [dict(r) for r in rows]
+
+    # --- Change 013: Mail-Versand (Protokoll + Tagesbremse) ENDE -------------
 
     # --- Change 012: Brave-Websuche (Kontingent-Verwaltung) ------------------
     def starte_brave_aufruf(self, monat: str, query: str, bsn: str | None = None) -> int:

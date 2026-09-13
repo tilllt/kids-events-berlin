@@ -332,6 +332,66 @@
       </div>
     </details>
 
+    <details class="klapp" id="mailKlapp">
+      <summary>E-Mail — Anfragen an Schulen senden und Antworten abholen</summary>
+      <div class="klappbody">
+        <p class="muted" style="margin-top:0">
+          Postfach für die Schul-Anfragen: darüber gehen die Mails raus und die
+          Antworten wieder rein. Reply-To, Betreff und Nachricht sind getrennt
+          gepflegt — ein Antwortschreiben der Schule landet also immer im richtigen
+          Fach. Standardwerte sind vorgefüllt.
+        </p>
+        <div class="formgrid">
+          <label for="setMailFrom">Absenderadresse</label>
+          <div><input id="setMailFrom" type="email" autocomplete="off"></div>
+          <label for="setMailPass">Postfach-Passwort</label>
+          <div><input id="setMailPass" type="password" autocomplete="new-password"
+                 placeholder="leer = gespeichertes Passwort behalten">
+            <span id="mailPassMsg" class="msg klein"></span></div>
+          <label for="setSmtpHost">SMTP-Server</label>
+          <div><input id="setSmtpHost" type="text" style="width:16em">
+            <input id="setSmtpPort" type="number" min="1" max="65535" style="width:6em">
+            <select id="setSmtpVerschl">
+              <option value="ssl">SSL (465)</option>
+              <option value="starttls">STARTTLS (587)</option>
+              <option value="keine">ohne Verschlüsselung</option>
+            </select></div>
+          <label for="setImapHost">IMAP-Server (Empfang)</label>
+          <div><input id="setImapHost" type="text" style="width:16em">
+            <input id="setImapPort" type="number" min="1" max="65535" style="width:6em">
+            <select id="setImapVerschl">
+              <option value="ssl">SSL (993)</option>
+              <option value="keine">ohne Verschlüsselung</option>
+            </select></div>
+          <label for="setMailReplyTo">Reply-To</label>
+          <div><input id="setMailReplyTo" type="email" style="width:20em">
+            <span class="muted klein">hierhin antworten die Schulen</span></div>
+          <label for="setMailBetreff">Betreff</label>
+          <div><input id="setMailBetreff" type="text" style="width:32em"></div>
+          <label for="setMailText">Nachricht</label>
+          <div><textarea id="setMailText" class="mail" spellcheck="false"
+                 style="min-height:14em"></textarea>
+            <span class="muted klein">Platzhalter: {schule} {schulform} {bezirk} {jahr} {heute}</span></div>
+          <label for="setMailAktiv">Versand erlauben</label>
+          <div><label><input id="setMailAktiv" type="checkbox"> Anfragen dürfen rausgehen</label>
+            <span class="muted klein">aus = es wird nichts gesendet</span></div>
+          <label for="setMailMaxTag">Grenzen</label>
+          <div><input id="setMailMaxTag" type="number" min="0" max="1000" style="width:6em">
+            <span class="muted klein">Mails je Tag (0 = ohne Grenze)</span>
+            <input id="setMailMaxStunde" type="number" min="0" max="1000" style="width:6em">
+            <span class="muted klein">Mails je Stunde</span></div>
+        </div>
+        <div class="btnrow">
+          <button id="mailSpeichern" type="button" class="primary">E-Mail speichern</button>
+          <button id="mailTesten" type="button">Verbindung testen (SMTP + IMAP)</button>
+          <button id="mailTestmail" type="button">Testmail senden</button>
+          <button id="mailAbrufen" type="button">Postfach abrufen</button>
+          <span id="mailMsg" class="msg"></span>
+        </div>
+        <div id="mailPanel" class="panel hidden" style="margin-top:8px"></div>
+      </div>
+    </details>
+
     <details class="klapp" id="braveKlapp">
       <summary>Websuche (Brave) — fehlende Termine finden, mit Kontingent-Verwaltung</summary>
       <div class="klappbody">

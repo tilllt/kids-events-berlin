@@ -22,6 +22,31 @@ router = APIRouter(prefix="/api/admin")
 # Standardtext für die Termin-Anfrage-Mail an Schulen (Vorlage aus der
 # Schul-Erkundung, User-Vorgabe). Platzhalter werden beim Senden ersetzt:
 # {schule}, {schulform}, {bezirk}, {jahr}.
+DEFAULT_MAIL_BETREFF = "Tage der offenen Tür {jahr} – Bitte um Terminmitteilung"
+DEFAULT_MAIL_REPLY_TO = "kinderkram@mekotools.de"
+DEFAULT_MAIL_HOST = "w00d77ee.kasserver.com"
+DEFAULT_MAIL_TEXT = """Guten Tag,
+
+wir betreiben den Veranstaltungskalender „kinderkram" (kinderkram.cia-spandau.de),
+auf dem Familien mit Kindern Veranstaltungen in Berlin finden – unter anderem
+die Tage der offenen Tür und Informationsveranstaltungen der Schulen.
+
+Für die {schulform} {schule} ({bezirk}) konnten wir im Internet keinen
+öffentlichen Termin finden. Darf ich Sie bitten, uns kurz mitzuteilen:
+
+1. Tag der offenen Tür / Informationsnachmittag: Datum + Uhrzeit
+2. Ggf. Anmeldezeitraum / Schnuppertage
+3. Falls vorhanden: Link zu einer öffentlichen Terminübersicht
+
+Die Angaben veröffentlichen wir kostenfrei als knappe Terminfakten mit Link auf
+Ihre Website. Auf Wunsch nehmen wir die Schule selbstverständlich wieder aus dem
+Kalender.
+
+Vielen Dank und freundliche Grüße
+Kinderkram Berlin
+kinderkram.cia-spandau.de"""
+
+
 DEFAULT_MAIL_VORLAGE = """Betreff: Tage der offenen Tür {jahr} – Bitte um Terminmitteilung
 
 Sehr geehrte Damen und Herren,
@@ -50,6 +75,17 @@ Vielen Dank und freundliche Grüße
 
 
 def _mail_vorlage(store) -> str:
+    """Mail-Vorlage als Text — aus den getrennten Feldern Betreff + Nachricht.
+
+    Die Oberfläche pflegt Betreff und Nachricht getrennt (plus Reply-To). Intern
+    setzt der bestehende Versandweg die erste Zeile „Betreff: …" voran, deshalb
+    wird hier zusammengesetzt statt den Versandweg zu duplizieren. Ist nichts
+    gepflegt, greift die alte Sammelvorlage.
+    """
+    betreff = (store.get_setting("mail_betreff") or "").strip()
+    text = (store.get_setting("mail_text") or "").strip()
+    if text:
+        return f"Betreff: {betreff or DEFAULT_MAIL_BETREFF}\n\n{text}"
     v = (store.get_setting("mail_vorlage") or "").strip()
     return v or DEFAULT_MAIL_VORLAGE
 
@@ -215,11 +251,36 @@ def settings_get(request: Request):
     Standardtext (DEFAULT_MAIL_VORLAGE) als Beispieltext mitgeliefert, damit
     die GUI immer einen sichtbaren Ausgangstext zeigt (User-Vorgabe 2026-09)."""
     store = _store(request)
-    s = store.all_settings()
+    s = _redigiere_settings(store.all_settings())
     if not (s.get("mail_vorlage") or "").strip():
         s["mail_vorlage"] = DEFAULT_MAIL_VORLAGE
         s["mail_vorlage_ist_default"] = True
+    # Change 013: leere Mail-Felder mit unseren Standardwerten anzeigen
+    for key, wert in (("smtp_reply_to", DEFAULT_MAIL_REPLY_TO),
+                      ("mail_betreff", DEFAULT_MAIL_BETREFF),
+                      ("mail_text", DEFAULT_MAIL_TEXT),
+                      ("smtp_host", DEFAULT_MAIL_HOST),
+                      ("imap_host", DEFAULT_MAIL_HOST),
+                      ("smtp_port", "465"), ("imap_port", "993"),
+                      ("smtp_verschluesselung", "ssl")):
+        if not (s.get(key) or "").strip():
+            s[key] = wert
+            s[key + "_ist_default"] = True
+    if not (s.get("smtp_from") or "").strip():
+        s["smtp_from"] = DEFAULT_MAIL_REPLY_TO
+    if not (s.get("smtp_user") or "").strip():
+        s["smtp_user"] = DEFAULT_MAIL_REPLY_TO
     return s
+
+
+def _redigiere_settings(s: dict) -> dict:
+    """Passwörter und Schlüssel verlassen den Server nie im Klartext."""
+    raus = dict(s)
+    for key in ("smtp_pass", "llm_api_key", "brave_api_key", "mail_passwort"):
+        gesetzt = bool(str(raus.get(key) or "").strip())
+        raus[key] = ""
+        raus[key + "_gesetzt"] = gesetzt
+    return raus
 
 
 @router.put("/settings")
@@ -233,7 +294,11 @@ def settings_put(body: dict, request: Request):
                "llm_extra_json", "recherche_aktiv", "recherche_max_schulen",
                "brave_api_key", "brave_monat_limit", "brave_tages_limit",
                "brave_anfragen_pro_s", "brave_websuche_aktiv",
-               "brave_wiederholung_tage"}
+               "brave_wiederholung_tage",
+               # Change 013: Mail (getrennte Zeilen Reply-To/Betreff/Nachricht)
+               "mail_betreff", "mail_text", "mail_aktiv", "mail_max_pro_tag",
+               "mail_absender_pro_stunde", "smtp_verschluesselung",
+               "imap_host", "imap_port", "imap_verschluesselung"}
     unbekannt = set(body) - erlaubt
     fehler = []
     for k in sorted(unbekannt):
@@ -279,6 +344,32 @@ def settings_put(body: dict, request: Request):
             except ValueError:
                 fehler.append("llm_extra_json muss ein JSON-Objekt sein, "
                               'z. B. {"chat_template_kwargs": {"enable_thinking": false}}.')
+    if "smtp_port" in body or "imap_port" in body:
+        for key in ("smtp_port", "imap_port"):
+            if key in body:
+                pv = (body[key] or "").strip()
+                try:
+                    pn = int(pv)
+                    if not 1 <= pn <= 65535:
+                        raise ValueError
+                except ValueError:
+                    fehler.append(f"{key} muss ein Port zwischen 1 und 65535 sein.")
+    if "smtp_verschluesselung" in body and (body["smtp_verschluesselung"] or "").strip() \
+            not in ("ssl", "starttls", "keine"):
+        fehler.append("smtp_verschluesselung muss ssl, starttls oder keine sein.")
+    if "imap_verschluesselung" in body and (body["imap_verschluesselung"] or "").strip() \
+            not in ("ssl", "keine"):
+        fehler.append("imap_verschluesselung muss ssl oder keine sein.")
+    if "mail_max_pro_tag" in body:
+        mv = (body["mail_max_pro_tag"] or "").strip()
+        try:
+            mn = int(mv)
+            if not 0 <= mn <= 1000:
+                raise ValueError
+        except ValueError:
+            fehler.append("mail_max_pro_tag muss zwischen 0 (aus) und 1000 liegen.")
+    if "mail_aktiv" in body and str(body["mail_aktiv"]).strip() not in ("0", "1", "true", "false"):
+        fehler.append("mail_aktiv muss 0 oder 1 sein.")
     if "recherche_max_schulen" in body:
         n = (body["recherche_max_schulen"] or "").strip()
         if n:
@@ -293,7 +384,7 @@ def settings_put(body: dict, request: Request):
     for k, v in body.items():
         if k in erlaubt:
             store.set_setting(k, str(v))
-    return store.all_settings()
+    return _redigiere_settings(store.all_settings())
 
 
 # --- LLM-Endpunkt der Recherche (Change 010) --------------------------------
@@ -390,6 +481,63 @@ def recherche_letzter_lauf(request: Request):
         return {"vorhanden": False, "fehler": "gespeicherter Lauf ist kein JSON"}
     d["vorhanden"] = True
     return d
+
+
+# --- E-Mail: Versand und Empfang (Change 013) --------------------------------
+@router.get("/mail")
+def mail_status(request: Request):
+    """Zustand des Postfachs: Konfiguration (ohne Passwort), Zähler, Protokoll."""
+    from .mail import konfiguration as mail_konfig, fehlende_angaben, redigiere
+    store = _store(request)
+    k = mail_konfig(store)
+    return {"konfig": redigiere(k), "fehlende_angaben": fehlende_angaben(k),
+            "versand": store.mail_versand_zaehler(),
+            "bremse": store.mail_versand_bremse_grund(),
+            "letzte": store.mail_letzte(limit=20),
+            "adresse": k["mail_adresse"], "reply_to": k["mail_reply_to"],
+            "betreff": k["mail_betreff"]}
+
+
+@router.post("/mail/test")
+def mail_test(request: Request, body: dict | None = None):
+    """SMTP- und IMAP-Login prüfen — ohne eine Mail zu senden."""
+    from .mail import konfiguration as mail_konfig, teste_imap, teste_smtp
+    store = _store(request)
+    k = mail_konfig(store)
+    for key, wert in (body or {}).items():
+        if key in k and str(wert).strip() and key != "smtp_pass":
+            k[key] = str(wert).strip()
+    if (body or {}).get("smtp_pass"):
+        k["mail_passwort"] = str(body["smtp_pass"])
+    return {"smtp": teste_smtp(k), "imap": teste_imap(k)}
+
+
+@router.post("/mail/testmail")
+def mail_testmail(request: Request, body: dict | None = None):
+    """Echte Testmail über das konfigurierte Postfach (wird protokolliert)."""
+    from .mail import MailFehler, teste_versand
+    store = _store(request)
+    an = ((body or {}).get("an") or store.get_setting("smtp_reply_to")
+          or DEFAULT_MAIL_REPLY_TO).strip()
+    try:
+        return teste_versand(store, an)
+    except MailFehler as e:
+        raise HTTPException(502, {"fehler": [str(e)]}) from e
+
+
+@router.post("/mail/abrufen")
+def mail_abrufen(request: Request, body: dict | None = None):
+    """Ungelesene Nachrichten aus dem Postfach holen (Antworten der Schulen)."""
+    from .mail import MailFehler, hole_nachrichten, konfiguration as mail_konfig
+    store = _store(request)
+    limit = int((body or {}).get("limit") or 20)
+    nur_ungelesene = bool((body or {}).get("nur_ungelesene", True))
+    try:
+        nachrichten = hole_nachrichten(mail_konfig(store), limit=limit,
+                                       nur_ungelesene=nur_ungelesene)
+    except MailFehler as e:
+        raise HTTPException(502, {"fehler": [str(e)]}) from e
+    return {"anzahl": len(nachrichten), "nachrichten": nachrichten}
 
 
 # --- Websuche (Brave) mit Kontingent-Verwaltung (Change 012) -----------------
@@ -622,16 +770,30 @@ def _sende_mail(store, empfaenger: str, betreff: str, nachricht: str) -> None:
     if reply_to:
         msg["Reply-To"] = reply_to
     msg.set_content(nachricht)
+    grund = store.mail_versand_bremse_grund()
+    if grund:
+        raise HTTPException(429, {"fehler": [grund]})
+    art = (store.get_setting("smtp_verschluesselung") or "").strip().lower()
+    if not art:
+        art = "ssl" if port == 465 else ("starttls" if port == 587 else "keine")
+    versand_id = store.starte_mail_versand(empfaenger, betreff)
     try:
-        with smtplib.SMTP(host, port, timeout=30) as smtp:
-            smtp.ehlo()
-            if port == 587:
+        if art == "ssl":
+            verbindung = smtplib.SMTP_SSL(host, port, timeout=30)
+        else:
+            verbindung = smtplib.SMTP(host, port, timeout=30)
+        with verbindung as smtp:
+            if art != "ssl":
+                smtp.ehlo()
+            if art == "starttls":
                 smtp.starttls()
             if user:
                 smtp.login(user, pw)
             smtp.send_message(msg)
     except Exception as e:  # sichtbar statt still
+        store.beende_mail_versand(versand_id, ok=False, fehler=str(e))
         raise HTTPException(502, {"fehler": [f"Mail-Versand fehlgeschlagen: {e}"]}) from e
+    store.beende_mail_versand(versand_id, ok=True, fehler=None)
 
 
 @router.get("/tags")

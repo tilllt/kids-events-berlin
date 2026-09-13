@@ -1155,6 +1155,130 @@ $("#rechercheStart").onclick = async () => {
   } catch (e) { meldung(msg, e.message, false); }
 };
 
+/* ---------- E-Mail: Versand und Empfang (Change 013) ---------- */
+let mailStatus = {};
+
+function mailPanelZeigen(d) {
+  const box = $("#mailPanel");
+  box.classList.remove("hidden");
+  const letzte = (d.letzte || []).map((m) => `<li class="klein">${esc((m.zeitpunkt || "").slice(0, 16))}
+      ${m.ok ? "✓" : '<span class="rot">✗</span>'} an ${esc(m.an)}
+      ${m.schule_bsn ? "· " + esc(m.schule_bsn) : ""}
+      ${m.fehler ? `<span class="rot">· ${esc(m.fehler)}</span>` : ""}</li>`).join("");
+  box.innerHTML = `<p style="margin:0 0 6px">
+      Absender <strong>${esc(d.adresse)}</strong> · Reply-To <strong>${esc(d.reply_to)}</strong></p>
+    <p style="margin:0 0 6px">Versand: heute ${d.versand.heute}
+      · letzte Stunde ${d.versand.diese_stunde} · gesamt ${d.versand.gesamt}
+      ${d.versand.fehler_gesamt ? `· <span class="rot">${d.versand.fehler_gesamt} Fehlversuche</span>` : ""}
+      ${d.bremse ? `<br><span class="rot">${esc(d.bremse)}</span>` : ""}
+      ${(d.fehlende_angaben || []).length
+          ? `<br><span class="rot">Noch offen: ${esc(d.fehlende_angaben.join(", "))}</span>`
+          : '<br><span class="gruen">Postfach ist vollständig eingerichtet.</span>'}</p>
+    ${letzte ? `<p class="muted klein" style="margin:6px 0 2px">Letzte Mails:</p>
+      <ul style="margin:0">${letzte}</ul>` : ""}
+    <div id="mailNachrichten"></div>`;
+}
+
+async function loadMail() {
+  try {
+    mailStatus = await api("/api/admin/mail");
+    const s = await api("/api/admin/settings");
+    $("#setMailFrom").value = s.smtp_from || s.smtp_user || "";
+    $("#setSmtpHost").value = s.smtp_host || "";
+    $("#setSmtpPort").value = s.smtp_port || "465";
+    $("#setSmtpVerschl").value = s.smtp_verschluesselung || "ssl";
+    $("#setImapHost").value = s.imap_host || s.smtp_host || "";
+    $("#setImapPort").value = s.imap_port || "993";
+    $("#setImapVerschl").value = s.imap_verschluesselung || "ssl";
+    $("#setMailReplyTo").value = s.smtp_reply_to || "";
+    $("#setMailBetreff").value = s.mail_betreff || "";
+    $("#setMailText").value = s.mail_text || "";
+    $("#setMailAktiv").checked = ["1", "true", "ja", "on"].includes(
+      (s.mail_aktiv || "0").trim().toLowerCase());
+    $("#setMailMaxTag").value = s.mail_max_pro_tag ?? "40";
+    $("#setMailMaxStunde").value = s.mail_absender_pro_stunde ?? "20";
+    mailPanelZeigen(mailStatus);
+  } catch (e) { fehlerZeigen(`E-Mail-Status: ${e.message}`); }
+}
+
+$("#mailSpeichern").onclick = async () => {
+  const msg = $("#mailMsg");
+  const body = {
+    smtp_from: $("#setMailFrom").value.trim(),
+    smtp_user: $("#setMailFrom").value.trim(),
+    smtp_host: $("#setSmtpHost").value.trim(),
+    smtp_port: $("#setSmtpPort").value,
+    smtp_verschluesselung: $("#setSmtpVerschl").value,
+    imap_host: $("#setImapHost").value.trim(),
+    imap_port: $("#setImapPort").value,
+    imap_verschluesselung: $("#setImapVerschl").value,
+    smtp_reply_to: $("#setMailReplyTo").value.trim(),
+    mail_betreff: $("#setMailBetreff").value,
+    mail_text: $("#setMailText").value,
+    mail_aktiv: $("#setMailAktiv").checked ? "1" : "0",
+    mail_max_pro_tag: $("#setMailMaxTag").value,
+    mail_absender_pro_stunde: $("#setMailMaxStunde").value,
+  };
+  const pass = $("#setMailPass").value;
+  if (pass) body.smtp_pass = pass;
+  try {
+    await api("/api/admin/settings", { method: "PUT", body: JSON.stringify(body) });
+    $("#setMailPass").value = "";
+    meldung(msg, "E-Mail-Einstellungen gespeichert.");
+    loadMail();
+  } catch (e) { meldung(msg, e.message, false); }
+};
+
+$("#mailTesten").onclick = async () => {
+  const msg = $("#mailMsg");
+  msg.className = "msg";
+  msg.textContent = "Verbindung wird geprüft …";
+  const pass = $("#setMailPass").value;
+  try {
+    const d = await api("/api/admin/mail/test",
+      { method: "POST", body: JSON.stringify(pass ? { smtp_pass: pass } : {}) });
+    if (d.smtp.ok && d.imap.ok) {
+      meldung(msg, `SMTP und IMAP: Anmeldung OK (${d.smtp.server}).`);
+    } else {
+      const teile = [];
+      if (!d.smtp.ok) teile.push(`SMTP: ${d.smtp.fehler}`);
+      if (!d.imap.ok) teile.push(`IMAP: ${d.imap.fehler}`);
+      meldung(msg, teile.join(" · "), false);
+    }
+    loadMail();
+  } catch (e) { meldung(msg, e.message, false); }
+};
+
+$("#mailTestmail").onclick = async () => {
+  const msg = $("#mailMsg");
+  msg.className = "msg";
+  msg.textContent = "Testmail wird gesendet …";
+  try {
+    const d = await api("/api/admin/mail/testmail", { method: "POST", body: JSON.stringify({}) });
+    meldung(msg, `Testmail an ${d.an} gesendet (Betreff: ${d.betreff}).`);
+    loadMail();
+  } catch (e) { meldung(msg, e.message, false); }
+};
+
+$("#mailAbrufen").onclick = async () => {
+  const msg = $("#mailMsg");
+  msg.className = "msg";
+  msg.textContent = "Postfach wird gelesen …";
+  try {
+    const d = await api("/api/admin/mail/abrufen",
+      { method: "POST", body: JSON.stringify({ limit: 20 }) });
+    meldung(msg, `${d.anzahl} ungelesene Nachricht(en) geholt.`);
+    const ziel = $("#mailNachrichten");
+    if (ziel) {
+      ziel.innerHTML = d.nachrichten.map((n) => `<div class="panel" style="margin-top:6px">
+          <strong>${esc(n.betreff || "(ohne Betreff)")}</strong>
+          <span class="muted klein">· ${esc(n.von)} · ${esc(n.datum)}</span>
+          <pre class="klein" style="white-space:pre-wrap;margin:6px 0 0">${esc((n.text || "").slice(0, 1200))}</pre>
+        </div>`).join("") || '<p class="muted">Keine ungelesenen Nachrichten.</p>';
+    }
+  } catch (e) { meldung(msg, e.message, false); }
+};
+
 /* ---------- Websuche / Brave-Kontingent (Change 012) ---------- */
 let braveStatus = {};
 
@@ -1264,6 +1388,6 @@ $("#dedupeAnwenden").onclick = async () => {
 
 /* ---------- Init ---------- */
 fuelleSchulFilter();
-Promise.all([loadQuellen(), loadRuns(), loadFehler(), loadSettings(), ladeTags(), fuelleTerminQuellen(), loadLlm(), loadBrave()])
+Promise.all([loadQuellen(), loadRuns(), loadFehler(), loadSettings(), ladeTags(), fuelleTerminQuellen(), loadLlm(), loadBrave(), loadMail()])
   .catch((e) => fehlerZeigen(e.message));
 baueUnterTabs(); // Quellen-Tab ist beim Laden aktiv → Unter-Tabs sofort bauen
