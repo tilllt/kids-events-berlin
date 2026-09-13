@@ -160,7 +160,7 @@ async function loadMeta() {
   // Steht jetzt in der Kopfzeile neben „Aktualisiert“ — hier bleibt nichts.
   note.textContent = "";
   note.classList.add("hidden");
-  setzeStatus("bestand", `${nq} aktive Quellen · ${state.meta.events_gesamt} Events im Bestand · LLM-freie Auswertung`);
+  setzeStatus("bestand", `${nq} Quellen · ${state.meta.events_gesamt} Events`);
 }
 
 function chip(id, label, key) {
@@ -468,12 +468,12 @@ function renderList(gj) {
   ul.innerHTML = "";
   const ls = $("#liststate");
   if (all.length === 0) {
-    setzeStatus("auswahl", "Keine Veranstaltungen für diese Filter");
+    setzeStatus("auswahl", "Keine Termine für diese Filter");
     ls.textContent = "";
     ls.classList.add("hidden");
     return;
   }
-  setzeStatus("auswahl", `${all.length} Veranstaltung(en)${gj.ohne_position && gj.ohne_position.length ? ` (${gj.ohne_position.length} ohne Kartenposition)` : ""}`);
+  setzeStatus("auswahl", `${all.length} Termine${gj.ohne_position && gj.ohne_position.length ? ` (${gj.ohne_position.length} ohne Kartenposition)` : ""}`);
   // Die Zeile über der Liste trägt nur noch die Aktionen — vorher stand dort
   // zusätzlich die Anzahl (jetzt in der Statuszeile), und „URL kopieren“ war
   // nur Text ohne Funktion.
