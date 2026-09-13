@@ -95,6 +95,18 @@ def test_geojson_features_haben_immer_koordinaten(tmp_path):
         assert len(gj["ohne_position"]) >= 1        # der Termin ohne Position
 
 
+def test_naehe_js_benutzt_dieselben_parameternamen_wie_die_api():
+    """Lehre vom 2026-09-13: Das Frontend schrieb „km", die API liest
+    „umkreis_km" — der Umkreis kam nie an, weder beim Laden noch im Abo-Link.
+    Deshalb hier die Namen zwischen den Schichten festnageln."""
+    from pathlib import Path
+    js = (Path(__file__).resolve().parents[1] / "app/static/naehe.js").read_text(encoding="utf-8")
+    for name in ("lat", "lon", "umkreis_km"):
+        assert f'"{name}"' in js, f"{name} fehlt in naehe.js"
+    for falsch in ('set("km"', 'get("km"'):
+        assert falsch not in js, f"alter Name im Frontend: {falsch}"
+
+
 def test_plz_zentrum_aus_eigenem_bestand(tmp_path):
     c, _ = _client(tmp_path)
     r = c.get("/api/plz/13587").json()

@@ -40,7 +40,7 @@
 
   function ausUrl() {
     var p = new URLSearchParams(location.search);
-    var lat = p.get("lat"), lon = p.get("lon"), km = p.get("km");
+    var lat = p.get("lat"), lon = p.get("lon"), km = p.get("umkreis_km");
     merker = (lat && lon) ? { lat: lat, lon: lon, km: km || String(STD_KM) }
                           : { lat: null, lon: null, km: null };
   }
@@ -67,7 +67,7 @@
       var p = new URLSearchParams(qs);
       p.set("lat", merker.lat);
       p.set("lon", merker.lon);
-      p.set("km", merker.km || String(STD_KM));
+      p.set("umkreis_km", merker.km || String(STD_KM));
       var voll = p.toString();
       history.replaceState(null, "", voll ? "?" + voll : location.pathname);
       return voll;
@@ -90,17 +90,12 @@
   /* ---------- Nachbereitung der Anzeige ---------- */
 
   function nachbereiten(gj) {
+    setzeAboLink();   // gilt für alle Filter, nicht nur für den Umkreis
     if (!merker.lat || !merker.lon) { infoLeeren(); kreisEntfernen(); syncUi(); return; }
-    var km = Number(merker.km || STD_KM);
-    var drin = (gj.features || []).length;
-    var ohne = (gj.ohne_position || []).length;
-    var draussen = gj.ausserhalb_umkreis || 0;
-
-    var teile = [drin + (drin === 1 ? " Termin" : " Termine") +
-                 " im Umkreis von " + km + " km"];
-    if (ohne) teile.push(ohne + " ohne Kartenposition können hier nicht erscheinen");
-    if (draussen) teile.push(draussen + " liegen außerhalb");
-    setzeInfo(teile.join(" · "), "ok");
+    // Bewusst KEINE Zahlen: Die App schreibt Anzahl und Termine ohne
+    // Kartenposition schon über die Liste („1508 Veranstaltung(en) (492 ohne
+    // Kartenposition)"). Doppelt kostet auf dem Handy nur Platz.
+    infoLeeren();
 
     // Entfernung an die Listeneinträge schreiben. Die <li> der App tragen KEINE
     // Kennung (nur class/title) — verbunden wird deshalb über den Titel. Bei
@@ -175,7 +170,7 @@
       ".naehe-km{margin-left:.4rem;color:#2ea043;font-weight:600;white-space:nowrap}" +
       ".naehe-info{margin:.35rem 0 0;font-size:.82rem;color:#9aa4b2}" +
       ".naehe-info.fehler{color:#f85149;font-weight:600}" +
-      ".naehe-abo{font-size:.8rem;color:#9aa4b2;margin:.35rem 0 0}" +
+      ".naehe-abo-link{white-space:nowrap}" +
       ".naehe-tipp{font-size:.78rem;color:#9aa4b2}";
     document.head.appendChild(style);
 
@@ -211,20 +206,19 @@
       ui.km.appendChild(o);
     });
     zeile3.appendChild(ui.km);
+    // Auf dem Handy trifft ein Tippen fast immer eine Marke oder einen Pulk —
+    // dann kommt kein Kartenklick an. Deshalb dieser Knopf: Karte verschieben,
+    // Knopf tippen.
+    ui.mitte = el("button", { type: "button", class: "ghost" }, "Kartenmitte übernehmen");
+    ui.mitte.title = "Mittelpunkt auf die Mitte der sichtbaren Karte setzen";
+    zeile3.appendChild(ui.mitte);
     innen.appendChild(zeile3);
 
     innen.appendChild(el("p", { class: "naehe-tipp" },
-      "Tipp: Ein Klick auf die Karte setzt den Mittelpunkt — die Liste zeigt dann " +
-      "alle Termine in diesem Umkreis, mit den Filtern, die gerade gesetzt sind."));
+      "Karte verschieben und „Kartenmitte übernehmen“."));
 
     ui.info = el("p", { class: "naehe-info" });
     innen.appendChild(ui.info);
-
-    var abo = el("div", { class: "naehe-abo" });
-    ui.aboLink = el("a", { href: "#", target: "_blank", rel: "noopener" },
-                    "Diese Auswahl als Kalender abonnieren");
-    abo.appendChild(ui.aboLink);
-    innen.appendChild(abo);
 
     details.appendChild(innen);
     ui.details = details;
@@ -238,6 +232,7 @@
 
     ui.standort.addEventListener("click", holeStandort);
     ui.aus.addEventListener("click", function () { setze(null, null, null); });
+    ui.mitte.addEventListener("click", ausKartenmitte);
     ui.plzBtn.addEventListener("click", ausPlz);
     ui.plz.addEventListener("keydown", function (ev) {
       if (ev.key === "Enter") { ev.preventDefault(); ausPlz(); }
@@ -256,6 +251,21 @@
       setze(runde(ev.latlng.lat, 2), runde(ev.latlng.lng, 2),
             (ui.km && ui.km.value) || STD_KM);
     });
+    // Zweiter Weg auf dem Handy: Wer eine Marke oder einen Pulk trifft, bekommt
+    // das Fenster des Termins — dort setzt dieser Knopf den Umkreis dorthin.
+    map.on("popupopen", function (ev) {
+      try {
+        var ll = ev.popup.getLatLng();
+        var box = ev.popup.getElement();
+        if (!ll || !box || box.querySelector(".naehe-hier")) return;
+        var b = el("button", { type: "button", class: "ghost naehe-hier" },
+                   "Umkreis hier setzen");
+        b.addEventListener("click", function () {
+          setze(runde(ll.lat, 2), runde(ll.lng, 2), (ui.km && ui.km.value) || STD_KM);
+        });
+        (box.querySelector(".leaflet-popup-content") || box).appendChild(b);
+      } catch (e) { /* Fenster bleibt wie es ist */ }
+    });
   }
 
   function syncUi() {
@@ -264,12 +274,13 @@
     ui.aus.style.display = aktiv ? "" : "none";
     if (merker.km) ui.km.value = merker.km;
     if (aktiv) {
-      ui.details.setAttribute("open", "open");
+      // NICHT automatisch aufklappen: der Block sitzt über der Karte und nimmt
+      // ihr sonst die Höhe (Karte war nur noch 211 px hoch, Liste 113 px).
       ui.summary.textContent = "In meiner Nähe — " + (merker.km || STD_KM) + " km";
     } else {
       ui.summary.textContent = "In meiner Nähe — Standort, Postleitzahl oder Kartenpunkt";
     }
-    aktualisiereAbo();
+    setzeAboLink();
   }
 
   function setzeInfo(text, art) {
@@ -282,15 +293,28 @@
 
   function zeigeFehler(text) { setzeInfo(text, "fehler"); }
 
-  function aktualisiereAbo() {
-    if (!ui.aboLink) return;
-    var p = new URLSearchParams(typeof window.queryParams === "function"
-      ? window.queryParams() : location.search);
+  // Das Kalender-Abo gilt für die GESAMTE Auswahl, nicht nur für den Umkreis —
+  // es gehört deshalb nicht in den Nähe-Block, sondern neben „URL kopieren“
+  // in die Zeile der App über der Liste.
+  function setzeAboLink() {
+    var box = document.getElementById("liststate");
+    if (!box) return;
+    var p = new URLSearchParams(location.search);
     if (merker.lat && merker.lon) {
       p.set("lat", merker.lat); p.set("lon", merker.lon);
-      p.set("km", merker.km || String(STD_KM));
+      p.set("umkreis_km", merker.km || String(STD_KM));
     }
-    ui.aboLink.href = "/api/kalender.ics?" + p.toString();
+    var a = document.getElementById("naehe-abo");
+    if (!a) {
+      a = el("a", { id: "naehe-abo", class: "naehe-abo-link",
+                    target: "_blank", rel: "noopener",
+                    title: "Diese Auswahl im Kalenderprogramm abonnieren " +
+                           "(aktualisiert sich dort selbst)" });
+      a.textContent = "Kalender abonnieren";
+      box.appendChild(document.createTextNode(" · "));
+      box.appendChild(a);
+    }
+    a.href = "/api/kalender.ics?" + p.toString();
   }
 
   /* ---------- Eingaben ---------- */
@@ -313,6 +337,17 @@
     }, { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 });
   }
 
+  // Mittelpunkt aus der sichtbaren Kartenmitte — der verlässliche Weg auf dem
+  // Handy, wo ein Tippen meist auf einer Marke landet.
+  function ausKartenmitte() {
+    if (typeof map === "undefined" || !map) {
+      zeigeFehler("Die Karte ist noch nicht bereit — bitte kurz warten.");
+      return;
+    }
+    var c = map.getCenter();
+    setze(runde(c.lat, 2), runde(c.lng, 2), (ui.km && ui.km.value) || STD_KM);
+  }
+
   function ausPlz() {
     var wert = (ui.plz.value || "").trim();
     if (wert.length < 3) {
@@ -331,7 +366,7 @@
           return;
         }
         setze(res.d.lat, res.d.lon, (ui.km && ui.km.value) || STD_KM);
-        setzeInfo("Mittelpunkt aus " + res.d.termine + " Terminen mit Position gesetzt.", "ok");
+        setzeInfo("Mittelpunkt gesetzt.", "ok");
       })
       .catch(function (e) { zeigeFehler("Suche fehlgeschlagen: " + e.message); });
   }
@@ -355,9 +390,7 @@
             .bindPopup("Ihr Standort (nur in Ihrem Browser)");
         } catch (e) { /* Karte noch nicht bereit */ }
         if (!merker.lat && ui.details) {
-          ui.details.setAttribute("open", "open");
-          setzeInfo("Karte auf Ihren Standort gesetzt. Mit „Mein Standort“ oder einem " +
-                    "Klick auf die Karte die Umkreissuche starten.", "ok");
+          setzeInfo("Karte auf Ihren Standort gesetzt — „Mein Standort“ startet die Suche.", "ok");
         }
       }, function () { /* still: keine Freigabe */ },
       { enableHighAccuracy: false, timeout: 8000, maximumAge: 600000 });
