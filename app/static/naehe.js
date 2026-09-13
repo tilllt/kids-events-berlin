@@ -1,12 +1,18 @@
-/* Change 018 — „In meiner Nähe" (Umkreissuche) und Kalender-Abo.
+/* Change 018 — „In meiner Nähe": Umkreissuche, Kalender-Abo, Standort-Karte.
  *
- * Ergänzt die bestehende Filterleiste, ohne deren Logik anzufassen: Mittelpunkt
- * und Umkreis landen als Parameter (lat, lon, km) in der URL. Dadurch bleiben
- * alle anderen Filter wirksam, und die Auswahl ist als Link teilbar.
+ * Der Block sitzt ÜBER der Karte (nicht in der Filterseite), damit klar ist,
+ * dass man den Mittelpunkt auch per Klick auf die Karte setzen kann. Er ist
+ * ausklappbar (<details>); die Zusammenfassung zeigt den aktuellen Zustand.
+ *
+ * Ergänzt die Filter der App, ohne deren Logik anzufassen: Mittelpunkt und
+ * Umkreis reisen als Parameter (lat, lon, km) in der URL — dadurch bleiben alle
+ * anderen Filter wirksam und die Auswahl ist als Link teilbar.
  *
  * Datenschutz: Der Mittelpunkt wird VOR dem Senden gerundet — Gerätestandort
- * auf drei Nachkommastellen (rund 110 m), PLZ/Ort auf zwei (rund 1 km). So
+ * auf drei Nachkommastellen (rund 110 m), PLZ/Karte auf zwei (rund 1 km). So
  * steht in den Server-Logs kein genauer Aufenthaltsort. Nichts wird gespeichert.
+ * Der Standort wird nie automatisch abgefragt: nur auf Klick — oder wenn der
+ * Browser die Freigabe bereits erteilt hat, um die Karte zu zentrieren.
  */
 (function () {
   "use strict";
@@ -15,6 +21,7 @@
   var KM_WAHL = [1, 2, 5, 10];
   var merker = { lat: null, lon: null, km: null };
   var kreis = null;
+  var standortPunkt = null;
 
   function runde(v, stellen) {
     var f = Math.pow(10, stellen);
@@ -81,7 +88,7 @@
   /* ---------- Nachbereitung der Anzeige ---------- */
 
   function nachbereiten(gj) {
-    if (!merker.lat || !merker.lon) { infoLeeren(); kreisEntfernen(); return; }
+    if (!merker.lat || !merker.lon) { infoLeeren(); kreisEntfernen(); syncUi(); return; }
     var km = Number(merker.km || STD_KM);
     var drin = (gj.features || []).length;
     var ohne = (gj.ohne_position || []).length;
@@ -94,7 +101,7 @@
     setzeInfo(teile.join(" · "), "ok");
 
     // Entfernung an die Listeneinträge schreiben (die App kennzeichnet sie mit
-    // data-ev-id) — wenn das Attribut fehlt, passiert einfach nichts.
+    // data-ev-id) — fehlt das Attribut, passiert einfach nichts.
     var entf = {};
     (gj.features || []).forEach(function (f) {
       var p = f.properties || {};
@@ -105,13 +112,13 @@
       if (alt) alt.remove();
       var d = entf[li.getAttribute("data-ev-id")];
       if (d == null) return;
-      var s = el("span", { class: "naehe-km" },
-                 String(d).replace(".", ",") + " km");
+      var s = el("span", { class: "naehe-km" }, String(d).replace(".", ",") + " km");
       var ziel = li.querySelector(".ev-kopf, .ev-titel, h3") || li.firstElementChild || li;
       ziel.appendChild(s);
     });
 
     zeichneKreis();
+    syncUi();
   }
 
   function zeichneKreis() {
@@ -137,42 +144,50 @@
   var ui = {};
 
   function baueUi() {
-    var aside = document.getElementById("filters");
-    if (!aside) return false;
+    var karte = document.getElementById("map");
+    if (!karte) return false;
+
     var style = el("style");
     style.textContent =
-      ".naehe-block{border:1px solid #2a2f36;border-radius:10px;padding:.6rem .7rem;" +
-      "margin:.2rem 0 .8rem;background:#14181d}" +
-      ".naehe-block h3{margin:0 0 .5rem;font-size:.85rem;letter-spacing:.02em;" +
-      "text-transform:uppercase;color:#9aa4b2}" +
+      ".naehe-block{border:1px solid #2a2f36;border-radius:10px;background:#14181d;" +
+      "margin:0 0 .5rem;padding:0}" +
+      ".naehe-block>summary{cursor:pointer;padding:.55rem .7rem;font-size:.85rem;" +
+      "letter-spacing:.02em;text-transform:uppercase;color:#9aa4b2;list-style:none}" +
+      ".naehe-block>summary::-webkit-details-marker{display:none}" +
+      ".naehe-block>summary::before{content:'▸ ';color:#2ea043}" +
+      ".naehe-block[open]>summary::before{content:'▾ '}" +
+      ".naehe-innen{padding:0 .7rem .7rem}" +
       ".naehe-zeile{display:flex;gap:.4rem;flex-wrap:wrap;align-items:center;margin:.35rem 0}" +
       ".naehe-block button{cursor:pointer}" +
       ".naehe-km{margin-left:.4rem;color:#2ea043;font-weight:600;white-space:nowrap}" +
       ".naehe-info{margin:.35rem 0 0;font-size:.82rem;color:#9aa4b2}" +
       ".naehe-info.fehler{color:#f85149;font-weight:600}" +
       ".naehe-abo{font-size:.8rem;color:#9aa4b2;margin:.35rem 0 0}" +
-      ".naehe-abo code{display:block;word-break:break-all;color:#c9d1d9}";
+      ".naehe-tipp{font-size:.78rem;color:#9aa4b2}";
     document.head.appendChild(style);
 
-    var block = el("div", { class: "naehe-block" });
-    block.appendChild(el("h3", {}, "In meiner Nähe"));
+    var details = el("details", { class: "naehe-block" });
+    ui.summary = el("summary", {}, "In meiner Nähe");
+    details.appendChild(ui.summary);
 
+    var innen = el("div", { class: "naehe-innen" });
     var zeile1 = el("div", { class: "naehe-zeile" });
     ui.standort = el("button", { type: "button", class: "ghost" }, "📍 Mein Standort");
-    ui.standort.title = "Standort einmalig abfragen — wird auf ~110 m gerundet übertragen, nicht gespeichert";
+    ui.standort.title = "Standort einmalig abfragen — wird auf ~110 m gerundet " +
+                        "übertragen, nicht gespeichert";
     zeile1.appendChild(ui.standort);
     ui.aus = el("button", { type: "button", class: "ghost" }, "✕ Nähe aus");
     ui.aus.style.display = "none";
     zeile1.appendChild(ui.aus);
-    block.appendChild(zeile1);
+    innen.appendChild(zeile1);
 
     var zeile2 = el("div", { class: "naehe-zeile" });
-    ui.plz = el("input", { type: "search", placeholder: "PLZ oder Ortsteil…",
-                           autocomplete: "off", style: "flex:1 1 8rem" });
+    ui.plz = el("input", { type: "search", placeholder: "Postleitzahl oder Ortsteil…",
+                           autocomplete: "off", style: "flex:1 1 10rem" });
     ui.plzBtn = el("button", { type: "button", class: "ghost" }, "Übernehmen");
     zeile2.appendChild(ui.plz);
     zeile2.appendChild(ui.plzBtn);
-    block.appendChild(zeile2);
+    innen.appendChild(zeile2);
 
     var zeile3 = el("div", { class: "naehe-zeile" });
     zeile3.appendChild(el("label", { for: "naehe-km", style: "font-size:.85rem" }, "Umkreis"));
@@ -183,20 +198,30 @@
       ui.km.appendChild(o);
     });
     zeile3.appendChild(ui.km);
-    zeile3.appendChild(el("span", { style: "font-size:.78rem;color:#9aa4b2" },
-                          "Tipp: Klick auf die Karte setzt den Mittelpunkt"));
-    block.appendChild(zeile3);
+    innen.appendChild(zeile3);
+
+    innen.appendChild(el("p", { class: "naehe-tipp" },
+      "Tipp: Ein Klick auf die Karte setzt den Mittelpunkt — die Liste zeigt dann " +
+      "alle Termine in diesem Umkreis, mit den Filtern, die gerade gesetzt sind."));
 
     ui.info = el("p", { class: "naehe-info" });
-    block.appendChild(ui.info);
+    innen.appendChild(ui.info);
 
     var abo = el("div", { class: "naehe-abo" });
     ui.aboLink = el("a", { href: "#", target: "_blank", rel: "noopener" },
                     "Diese Auswahl als Kalender abonnieren");
     abo.appendChild(ui.aboLink);
-    block.appendChild(abo);
+    innen.appendChild(abo);
 
-    aside.insertBefore(block, aside.firstChild);
+    details.appendChild(innen);
+    ui.details = details;
+
+    // Über der Karte einhängen — als Geschwister des Karten-Containers, damit
+    // Layout und Größe der Karte unangetastet bleiben.
+    var anker = karte.parentElement || karte;
+    var eltern = (anker.parentElement && anker.parentElement !== document.body)
+      ? anker.parentElement : anker;
+    eltern.insertBefore(details, anker);
 
     ui.standort.addEventListener("click", holeStandort);
     ui.aus.addEventListener("click", function () { setze(null, null, null); });
@@ -213,10 +238,10 @@
 
   function karteKlickbar() {
     if (typeof map === "undefined" || !map) return;
+    // Immer aktiv: der Klick auf die Karte ist der einfachste Weg zum Mittelpunkt.
     map.on("click", function (ev) {
-      if (!merker.lat) return;   // nur wenn die Nähe-Suche aktiv ist
       setze(runde(ev.latlng.lat, 2), runde(ev.latlng.lng, 2),
-            ui.km ? ui.km.value : STD_KM);
+            (ui.km && ui.km.value) || STD_KM);
     });
   }
 
@@ -225,6 +250,12 @@
     var aktiv = !!(merker.lat && merker.lon);
     ui.aus.style.display = aktiv ? "" : "none";
     if (merker.km) ui.km.value = merker.km;
+    if (aktiv) {
+      ui.details.setAttribute("open", "open");
+      ui.summary.textContent = "In meiner Nähe — " + (merker.km || STD_KM) + " km";
+    } else {
+      ui.summary.textContent = "In meiner Nähe — Standort, Postleitzahl oder Kartenpunkt";
+    }
     aktualisiereAbo();
   }
 
@@ -253,7 +284,8 @@
 
   function holeStandort() {
     if (!navigator.geolocation) {
-      zeigeFehler("Dieser Browser kann keinen Standort liefern — bitte Postleitzahl eingeben.");
+      zeigeFehler("Dieser Browser kann keinen Standort liefern — bitte " +
+                  "Postleitzahl eingeben oder Punkt auf der Karte wählen.");
       return;
     }
     setzeInfo("Standort wird einmalig abgefragt…", "ok");
@@ -261,7 +293,7 @@
       // Drei Nachkommastellen (rund 110 m): genau genug für 1 km Umkreis,
       // kein genauer Aufenthaltsort in den Server-Logs.
       setze(runde(pos.coords.latitude, 3), runde(pos.coords.longitude, 3),
-            ui.km ? ui.km.value : STD_KM);
+            (ui.km && ui.km.value) || STD_KM);
     }, function (err) {
       zeigeFehler("Standort nicht freigegeben (" + (err.message || err.code) +
                   ") — bitte Postleitzahl eingeben oder Punkt auf der Karte wählen.");
@@ -276,9 +308,7 @@
     }
     setzeInfo("Suche Mittelpunkt zu „" + wert + "“ …", "ok");
     fetch("/api/plz/" + encodeURIComponent(wert))
-      .then(function (r) {
-        return r.json().then(function (d) { return { ok: r.ok, d: d }; });
-      })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
       .then(function (res) {
         if (!res.ok) {
           var f = res.d && res.d.detail;
@@ -287,10 +317,38 @@
                       " — anderen Ort versuchen oder Punkt auf der Karte wählen.");
           return;
         }
-        setze(res.d.lat, res.d.lon, ui.km ? ui.km.value : STD_KM);
+        setze(res.d.lat, res.d.lon, (ui.km && ui.km.value) || STD_KM);
         setzeInfo("Mittelpunkt aus " + res.d.termine + " Terminen mit Position gesetzt.", "ok");
       })
       .catch(function (e) { zeigeFehler("Suche fehlgeschlagen: " + e.message); });
+  }
+
+  /* ---------- Karte am Standort starten, wenn schon erlaubt ---------- */
+
+  function standortWennErlaubt() {
+    if (!navigator.geolocation || !navigator.permissions ||
+        typeof navigator.permissions.query !== "function") return;
+    navigator.permissions.query({ name: "geolocation" }).then(function (st) {
+      if (st.state !== "granted") return;   // nie ungefragt nachfragen
+      navigator.geolocation.getCurrentPosition(function (pos) {
+        if (typeof map === "undefined" || !map) return;
+        var c = [pos.coords.latitude, pos.coords.longitude];
+        try {
+          map.setView(c, 14);
+          if (standortPunkt) map.removeLayer(standortPunkt);
+          standortPunkt = L.circleMarker(c, { radius: 6, color: "#58a6ff",
+                                              fillOpacity: 0.9, fillColor: "#58a6ff" })
+            .addTo(map)
+            .bindPopup("Ihr Standort (nur in Ihrem Browser)");
+        } catch (e) { /* Karte noch nicht bereit */ }
+        if (!merker.lat && ui.details) {
+          ui.details.setAttribute("open", "open");
+          setzeInfo("Karte auf Ihren Standort gesetzt. Mit „Mein Standort“ oder einem " +
+                    "Klick auf die Karte die Umkreissuche starten.", "ok");
+        }
+      }, function () { /* still: keine Freigabe */ },
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 600000 });
+    }).catch(function () { /* Browser ohne Permissions-API */ });
   }
 
   /* ---------- Start ---------- */
@@ -301,6 +359,7 @@
     haengeEin();
     haengeRenderEin();
     syncUi();
+    setTimeout(standortWennErlaubt, 800);
     if (merker.lat) load();
   }
 
