@@ -546,9 +546,15 @@ class SelectorAdapter:
         occ = start_local.strftime("%Y%m%dT%H%M")
         source_event_id = f"{row['slug']}#{occ}"
         url = row.get("url") or ""
+        # Ortsangabe: Quelle zuerst, dann die feste Vorgabe des Kalenders.
+        # Nennt die Quelle keinen Ortsnamen, aber eine Adresse (BWB-Wasser-Mobil:
+        # „Charlottenburger Chaussee 67, 13597 Berlin"), darf nicht „Ohne Angabe"
+        # dastehen — dann gilt die grobe Ortsangabe „Berlin"; die genaue Adresse
+        # steht weiterhin in der Adresszeile (und dient der Geokodierung).
+        adresse = row.get("adresse") or detail.get("adresse")
         ort = (row.get("ort") or detail.get("ort")
                or self._standard.get("ort")
-               or (detail.get("adresse") and "Berlin")
+               or (adresse and "Berlin")
                or "Ohne Angabe")
         # Termine geben den Ortsteil/Bezirk direkt an („Pankow“, „Berlinweit“)
         # → kanonischer Slug; schützt die Pipeline vor Geo-Lookup von

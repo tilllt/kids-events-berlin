@@ -246,6 +246,36 @@ listing:
     assert fehler == [], fehler
 
 
+def test_adresse_ohne_ortsname_ergibt_berlin_statt_ohne_angabe():
+    """Nutzerhinweis: „Berliner Wasser Mobil Tour" hat eine konkrete Adresse
+    („Charlottenburger Chaussee 67, 13597 Berlin") und den Bezirk Spandau,
+    zeigte aber „Ohne Angabe". Liegt eine Adresse vor, ist der Ort nicht
+    unbekannt — „Berlin" als grobe Angabe, die Adresse bleibt genau."""
+    regeln = """
+quelle: test-bwb
+name: Testquelle Adresse
+robots: 'erlaubt: / (Test)'
+listing:
+  url: https://example.org/kalender
+  item_css: 'div.ev'
+  felder:
+    titel: {css: 'h3'}
+    start: {css: '.d', format: '%d.%m.%Y'}
+    adresse: {css: '.a'}
+    bezirk: {css: '.b'}
+"""
+    html = ('<div class="ev"><h3>Berliner Wasser Mobil Tour 2026</h3>'
+            '<div class="d">13.09.2026</div>'
+            '<div class="a">Charlottenburger Chaussee 67, 13597 Berlin</div>'
+            '<div class="b">Spandau</div></div>')
+    adapter = SelectorAdapter("test-bwb", regel_yaml=regeln)
+    ev = adapter.zu_event(adapter.parse_listing(html)[0], {}, datetime.now(TZ_BERLIN))
+    assert ev["ort"] == "Berlin"
+    assert ev["adresse"] == "Charlottenburger Chaussee 67, 13597 Berlin"
+    assert ev["bezirk"] == "spandau"
+    adapter.close()
+
+
 def test_url_regex_verwirft_tote_links():
     """Familienportal liefert pro Karte mal einen sprechenden /termin/-Link, mal
     einen toten calendarize/cHash-Link, der auf die Liste umleitet. Über ein
