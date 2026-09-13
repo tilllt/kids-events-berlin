@@ -169,6 +169,42 @@ def test_familienportal_listing_offline(fixture_dir_familienportal):
     adapter.close()
 
 
+def test_bezirk_slug_und_label_landen_im_event():
+    """Quellen nennen den Bezirk mal ASCII-slugig („neukoelln", „treptow-koepenick"),
+    mal als Label („Neukölln"). Beides muss auf den kanonischen Slug führen —
+    sonst fällt genau die Umlaut-Gruppe stumm durch (bezirk=null)."""
+    from app.adapters.selector_adapter import _LABEL_ZU_SLUG
+
+    for roh, erwartet in [("neukoelln", "neukoelln"), ("treptow-koepenick", "treptow-koepenick"),
+                          ("tempelhof-schoeneberg", "tempelhof-schoeneberg"),
+                          ("Neukölln", "neukoelln"), ("Treptow-Köpenick", "treptow-koepenick"),
+                          ("SPANDAU", "spandau"), ("Berlinweit", "berlinweit")]:
+        assert _LABEL_ZU_SLUG.get(roh.strip().lower()) == erwartet, roh
+
+
+def test_listing_bezirk_ascii_slug_endet_im_event():
+    """Ende-zu-Ende: Bezirks-Slug aus dem Listing muss im Event ankommen."""
+    regeln = """
+quelle: test-bezirk-slug
+name: Testquelle Bezirk
+robots: 'erlaubt: / (Test)'
+listing:
+  url: https://example.org/kalender
+  item_css: 'div.ev'
+  felder:
+    titel: {css: 'h3'}
+    start: {css: '.d', format: '%d.%m.%Y'}
+    bezirk: {css: '.b'}
+"""
+    html = ('<div class="ev"><h3>Testfest</h3><div class="d">01.10.2026</div>'
+            '<div class="b">treptow-koepenick</div></div>')
+    adapter = SelectorAdapter("test-bezirk-slug", regel_yaml=regeln)
+    rows = adapter.parse_listing(html)
+    ev = adapter.zu_event(rows[0], {}, datetime.now(TZ_BERLIN))
+    assert ev["bezirk"] == "treptow-koepenick"
+    adapter.close()
+
+
 def test_familienportal_zu_event_bezirk(fixture_dir_familienportal):
     from app.quellen_defaults import FAMILIENPORTAL_REGELN
     adapter = SelectorAdapter("familienportal", regel_yaml=FAMILIENPORTAL_REGELN)

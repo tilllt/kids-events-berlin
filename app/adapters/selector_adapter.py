@@ -26,7 +26,14 @@ UA = "kids-events-berlin/0.2 (+https://github.com/tilllt/kids-events-berlin)"
 
 # Quell-Bezirksnamen (BEZIRK_LABELS-Werte) → kanonische Slugs. Wird genutzt,
 # wenn eine Quelle den Bezirk direkt im Listing nennt (z. B. familienportal).
-_LABEL_ZU_SLUG = {v.lower(): k for k, v in BEZIRK_LABELS.items()}
+# Kanonische Slugs sind ebenfalls gültig: Quellen liefern denselben Bezirk mal
+# als Label („Neukölln", „Treptow-Köpenick"), mal ASCII-slugig („neukoelln",
+# „treptow-koepenick"). Ohne diese zweite Auflösung fielen genau die Bezirke
+# mit Umlaut/ö-Transliteration stumm durch (bezirk=null).
+_LABEL_ZU_SLUG = {
+    **{k: k for k in BEZIRK_LABELS},
+    **{v.lower(): k for k, v in BEZIRK_LABELS.items()},
+}
 
 # Deutsche Monatsnamen für Datumstexte wie „6. September 2026“ (Detail-Termine).
 _DE_MONATE = {
