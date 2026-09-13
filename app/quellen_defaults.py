@@ -8,6 +8,8 @@ ohne Fixture-Test anzufassen (tests/test_selector_adapter.py).
 from __future__ import annotations
 
 ZLB_REGELN = """quelle: zlb
+# Fester Ort: die ZLB veranstaltet im Haus (Breite Str. 32-34, 10178 Berlin).
+standard: {ort: "Zentral- und Landesbibliothek Berlin (ZLB)", bezirk: "mitte"}
 robots: "erlaubt; Events-Pfade nicht disallowed (2026-09-06)"
 listing:
   url: https://www.zlb.de/veranstaltungen
@@ -93,6 +95,9 @@ detail:
 # `kostenlos` wird NICHT gemappt: isAccessibleForFree steht im JSON-LD auf
 # "False", obwohl z. B. das Festival der Riesendrachen Eintritt frei ist.
 _GRUEN_BERLIN_VORLAGE = """quelle: __QUELLE__
+# Fester Ort: der Kalender GEHÖRT zu einem Ort („Gärten der Welt IST der Ort").
+# Gilt nur, wenn die Quelle nichts Eigenes liefert.
+__STANDARD__
 robots: "erlaubt (robots.txt: Allow: *, geprueft 2026-09-12)"
 listing:
   url: __URL__
@@ -113,34 +118,40 @@ detail:
 """
 
 
-def _gruen_berlin_regeln(quelle: str, url: str, ende_regex: str, ende_format: str) -> str:
+def _gruen_berlin_regeln(quelle: str, url: str, ende_regex: str, ende_format: str,
+                         ort: str, bezirk: str) -> str:
     return (_GRUEN_BERLIN_VORLAGE
             .replace("__QUELLE__", quelle)
             .replace("__URL__", url)
             .replace("__ENDE_REGEX__", ende_regex)
             .replace("__ENDE_FORMAT__", ende_format)
+            .replace("__STANDARD__", f'standard: {{ort: "{ort}", bezirk: "{bezirk}"}}')
             )
 
 
 TEMPELHOFER_FELD_REGELN = _gruen_berlin_regeln(
     "tempelhoferfeld",
     "https://www.tempelhoferfeld.de/entdecken-erleben/veranstaltungskalender/",
-    "[0-9]{1,2}:[0-9]{2}[^0-9]{1,4}([0-9]{1,2}:[0-9]{2})", "%H:%M")
+    "[0-9]{1,2}:[0-9]{2}[^0-9]{1,4}([0-9]{1,2}:[0-9]{2})", "%H:%M",
+    "Tempelhofer Feld", "tempelhof-schoeneberg")
 
 GAERTEN_DER_WELT_REGELN = _gruen_berlin_regeln(
     "gaerten-der-welt",
     "https://www.gaertenderwelt.de/events/veranstaltungen/",
-    "[-][ ]*([0-9]{1,2}[.][0-9]{2})[ ]*Uhr", "%H.%M")
+    "[-][ ]*([0-9]{1,2}[.][0-9]{2})[ ]*Uhr", "%H.%M",
+    "Gärten der Welt", "marzahn-hellersdorf")
 
 BRITZER_GARTEN_REGELN = _gruen_berlin_regeln(
     "britzer-garten",
     "https://www.britzergarten.de/events/eventkalender/",
-    "[-][ ]*([0-9]{1,2})[ ]*Uhr", "%H")
+    "[-][ ]*([0-9]{1,2})[ ]*Uhr", "%H",
+    "Britzer Garten", "neukoelln")
 
 SUEDGELAENDE_REGELN = _gruen_berlin_regeln(
     "suedgelaende",
     "https://www.natur-park-suedgelaende.de/entdecken-erleben/kalender/",
-    "[0-9]{1,2}:[0-9]{2}[^0-9]{1,4}([0-9]{1,2}:[0-9]{2})", "%H:%M")
+    "[0-9]{1,2}:[0-9]{2}[^0-9]{1,4}([0-9]{1,2}:[0-9]{2})", "%H:%M",
+    "Natur Park Südgelände", "tempelhof-schoeneberg")
 
 # Kinderkulturkalender (LKJ Berlin e.V., Drupal 10) — eigene Datenbank,
 # KEIN jup!-Duplikat (Audit-Befund 2026-09-12 widerlegt; 87 der 91 im

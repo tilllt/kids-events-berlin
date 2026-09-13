@@ -205,6 +205,47 @@ listing:
     adapter.close()
 
 
+def test_fester_kalenderort_fuellt_leere_felder():
+    """Manche Kalender gehören zu einem Ort („Gärten der Welt IST der Ort") —
+    dann darf der Ort nicht leer bleiben, sonst fehlt der Termin im Ortsfilter.
+    Der Standard füllt nur, was die Quelle selbst nicht liefert."""
+    from app.quellen_defaults import GAERTEN_DER_WELT_REGELN
+
+    regeln = """
+quelle: test-park
+name: Testpark
+robots: 'erlaubt: / (Test)'
+standard: {ort: 'Gärten der Welt', bezirk: 'marzahn-hellersdorf'}
+listing:
+  url: https://example.org/kalender
+  item_css: 'div.ev'
+  felder:
+    titel: {css: 'h3'}
+    start: {css: '.d', format: '%d.%m.%Y'}
+"""
+    html = '<div class="ev"><h3>Drachenfest</h3><div class="d">01.10.2026</div></div>'
+    adapter = SelectorAdapter("test-park", regel_yaml=regeln)
+    ev = adapter.zu_event(adapter.parse_listing(html)[0], {}, datetime.now(TZ_BERLIN))
+    assert ev["ort"] == "Gärten der Welt"
+    assert ev["bezirk"] == "marzahn-hellersdorf"
+    adapter.close()
+
+    # Eigene Angabe der Quelle hat Vorrang vor dem Standard.
+    regeln2 = regeln + "    ort: {css: '.o'}\n"
+    html2 = ('<div class="ev"><h3>Drachenfest</h3><div class="d">01.10.2026</div>'
+             '<div class="o">Blumengarten</div></div>')
+    a2 = SelectorAdapter("test-park", regel_yaml=regeln2)
+    ev2 = a2.zu_event(a2.parse_listing(html2)[0], {}, datetime.now(TZ_BERLIN))
+    assert ev2["ort"] == "Blumengarten"
+    a2.close()
+
+    # Die ausgelieferten Standard-Regeln tragen den festen Ort wirklich.
+    assert "standard:" in GAERTEN_DER_WELT_REGELN
+    assert "Gärten der Welt" in GAERTEN_DER_WELT_REGELN
+    fehler = validate_regeln_yaml(GAERTEN_DER_WELT_REGELN)
+    assert fehler == [], fehler
+
+
 def test_url_regex_verwirft_tote_links():
     """Familienportal liefert pro Karte mal einen sprechenden /termin/-Link, mal
     einen toten calendarize/cHash-Link, der auf die Liste umleitet. Über ein

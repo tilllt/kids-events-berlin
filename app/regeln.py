@@ -43,7 +43,10 @@ _DETAIL_FELDER = {
     "beschreibung_kurz", "adresse", "ort", "lat", "lon",
 }
 
-_TOP_KEYS = {"listing", "detail", "filter_kinder", "name", "robots", "quelle"}
+_TOP_KEYS = {"listing", "detail", "filter_kinder", "name", "robots", "quelle", "standard"}
+# Quellenweite Vorgaben („dieser Kalender gehört zu diesem Ort"): füllen nur,
+# was die Quelle selbst nicht liefert.
+_STANDARD_FELDER = {"ort", "adresse", "bezirk", "beschreibung_kurz"}
 _LISTING_KEYS = {"url", "pagination", "item_css", "felder", "horizont_tage", "detail_url_skip"}
 _PAGINATION_KEYS = {"param", "next_css", "offset"}
 _FILTER_KEYS = {"regex"}
@@ -138,6 +141,19 @@ def validate_regeln_yaml(yaml_text: str, quelle: str | None = None) -> list[str]
 
     if quelle and doc.get("quelle") and doc["quelle"] != quelle:
         fehler.append(f"'quelle' in den Regeln ({doc['quelle']}) passt nicht zur Quelle {quelle}.")
+
+    standard = doc.get("standard")
+    if standard is not None:
+        if not isinstance(standard, dict):
+            fehler.append("Abschnitt 'standard' muss ein Mapping sein "
+                          "(z. B. standard: {ort: 'Gärten der Welt'}).")
+        else:
+            for k, v in sorted(standard.items()):
+                if k not in _STANDARD_FELDER:
+                    fehler.append(f"standard: unbekanntes Feld '{k}' "
+                                  f"(erlaubt: {', '.join(sorted(_STANDARD_FELDER))}).")
+                elif not isinstance(v, str) or not v.strip():
+                    fehler.append(f"standard.{k} ist leer — feste Vorgaben brauchen einen Wert.")
 
     listing = doc.get("listing")
     if not isinstance(listing, dict):

@@ -224,6 +224,11 @@ class SelectorAdapter:
         # calendarize/cHash-Links, die auf die Startseite umleiten).
         self._detail_url_skip = str(listing.get("detail_url_skip") or "")
         self._detail_cfg = self._regeln.get("detail") or {}
+        # Quellenweite Vorgaben: manche Kalender haben einen festen Ort
+        # („Gärten der Welt IST der Ort"), sie brauchen also kein Ortsfeld.
+        # Gilt nur, wenn die Quelle selbst nichts liefert — Quelle hat Vorrang.
+        self._standard = {k: v.strip() for k, v in (self._regeln.get("standard") or {}).items()
+                          if isinstance(v, str) and v.strip()}
         # Detailseiten nur laden, wenn die Regeln sie auswerten (JSON-LD/CSS/
         # Serien-Termine).
         self.braucht_detail = bool(self._detail_cfg.get("jsonld")
@@ -542,12 +547,15 @@ class SelectorAdapter:
         source_event_id = f"{row['slug']}#{occ}"
         url = row.get("url") or ""
         ort = (row.get("ort") or detail.get("ort")
+               or self._standard.get("ort")
                or (detail.get("adresse") and "Berlin")
                or "Ohne Angabe")
-        # Quelle nennt den Bezirk direkt (Label wie „Pankow“, „Berlinweit“)
+        # Termine geben den Ortsteil/Bezirk direkt an („Pankow“, „Berlinweit“)
         # → kanonischer Slug; schützt die Pipeline vor Geo-Lookup von
-        # reinen Bezirksnamen („Bezirk aus der Quelle“-Prinzip).
-        bezirk = _LABEL_ZU_SLUG.get((row.get("bezirk") or "").strip().lower())
+        # reinen Bezirksnamen („Bezirk aus der Quelle“-Prinzip). Feste
+        # Kalender-Orte (standard) gelten nur, wenn die Quelle nichts liefert.
+        bezirk = (_LABEL_ZU_SLUG.get((row.get("bezirk") or "").strip().lower())
+                  or _LABEL_ZU_SLUG.get((self._standard.get("bezirk") or "").strip().lower()))
         if ende is None:
             ende = row.get("ende")
         if ganztags is None:
