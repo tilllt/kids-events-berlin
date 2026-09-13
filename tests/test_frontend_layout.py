@@ -46,5 +46,10 @@ def test_mobile_filter_schieben_die_liste_nach_unten():
     assert liste, "mobile Listen-Regel fehlt"
     assert "overflow-y: auto" in liste.group(0) and "max-height" in liste.group(0), \
         "Liste braucht mobil eine eigene Höhengrenze mit Scrollen, sonst ist die Karte unerreichbar"
-    assert re.search(r"#mapwrap\s*\{[^}]*height:\s*42vh", block), \
-        "Karte braucht mobil eine eigene, feste Höhe"
+    assert re.search(r"#mapwrap\s*\{[^}]*height:\s*30vh", block), \
+        "Karte braucht mobil eine eigene, feste Höhe und muss ohne Scrollen sichtbar sein"
+    liste = re.search(r"#eventlist\s*\{[^}]*\}", block).group(0)
+    assert "36vh" in liste and "300px" in liste, \
+        "mobile Liste auf ~5 Termine begrenzen, damit die Karte im Bild bleibt"
+    assert re.search(r"main\s*\{[^}]*overflow-y:\s*auto", block), \
+        "Hauptbereich muss mobil scrollen, wenn Filter aufklappen"

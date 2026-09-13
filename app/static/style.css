@@ -195,11 +195,14 @@ main > * { min-width: 0; }
   main { display: block; }
   #filters { border-right: 0; border-bottom: 1px solid var(--border);
              max-height: none; overflow: visible; }
+  /* Hauptbereich scrollt (nicht die Seite): so schieben aufgeklappte Filter
+     alles nach unten, ohne den Kopf wegzuschieben. */
+  main { flex: 1; min-height: 0; overflow-y: auto; }
   #content { display: block; min-height: 0; }
-  /* Liste bleibt sichtbar und scrollt in sich: mit allen Terminen würde sie
-     sonst zehntausende Pixel lang und die Karte wäre praktisch unerreichbar. */
-  #eventlist { overflow-y: auto; max-height: 60vh; }
-  #mapwrap { flex: none; height: 42vh; min-height: 200px; margin-top: 10px;
+  /* Liste zeigt etwa fünf Termine und scrollt in sich — die Karte darunter
+     bleibt damit ohne Scrollen im Bild (User-Vorgabe). */
+  #eventlist { overflow-y: auto; max-height: min(36vh, 300px); }
+  #mapwrap { flex: none; height: 30vh; min-height: 190px; margin-top: 8px;
              border-top: 1px solid var(--border); }
   #map { height: 100%; }
 }
