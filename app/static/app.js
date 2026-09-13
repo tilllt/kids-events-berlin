@@ -160,7 +160,7 @@ async function loadMeta() {
   // Steht jetzt in der Kopfzeile neben „Aktualisiert“ — hier bleibt nichts.
   note.textContent = "";
   note.classList.add("hidden");
-  setzeStatus("bestand", `${nq} Quellen · ${state.meta.events_gesamt} Events`);
+  setzeStatus("bestand", `${nq} Quellen`);
 }
 
 function chip(id, label, key) {
@@ -473,7 +473,12 @@ function renderList(gj) {
     ls.classList.add("hidden");
     return;
   }
-  setzeStatus("auswahl", `${all.length} Termine${gj.ohne_position && gj.ohne_position.length ? ` (${gj.ohne_position.length} ohne Kartenposition)` : ""}`);
+  // Eine Aussage statt zweier Wörter für dieselbe Einheit: „1683 von 2941
+  // Terminen" zeigt direkt, dass die Auswahl ein Teil des Bestands ist.
+  const gesamt = state.meta && state.meta.events_gesamt;
+  const ohnePos = gj.ohne_position && gj.ohne_position.length;
+  setzeStatus("auswahl", (gesamt ? `${all.length} von ${gesamt} Terminen` : `${all.length} Termine`) +
+    (ohnePos ? ` (${ohnePos} ohne Kartenposition)` : ""));
   // Die Zeile über der Liste trägt die Aktionen: „URL kopieren" und (von
   // naehe.js eingehängt) „Kalender abonnieren". Die Abo-Adresse und die
   // Erklaerung stehen im Fenster hinter dem Kalender-Knopf.
