@@ -45,6 +45,20 @@ def main(argv: list[str] | None = None) -> int:
                      help="Pfad zum Mapping (bsn_schulzweig.json)")
     isz.set_defaults(fn=cmd_import_schulzweig)
 
+    rec = sub.add_parser("recherche-schulen",
+                         help="LLM-Recherche: Tag der offenen Tür auf Schul-Webseiten")
+    rec.add_argument("--db", default="data/events.db")
+    rec.add_argument("--limit", type=int, default=20,
+                     help="Anzahl Schulen (nie geprüfte zuerst)")
+    rec.add_argument("--bsn", default=None, help="Nur diese eine Schule prüfen")
+    rec.add_argument("--bezirk", default=None,
+                     help="Nur Schulen eines Bezirks (z. B. friedrichshain-kreuzberg)")
+    rec.add_argument("--schulform", default=None, help="Nur diese Schulform (z. B. Grundschule)")
+    rec.add_argument("--dry-run", action="store_true",
+                     help="Nur prüfen und berichten, nichts in die Queue schreiben")
+    rec.add_argument("--json-out", default=None, help="Ergebnis als JSON ablegen")
+    rec.set_defaults(fn=cmd_recherche_schulen)
+
     args = p.parse_args(argv)
     return args.fn(args)
 
@@ -110,6 +124,37 @@ def cmd_import_schulzweig(args) -> int:
         return 0
     finally:
         s.close()
+
+
+def cmd_recherche_schulen(args) -> int:
+    """LLM-Recherche als CLI-Lauf (auch für den Scheduler/Cron nutzbar)."""
+    import json as _json
+    from .recherche import kern
+    from .store import Store
+    s = Store(args.db)
+    try:
+        zusammen = kern.lauf(s, limit=args.limit, nur_bsn=args.bsn,
+                             dry_run=args.dry_run, bezirk=args.bezirk,
+                             schulform=args.schulform)
+    finally:
+        s.close()
+    status = ", ".join(f"{k}={v}" for k, v in sorted(zusammen["status"].items()))
+    print(f"Recherche: {zusammen['geprueft']} Schulen geprüft, "
+          f"{zusammen['llm_calls']} LLM-Aufrufe, {zusammen['belegt']} belegte Vorschläge, "
+          f"{zusammen['dauer_s']}s")
+    print(f"Status: {status or '—'}")
+    if zusammen["verworfen"]:
+        print("Verworfen: " + ", ".join(f"{k}×{v}" for k, v in zusammen["verworfen"].items()))
+    for e in zusammen["schulen"]:
+        zeile = f"  {e['bsn']} {e['status']:<11} belegt={e['n_belegt']}/{e['n_roh']}"
+        if e.get("grund"):
+            zeile += f" · {e['grund'][:90]}"
+        print(zeile)
+    if args.json_out:
+        with open(args.json_out, "w", encoding="utf-8") as f:
+            _json.dump(zusammen, f, ensure_ascii=False, indent=1)
+        print(f"Ergebnis: {args.json_out}")
+    return 0
 
 
 if __name__ == "__main__":

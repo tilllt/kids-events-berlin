@@ -1024,8 +1024,139 @@ $("#tagTabelle").addEventListener("click", async (ev) => {
   } catch (e) { fehlerZeigen(e.message); }
 });
 
+/* ---------- LLM-Endpunkt + Schul-Recherche (Change 010) ---------- */
+let llmKonfig = {};
+
+async function loadLlm() {
+  try {
+    llmKonfig = await api("/api/admin/llm");
+    const s = await api("/api/admin/settings");
+    $("#setLlmBase").value = llmKonfig.llm_base_url || "";
+    $("#setLlmModel").value = llmKonfig.llm_model || "";
+    $("#setLlmTimeout").value = llmKonfig.llm_timeout_s || "";
+    $("#setLlmExtra").value = llmKonfig.llm_extra_json || "";
+    $("#setLlmMax").value = s.recherche_max_schulen || "20";
+    $("#setRechercheAktiv").checked =
+      ["1", "true", "ja", "on"].includes(String(s.recherche_aktiv || "0").trim().toLowerCase());
+    if (llmKonfig.llm_api_key_gesetzt) {
+      $("#setLlmKey").placeholder = "gespeichert — leer lassen zum Behalten";
+    }
+  } catch (e) { fehlerZeigen(`LLM-Einstellungen: ${e.message}`); }
+}
+
+$("#llmBtn").onclick = async () => {
+  const msg = $("#llmMsg");
+  const body = {
+    llm_base_url: $("#setLlmBase").value.trim(),
+    llm_model: $("#setLlmModel").value.trim(),
+    llm_timeout_s: $("#setLlmTimeout").value.trim(),
+    llm_extra_json: $("#setLlmExtra").value.trim(),
+    recherche_aktiv: $("#setRechercheAktiv").checked ? "1" : "0",
+    recherche_max_schulen: $("#setLlmMax").value.trim() || "20",
+  };
+  const key = $("#setLlmKey").value;
+  if (key !== "") body.llm_api_key = key;
+  try {
+    await api("/api/admin/settings", { method: "PUT", body: JSON.stringify(body) });
+    $("#setLlmKey").value = "";
+    meldung(msg, "Gespeichert — gilt für den nächsten Lauf.");
+  } catch (e) { meldung(msg, e.message, false); }
+};
+
+$("#llmTestBtn").onclick = async () => {
+  const msg = $("#llmMsg");
+  const box = $("#llmTestergebnis");
+  meldung(msg, "Teste Endpunkt …");
+  try {
+    const r = await api("/api/admin/llm/test", {
+      method: "POST",
+      body: JSON.stringify({
+        llm_base_url: $("#setLlmBase").value.trim(),
+        llm_model: $("#setLlmModel").value.trim(),
+        llm_timeout_s: $("#setLlmTimeout").value.trim(),
+        llm_extra_json: $("#setLlmExtra").value.trim(),
+      }),
+    });
+    box.classList.remove("hidden");
+    if (r.ok) {
+      meldung(msg, `Endpunkt antwortet (${r.dauer_s}s).`);
+      box.innerHTML = `<p class="hinweis" style="margin:0 0 6px">Antwort von
+        <code>${esc(r.basis_url || "")}</code> · Modell <code>${esc(r.modell || "")}</code>
+        · ${r.dauer_s}s · JSON erkannt: ${r.json_erkannt ? "ja" : "nein"}</p>
+        <pre class="klein" style="white-space:pre-wrap;margin:0">${esc(r.antwort || "")}</pre>`;
+    } else {
+      meldung(msg, "Endpunkt antwortet nicht.", false);
+      box.innerHTML = `<p class="fehler" style="margin:0">${esc(r.fehler || "Unbekannter Fehler")}</p>`;
+    }
+  } catch (e) {
+    meldung(msg, e.message, false);
+  }
+};
+
+async function loadRecherche() {
+  const tb = $("#rechercheTabelle tbody");
+  const ohne = $("#rechercheOhne").checked;
+  try {
+    const d = await api(`/api/admin/recherche?nur_ohne_fund=${ohne ? "true" : "false"}`);
+    const lauf = await api("/api/admin/recherche/letzter-lauf");
+    const box = $("#rechercheLauf");
+    if (lauf.vorhanden) {
+      const st = Object.entries(lauf.status || {}).map(([k, v]) => `${esc(k)}: ${v}`).join(" · ");
+      box.classList.remove("hidden");
+      box.innerHTML = `<p style="margin:0 0 4px"><strong>Letzter Lauf</strong>
+        ${esc(lauf.start || "")} · ${lauf.geprueft} Schulen geprüft ·
+        ${lauf.llm_calls} LLM-Aufrufe · <strong>${lauf.belegt} belegte Vorschläge</strong> ·
+        ${lauf.dauer_s}s${lauf.dry_run ? " · Probelauf (nichts eingetragen)" : ""}</p>
+        <p class="muted" style="margin:0">Status: ${st || "—"}${
+          Object.keys(lauf.verworfen || {}).length
+            ? ` · verworfen: ${Object.entries(lauf.verworfen).map(([k, v]) => `${esc(k)}×${v}`).join(", ")}`
+            : ""}</p>`;
+    } else {
+      box.classList.add("hidden");
+    }
+    tb.innerHTML = "";
+    if (!d.schulen.length) {
+      tb.innerHTML = '<tr><td colspan="5" class="muted">Keine Schulen mit Website im Stamm.</td></tr>';
+      return;
+    }
+    d.schulen.forEach((s) => {
+      const tr = document.createElement("tr");
+      const stand = s.recherche_am ? esc(s.recherche_am.slice(0, 16).replace("T", " ")) : "nie geprüft";
+      const badge = { gefunden: "ok", keinFund: "", keinIndiz: "", abrufFehler: "warn", fehler: "warn" }[s.recherche_status] ?? "";
+      tr.innerHTML = `<td><strong>${esc(s.name)}</strong>
+          <div class="klein muted">${esc(s.schulform || "")} · ${esc(s.bsn)} ·
+          <a href="${esc(s.website)}" target="_blank" rel="noopener">Website ↗</a></div></td>
+        <td>${esc(s.bezirk || "")}</td>
+        <td>${stand}<div><span class="badge ${badge}">${esc(s.recherche_status || "—")}</span></div></td>
+        <td>${s.n_offen ? `<span class="badge ok">${s.n_offen} ungeprüft</span>` : "—"}</td>
+        <td class="klein">${esc(s.recherche_notiz || "")}
+          ${s.letzte_url ? `<div><a href="${esc(s.letzte_url)}" target="_blank" rel="noopener">Fundstelle ↗</a></div>` : ""}
+          ${s.letzter_grund ? `<div class="muted">verworfen: ${esc(s.letzter_grund)}</div>` : ""}</td>`;
+      tb.appendChild(tr);
+    });
+  } catch (e) { fehlerZeigen(`Recherche: ${e.message}`); }
+}
+
+$("#rechercheReload").onclick = () => loadRecherche();
+$("#rechercheOhne").onchange = () => loadRecherche();
+$("#rechercheStart").onclick = async () => {
+  const msg = $("#rechercheMsg");
+  try {
+    const r = await api("/api/admin/recherche/lauf", {
+      method: "POST",
+      body: JSON.stringify({
+        limit: parseInt($("#rechercheUmfang").value, 10),
+        dry_run: $("#rechercheDry").checked,
+      }),
+    });
+    meldung(msg, `Lauf gestartet (${r.limit} Schulen${r.dry_run ? ", Probelauf" : ""}). ` +
+      "Er antwortet seitenweise — Liste in ein paar Sekunden aktualisieren.");
+    setTimeout(loadRecherche, 8000);
+  } catch (e) { meldung(msg, e.message, false); }
+};
+
 /* ---------- Init ---------- */
 fuelleSchulFilter();
-Promise.all([loadQuellen(), loadRuns(), loadFehler(), loadSettings(), ladeTags(), fuelleTerminQuellen()])
+Promise.all([loadQuellen(), loadRuns(), loadFehler(), loadSettings(), ladeTags(), fuelleTerminQuellen(), loadLlm()])
   .catch((e) => fehlerZeigen(e.message));
 baueUnterTabs(); // Quellen-Tab ist beim Laden aktiv → Unter-Tabs sofort bauen

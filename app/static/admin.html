@@ -244,6 +244,94 @@
       </div>
     </details>
 
+    <details class="klapp" id="llmKlapp">
+      <summary>LLM-Endpunkt — für die Schul-Recherche (Tage der offenen Tür)</summary>
+      <div class="klappbody">
+        <p class="muted" style="margin-top:0">
+          Die Recherche liest Schul-Webseiten und lässt daraus Termine
+          (Tag der offenen Tür, Infoabend, Schnuppern) extrahieren. Sie läuft
+          außerhalb der Event-Pipeline: Funde landen als <em>ungeprüfte</em>
+          Vorschläge in der Terminliste — veröffentlicht wird erst nach Freigabe.
+          Jeder Fund muss durch ein wörtliches Zitat aus der Seite belegt sein,
+          und das Datum muss im Zitat stehen; alles andere wird verworfen und
+          mit Grund protokolliert.
+        </p>
+        <div class="formgrid">
+          <label>Basis-URL (OpenAI-kompatibel, …/v1)
+            <input id="setLlmBase" placeholder="http://192.168.178.140:8088/v1" />
+          </label>
+          <label>Modellname
+            <input id="setLlmModel" placeholder="llamacpp-gemma4-12B-unsloth" />
+          </label>
+          <label>API-Key (nur wenn der Endpunkt einen verlangt)
+            <input id="setLlmKey" type="password" autocomplete="off" placeholder="leer lassen" />
+          </label>
+          <label>Timeout (Sekunden)
+            <input id="setLlmTimeout" type="number" min="5" max="600" step="5" placeholder="120" />
+          </label>
+          <label>Zusatz-Parameter (JSON)
+            <input id="setLlmExtra" spellcheck="false"
+                   placeholder='{"chat_template_kwargs": {"enable_thinking": false}}' />
+          </label>
+          <label>Schulen je Lauf
+            <input id="setLlmMax" type="number" min="1" max="722" step="1" placeholder="20" />
+          </label>
+        </div>
+        <p class="hint" style="margin:6px 0 0;font-size:12px;color:var(--muted)">
+          Voreinstellung ist der lokale llama.cpp auf der KI-Box
+          (<code>http://192.168.178.140:8088/v1</code>, im gleichen Netz wie die App).
+          <strong>Wichtig bei Gemma-4:</strong> <code>enable_thinking: false</code> in den
+          Zusatz-Parametern — sonst liefert das Modell leeren Text (es „denkt“ nur).
+          Andere Endpunkte (litellm, Gemini, Cerebras …) trägst du hier einfach ein.
+        </p>
+        <label style="display:flex;gap:8px;align-items:center;margin-top:10px">
+          <input type="checkbox" id="setRechercheAktiv" style="width:auto" />
+          Recherche täglich automatisch laufen lassen (Nachtfenster, gedrosselt)
+        </label>
+        <div style="margin-top:10px" class="btnrow">
+          <button id="llmBtn" type="button" class="primary">LLM-Einstellungen speichern</button>
+          <button id="llmTestBtn" type="button">Verbindung testen</button>
+          <span id="llmMsg"></span>
+        </div>
+        <div id="llmTestergebnis" class="panel hidden" style="margin-top:8px"></div>
+      </div>
+    </details>
+
+    <details class="klapp" id="rechercheKlapp">
+      <summary>Schul-Recherche — Lauf starten und Stand je Schule</summary>
+      <div class="klappbody">
+        <div class="btnrow">
+          <button id="rechercheStart" type="button" class="primary">Recherche-Lauf starten</button>
+          <select id="rechercheUmfang">
+            <option value="20">20 Schulen</option>
+            <option value="50">50 Schulen</option>
+            <option value="150">150 Schulen</option>
+            <option value="722">alle Schulen mit Website</option>
+          </select>
+          <label style="display:flex;gap:6px;align-items:center">
+            <input type="checkbox" id="rechercheDry" style="width:auto" /> nur prüfen (nichts eintragen)
+          </label>
+          <span id="rechercheMsg"></span>
+        </div>
+        <p class="hint" style="margin:6px 0 8px;font-size:12px;color:var(--muted)">
+          Der Lauf arbeitet sequenziell (eine Seite je Sekunde) und läuft im Hintergrund —
+          Zwischenstände erscheinen in der Tabelle, sobald die Seite neu geladen wird.
+        </p>
+        <div id="rechercheLauf" class="panel hidden"></div>
+        <div class="btnrow" style="margin:8px 0">
+          <label style="display:flex;gap:6px;align-items:center">
+            <input type="checkbox" id="rechercheOhne" style="width:auto" /> nur Schulen ohne Fund zeigen
+          </label>
+          <button id="rechercheReload" type="button">Liste aktualisieren</button>
+        </div>
+        <table id="rechercheTabelle">
+          <thead><tr><th>Schule</th><th>Bezirk</th><th>Stand</th><th>Ergebnis</th>
+            <th>Ort/Vermerk</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </details>
+
     <details class="klapp" id="tagsKlapp">
       <summary>Tags — Schlagworte für alle Termine</summary>
       <div class="klappbody">

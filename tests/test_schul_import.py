@@ -131,18 +131,25 @@ def test_import_crawl_ohne_stamm_ignoriert(tmp_path):
 
 
 def test_import_crawl_zeit_fallback_nicht_datum(tmp_path):
-    """'12.09.2026' im Text darf NICHT als Uhrzeit 12:09 geparst werden."""
+    """'TT.MM.JJJJ' im Text darf NICHT als Uhrzeit TT:MM geparst werden.
+
+    Datum relativ zu heute, damit der Test nicht mit der Zeit veraltet
+    (der Import verwirft Vergangenes — real passiert am 13.09.2026).
+    """
+    from datetime import date, timedelta
+
     s = _store(tmp_path)
     s.upsert_schule({"bsn": "01G01", "name": "Test-Grundschule"})
+    ziel = date.today() + timedelta(days=30)
     p = tmp_path / "crawl.json"
     p.write_text(json.dumps(_crawl(termine=[
         {"quelle": "text", "url": "https://schule.de/t",
-         "zeile": "Tag der offenen Tür am 12.09.2026 (ohne Uhrzeit-Angabe)"},
+         "zeile": f"Tag der offenen Tür am {ziel:%d.%m.%Y} (ohne Uhrzeit-Angabe)"},
     ])), encoding="utf-8")
     erg = import_crawl_termine(s, str(p))
     assert erg["importiert"] == 1
     t = s.list_termine_manuell()[0]
-    assert t["start_datum"] == "12.09.2026"
+    assert t["start_datum"] == f"{ziel:%d.%m.%Y}"
     assert t["start_zeit"] is None
     s.close()
 

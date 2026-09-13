@@ -127,6 +127,9 @@ CREATE TABLE IF NOT EXISTS schulen (
     website TEXT,
     schulzweig_id TEXT,
     angefragt_am TEXT,
+    recherche_am TEXT,
+    recherche_status TEXT,
+    recherche_notiz TEXT,
     notiz TEXT,
     zuletzt_geaendert TEXT
 );
@@ -159,6 +162,19 @@ CREATE TABLE IF NOT EXISTS termine_manuell (
 );
 CREATE INDEX IF NOT EXISTS idx_termine_manuell_schule ON termine_manuell(schule_bsn);
 CREATE INDEX IF NOT EXISTS idx_termine_manuell_status ON termine_manuell(status);
+CREATE TABLE IF NOT EXISTS schul_recherche_lauf (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bsn TEXT NOT NULL,
+    url TEXT,
+    seiten_hash TEXT,
+    modell TEXT,
+    n_roh INTEGER NOT NULL DEFAULT 0,
+    n_belegt INTEGER NOT NULL DEFAULT 0,
+    verworfen_grund TEXT,
+    dauer_s REAL,
+    erstellt_am TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_recherche_lauf_bsn ON schul_recherche_lauf(bsn);
 """
 
 # Uhrzeit-Bänder (Ortszeit), für time()-Vergleich in SQL.
@@ -211,6 +227,11 @@ class Store:
             if sc_cols and "schulzweig_id" not in sc_cols:
                 self._conn.execute(
                     "ALTER TABLE schulen ADD COLUMN schulzweig_id TEXT")
+            # Change 010: Recherche-Stand je Schule (Alt-DBs ohne diese Spalten)
+            for spalte in ("recherche_am TEXT", "recherche_status TEXT",
+                           "recherche_notiz TEXT"):
+                if sc_cols and spalte.split()[0] not in sc_cols:
+                    self._conn.execute(f"ALTER TABLE schulen ADD COLUMN {spalte}")
             # termin_kategorien (Alt) existiert → Daten nach tags übernehmen
             tabs = {r["name"] for r in self._conn.execute(
                 "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
@@ -941,6 +962,108 @@ class Store:
                 "UPDATE schulen SET angefragt_am=?, zuletzt_geaendert=? WHERE bsn=?",
                 (wert, self._jetzt(), bsn))
             self._conn.commit()
+
+    # --- Change 010: Schul-Recherche (LLM, out-of-band) ---------------------
+    def set_schule_recherche(self, bsn: str, status: str, notiz: str | None = None) -> None:
+        """Recherche-Stand je Schule (sichtbar im Admin, nie still)."""
+        with self._lock:
+            self._conn.execute(
+                """UPDATE schulen SET recherche_am=?, recherche_status=?,
+                   recherche_notiz=?, zuletzt_geaendert=? WHERE bsn=?""",
+                (self._jetzt(), status, notiz, self._jetzt(), bsn))
+            self._conn.commit()
+
+    def schulen_fuer_recherche(self, limit: int | None = None,
+                              nur_bsn: str | None = None,
+                              bezirk: str | None = None,
+                              schulform: str | None = None) -> list[dict]:
+        """Schulen mit Website; nie geprüfte zuerst, dann die ältesten Prüfungen."""
+        where, args = ["website IS NOT NULL", "TRIM(website) <> ''"], []
+        if nur_bsn:
+            where.append("bsn = ?")
+            args.append(nur_bsn)
+        if bezirk:
+            where.append("bezirk = ?")
+            args.append(str(bezirk).strip().lower())
+        if schulform:
+            where.append("schulform = ?")
+            args.append(schulform)
+        sql = ("SELECT * FROM schulen WHERE " + " AND ".join(where) +
+               " ORDER BY (recherche_am IS NOT NULL), recherche_am, name")
+        if limit:
+            sql += f" LIMIT {int(limit)}"
+        with self._lock:
+            rows = self._conn.execute(sql, args).fetchall()
+        return [dict(r) for r in rows]
+
+    def log_recherche_lauf(self, eintrag: dict) -> int:
+        """Eine Zeile je geprüfter Seite — auch für verworfene Funde (Provenienz)."""
+        felder = {k: eintrag.get(k) for k in (
+            "bsn", "url", "seiten_hash", "modell", "n_roh", "n_belegt",
+            "verworfen_grund", "dauer_s", "erstellt_am")}
+        felder["erstellt_am"] = felder["erstellt_am"] or self._jetzt()
+        with self._lock:
+            cur = self._conn.execute(
+                """INSERT INTO schul_recherche_lauf(bsn, url, seiten_hash, modell,
+                   n_roh, n_belegt, verworfen_grund, dauer_s, erstellt_am)
+                   VALUES (:bsn,:url,:seiten_hash,:modell,:n_roh,:n_belegt,
+                           :verworfen_grund,:dauer_s,:erstellt_am)""", felder)
+            self._conn.commit()
+            return int(cur.lastrowid or 0)
+
+    def list_recherche_lauf(self, bsn: str | None = None, limit: int = 50) -> list[dict]:
+        args: list = []
+        sql = "SELECT * FROM schul_recherche_lauf"
+        if bsn:
+            sql += " WHERE bsn=?"
+            args.append(bsn)
+        sql += " ORDER BY id DESC LIMIT ?"
+        args.append(int(limit))
+        with self._lock:
+            rows = self._conn.execute(sql, args).fetchall()
+        return [dict(r) for r in rows]
+
+    def termin_manuell_vorhanden(self, bsn: str, start_datum: str, titel: str) -> bool:
+        """Dubletten-Schutz: gleiche Schule + Datum + Titelnormalform."""
+        with self._lock:
+            r = self._conn.execute(
+                """SELECT id FROM termine_manuell
+                   WHERE schule_bsn=? AND start_datum=? AND LOWER(TRIM(titel))=?""",
+                (bsn, start_datum, titel.strip().lower())).fetchone()
+        return r is not None
+
+    def recherche_uebersicht(self, *, nur_ohne_fund: bool = False,
+                             limit: int = 500, bezirk: str | None = None,
+                             schulform: str | None = None) -> dict:
+        """Recherche-Stand aller Schulen + letzter Lauf je Schule (Admin-Ansicht)."""
+        where = ["s.website IS NOT NULL", "TRIM(s.website) <> ''"]
+        args: list = []
+        if nur_ohne_fund:
+            where.append("(s.recherche_status IS NULL OR s.recherche_status <> 'gefunden')")
+        if bezirk:
+            where.append("s.bezirk = ?")
+            args.append(str(bezirk).strip().lower())
+        if schulform:
+            where.append("s.schulform = ?")
+            args.append(schulform)
+        with self._lock:
+            rows = self._conn.execute(
+                f"""SELECT s.bsn, s.name, s.schulform, s.bezirk, s.website,
+                           s.recherche_am, s.recherche_status, s.recherche_notiz,
+                           (SELECT COUNT(*) FROM termine_manuell t
+                             WHERE t.schule_bsn = s.bsn AND t.status='ungeprueft') AS n_offen,
+                           (SELECT l.url FROM schul_recherche_lauf l
+                             WHERE l.bsn = s.bsn ORDER BY l.id DESC LIMIT 1) AS letzte_url,
+                           (SELECT l.verworfen_grund FROM schul_recherche_lauf l
+                             WHERE l.bsn = s.bsn ORDER BY l.id DESC LIMIT 1) AS letzter_grund
+                    FROM schulen s
+                    WHERE {' AND '.join(where)}
+                    ORDER BY (s.recherche_am IS NOT NULL), s.recherche_am, s.name
+                    LIMIT ?""", (*args, int(limit))).fetchall()
+            laeufe = self._conn.execute(
+                "SELECT * FROM schul_recherche_lauf ORDER BY id DESC LIMIT 1").fetchone()
+        return {"schulen": [dict(r) for r in rows],
+                "letzter_lauf": dict(laeufe) if laeufe else None}
 
     # --- Tags (für ALLE Termine; Template + eigene) -------------------------
     def list_tags(self, nur_template: bool = False) -> list[dict]:

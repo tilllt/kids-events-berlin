@@ -6,6 +6,7 @@ verständliche Fehlermeldungen; nichts Stilles.
 """
 from __future__ import annotations
 
+import json
 import re
 import threading
 from datetime import datetime
@@ -226,7 +227,10 @@ def settings_put(body: dict, request: Request):
     store = _store(request)
     erlaubt = {"scrape_interval_h", "admin_hinweis", "scrape_at",
                "smtp_host", "smtp_port", "smtp_user", "smtp_pass", "smtp_from",
-               "smtp_reply_to", "mail_vorlage"}
+               "smtp_reply_to", "mail_vorlage",
+               # Change 010: LLM-Endpunkt der Schul-Recherche (frei konfigurierbar)
+               "llm_base_url", "llm_model", "llm_api_key", "llm_timeout_s",
+               "llm_extra_json", "recherche_aktiv", "recherche_max_schulen"}
     unbekannt = set(body) - erlaubt
     fehler = []
     for k in sorted(unbekannt):
@@ -249,12 +253,140 @@ def settings_put(body: dict, request: Request):
                     raise ValueError
             except ValueError:
                 fehler.append("scrape_at muss 'HH:MM' sein (z. B. 05:30) oder leer für Intervall-Modus.")
+    if "llm_base_url" in body:
+        url = (body["llm_base_url"] or "").strip()
+        if url and not url.startswith(("http://", "https://")):
+            fehler.append("llm_base_url muss mit http:// oder https:// beginnen "
+                          "(z. B. http://192.168.178.140:8088/v1).")
+    if "llm_timeout_s" in body:
+        t = (body["llm_timeout_s"] or "").strip()
+        if t:
+            try:
+                tv = float(t)
+                if not 5 <= tv <= 600:
+                    raise ValueError
+            except ValueError:
+                fehler.append("llm_timeout_s muss eine Zahl zwischen 5 und 600 sein.")
+    if "llm_extra_json" in body:
+        roh = (body["llm_extra_json"] or "").strip()
+        if roh:
+            try:
+                if not isinstance(json.loads(roh), dict):
+                    raise ValueError
+            except ValueError:
+                fehler.append("llm_extra_json muss ein JSON-Objekt sein, "
+                              'z. B. {"chat_template_kwargs": {"enable_thinking": false}}.')
+    if "recherche_max_schulen" in body:
+        n = (body["recherche_max_schulen"] or "").strip()
+        if n:
+            try:
+                nv = int(n)
+                if not 1 <= nv <= 722:
+                    raise ValueError
+            except ValueError:
+                fehler.append("recherche_max_schulen muss eine ganze Zahl zwischen 1 und 722 sein.")
     if fehler:
         raise HTTPException(422, {"message": "Einstellungen ungültig.", "fehler": fehler})
     for k, v in body.items():
         if k in erlaubt:
             store.set_setting(k, str(v))
     return store.all_settings()
+
+
+# --- LLM-Endpunkt der Recherche (Change 010) --------------------------------
+@router.get("/llm")
+def llm_get(request: Request):
+    """Geltende LLM-Konfiguration (ohne Key-Inhalt, nur ob einer gesetzt ist)."""
+    from .recherche.llm import konfiguration
+    k = konfiguration(_store(request))
+    k["llm_api_key_gesetzt"] = bool((k.get("llm_api_key") or "").strip())
+    k.pop("llm_api_key", None)
+    return k
+
+
+@router.post("/llm/test")
+def llm_test(request: Request, body: dict | None = None):
+    """Testaufruf gegen den konfigurierten Endpunkt — Ergebnis immer sichtbar.
+
+    Liefert 200 mit {"ok": true, …} oder {"ok": false, "fehler": …}; so kann die
+    Oberfläche den echten Fehlertext anzeigen, statt nur „Fehler".
+    """
+    from .recherche.llm import konfiguration, test_verbindung
+    store = _store(request)
+    body = body or {}
+    k = konfiguration(store)
+    for key in ("llm_base_url", "llm_model", "llm_api_key", "llm_timeout_s",
+                "llm_extra_json"):
+        if key in body and str(body[key]).strip() != "":
+            k[key] = str(body[key]).strip()
+    return test_verbindung(k)
+
+
+@router.get("/recherche")
+def recherche_status(request: Request, nur_ohne_fund: bool = Query(False),
+                     bezirk: str | None = Query(None), schulform: str | None = Query(None),
+                     limit: int = Query(500, le=2000)):
+    """Recherche-Stand je Schule + Zähler des letzten geprüften Laufs."""
+    store = _store(request)
+    daten = store.recherche_uebersicht(nur_ohne_fund=nur_ohne_fund, limit=limit,
+                                      bezirk=bezirk, schulform=schulform)
+    aktiv = (store.get_setting("recherche_aktiv") or "0").strip() in ("1", "true", "ja", "on")
+    daten["lauf_aktiv"] = aktiv
+    daten["max_schulen"] = int(store.get_setting("recherche_max_schulen") or 20)
+    return daten
+
+
+@router.post("/recherche/lauf", status_code=202)
+def recherche_lauf_starten(request: Request, body: dict | None = None):
+    """Startet einen Recherche-Lauf im Hintergrund (sequenziell, ein Schreiber)."""
+    from .recherche import kern
+    store = _store(request)
+    body = body or {}
+    if "limit" in body and str(body["limit"]).strip() != "":
+        try:
+            limit = int(body["limit"])
+        except (TypeError, ValueError):
+            raise HTTPException(422, {"fehler": ["limit muss eine Zahl sein."]}) from None
+    else:
+        try:
+            limit = int(store.get_setting("recherche_max_schulen") or 20)
+        except (TypeError, ValueError):
+            limit = 20
+    if not 1 <= limit <= 722:
+        raise HTTPException(422, {"fehler": ["limit muss zwischen 1 und 722 liegen."]})
+    nur_bsn = (body.get("nur_bsn") or "").strip() or None
+    bezirk = (body.get("bezirk") or "").strip().lower() or None
+    schulform = (body.get("schulform") or "").strip() or None
+    dry_run = bool(body.get("dry_run"))
+
+    def _lauf():
+        try:
+            zusammen = kern.lauf(store, limit=limit, nur_bsn=nur_bsn, dry_run=dry_run,
+                                 bezirk=bezirk, schulform=schulform)
+            store.set_setting("recherche_letzter_lauf", json.dumps(zusammen, ensure_ascii=False))
+            print(f"[recherche] Lauf fertig: {zusammen['geprueft']} Schulen, "
+                  f"{zusammen['belegt']} belegt, {zusammen['status']}", flush=True)
+        except Exception as e:  # sichtbar statt still
+            store.log_error("recherche", f"Recherche-Lauf fehlgeschlagen: {e}")
+            print(f"[recherche] Lauf fehlgeschlagen: {e}", flush=True)
+
+    threading.Thread(target=_lauf, name="schul-recherche", daemon=True).start()
+    return {"status": "gestartet", "limit": limit, "nur_bsn": nur_bsn,
+            "bezirk": bezirk, "schulform": schulform, "dry_run": dry_run}
+
+
+@router.get("/recherche/letzter-lauf")
+def recherche_letzter_lauf(request: Request):
+    store = _store(request)
+    roh = store.get_setting("recherche_letzter_lauf")
+    if not roh:
+        return {"vorhanden": False}
+    try:
+        d = json.loads(roh)
+    except json.JSONDecodeError:
+        return {"vorhanden": False, "fehler": "gespeicherter Lauf ist kein JSON"}
+    d["vorhanden"] = True
+    return d
 
 
 # --- Lauf auslösen ---------------------------------------------------------
