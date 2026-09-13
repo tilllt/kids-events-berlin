@@ -6,7 +6,7 @@ const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
 
 const state = {
-  bezirk: [], altersband: [], uhrzeit: [],
+  bezirk: [], orte: [], altersband: [], uhrzeit: [],
   kostenlos: false, von: "", bis: "", zeitraum: "demnächst", zeitstufe: null, meta: null,
   q: "",
 };
@@ -150,6 +150,9 @@ async function loadMeta() {
   $("#von").addEventListener("change", (ev) => { state.von = ev.target.value; state.zeitraum = "benutzerdefiniert"; syncZeitraumUI(); apply(); });
   $("#bis").addEventListener("change", (ev) => { state.bis = ev.target.value; state.zeitraum = "benutzerdefiniert"; syncZeitraumUI(); apply(); });
   $("#resetbtn").addEventListener("click", resetFilters);
+  const ortSuche = $("#ort-suche");
+  if (ortSuche) ortSuche.addEventListener("input", renderOrte);
+  loadOrte();  // Ortsauswahl beim Start füllen
   $("#retrybtn").addEventListener("click", () => { $("#errorbar").classList.add("hidden"); load(); });
   const note = $("#meta-note");
   const nq = (state.meta.quellen || []).length;
@@ -171,11 +174,104 @@ function chip(id, label, key) {
   return b;
 }
 
+/* ---------- Ortsfilter: Auswahlliste passt sich den übrigen Filtern an ----------
+ * Die Liste kommt von /api/orte und wird bei jeder Filteränderung neu geholt:
+ * ist ein Bezirk gewählt, erscheinen nur Veranstaltungsorte in diesem Bezirk.
+ * Gewählte Orte, die durch eine Änderung herausfallen, werden sichtbar entfernt
+ * (kein stiller Zustand: der Hinweis nennt sie).
+ */
+async function loadOrte() {
+  const p = new URLSearchParams();
+  if (state.bezirk.length) p.set("bezirk", state.bezirk.join(","));
+  if (state.altersband.length) p.set("altersband", state.altersband.join(","));
+  if (state.uhrzeit.length) p.set("uhrzeit", state.uhrzeit.join(","));
+  if (state.kostenlos) p.set("kostenlos", "true");
+  if (state.q) p.set("q", state.q);
+  if (state.von) p.set("von", state.von);
+  if (state.bis) p.set("bis", state.bis);
+  let daten;
+  try {
+    const r = await fetch(`/api/orte?${p.toString()}`);
+    if (!r.ok) throw new Error(`orte ${r.status}`);
+    daten = await r.json();
+  } catch (err) {
+    const h = $("#ort-hinweis");
+    if (h) {
+      h.textContent = "Ortsliste konnte nicht geladen werden.";
+      h.classList.remove("hidden");
+    }
+    return;
+  }
+  state.ortOptionen = daten.orte || [];
+  const vorhanden = new Set(state.ortOptionen.map((o) => o.ort));
+  const weg = state.orte.filter((o) => !vorhanden.has(o));
+  if (weg.length) {
+    state.orte = state.orte.filter((o) => vorhanden.has(o));
+    const h = $("#ort-hinweis");
+    h.textContent = `Auswahl angepasst: ${weg.join(", ")} ${weg.length === 1 ? "liegt" : "liegen"} nicht mehr im aktuellen Filter.`;
+    h.classList.remove("hidden");
+    load();
+  }
+  // Nur neu aufbauen, wenn sich die Auswahlliste wirklich geändert hat — sonst
+  // würde jeder Klick im Orts-Panel die Liste neu zeichnen und die Scroll-
+  // position springen lassen.
+  const sig = JSON.stringify(state.ortOptionen.map((o) => `${o.ort}:${o.n}`));
+  if (sig !== state.ortSignatur) {
+    state.ortSignatur = sig;
+    renderOrte();
+  } else {
+    syncOrteAuswahl();
+  }
+}
+
+/* Auswahl-Häkchen an den vorhandenen Zeilen nachziehen (ohne Neuaufbau). */
+function syncOrteAuswahl() {
+  const gewaehlt = new Set(state.orte);
+  $$("#ort-list input[data-ort]").forEach((box) => {
+    box.checked = gewaehlt.has(box.dataset.ort);
+  });
+}
+
+function renderOrte() {
+  const liste = $("#ort-list");
+  if (!liste) return;
+  const suche = ($("#ort-suche").value || "").trim().toLowerCase();
+  const treffer = (state.ortOptionen || []).filter((o) => !suche || o.ort.toLowerCase().includes(suche));
+  liste.innerHTML = "";
+  if (!treffer.length) {
+    const leer = document.createElement("p");
+    leer.className = "ort-hinweis";
+    leer.textContent = state.bezirk.length
+      ? "Keine Orte im gewählten Bezirk."
+      : "Keine Orte gefunden.";
+    liste.appendChild(leer);
+    return;
+  }
+  const gewaehlt = new Set(state.orte);
+  treffer.forEach((o) => {
+    const l = document.createElement("label");
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.checked = gewaehlt.has(o.ort);
+    box.dataset.ort = o.ort;
+    box.addEventListener("change", (ev) => {
+      const set = new Set(state.orte);
+      ev.target.checked ? set.add(o.ort) : set.delete(o.ort);
+      state.orte = [...set];
+      apply();
+    });
+    l.appendChild(box);
+    l.appendChild(document.createTextNode(` ${o.ort} (${o.n})`));
+    liste.appendChild(l);
+  });
+}
+
 function resetFilters() {
-  state.bezirk = []; state.altersband = []; state.uhrzeit = [];
+  state.bezirk = []; state.orte = []; state.altersband = []; state.uhrzeit = [];
   state.kostenlos = false; state.von = ""; state.bis = ""; state.zeitraum = "demnächst";
   state.q = ""; state.zeitstufe = null;
   $$("#bezirk-list input").forEach((i) => (i.checked = false));
+  $$("#ort-list input").forEach((i) => (i.checked = false));
   $$(".chips button").forEach((b) => b.classList.remove("on"));
   $("#kostenlos").checked = false;
   const suche = $("#suche");
@@ -188,6 +284,7 @@ function resetFilters() {
 function queryParams() {
   const p = new URLSearchParams();
   if (state.bezirk.length) p.set("bezirk", state.bezirk.join(","));
+  if (state.orte.length) p.set("ort", state.orte.join("|"));
   if (state.altersband.length) p.set("altersband", state.altersband.join(","));
   if (state.uhrzeit.length) p.set("uhrzeit", state.uhrzeit.join(","));
   if (state.kostenlos) p.set("kostenlos", "true");
@@ -204,6 +301,7 @@ function queryParams() {
 function readUrl() {
   const p = new URLSearchParams(location.search);
   state.bezirk = (p.get("bezirk") || "").split(",").filter(Boolean);
+  state.orte = (p.get("ort") || "").split("|").filter(Boolean);
   state.zeitstufe = p.get("zeitstufe") || null;
   state.altersband = (p.get("altersband") || "").split(",").filter(Boolean);
   state.uhrzeit = (p.get("uhrzeit") || "").split(",").filter(Boolean);
@@ -437,12 +535,14 @@ async function load() {
 function apply() {
   updateFilterCount();
   load();
+  // Ortsliste an den neuen Filterkontext anpassen (Bezirk/Alter/Uhrzeit/Zeitraum).
+  loadOrte();
 }
 
 /* Aktive Filter im Fuß-Badge zählen — „Heute“ als Standard zählt nicht. */
 function updateFilterCount() {
   const el = $("#filter-count");
-  let n = state.bezirk.length + state.altersband.length + state.uhrzeit.length;
+  let n = state.bezirk.length + state.orte.length + state.altersband.length + state.uhrzeit.length;
   if (!["heute", "demnächst"].includes(state.zeitraum)) n += 1;
   if (state.zeitstufe) n += 1;  // Legenden-Filter (Zeitstufe)
   if (state.kostenlos) n += 1;

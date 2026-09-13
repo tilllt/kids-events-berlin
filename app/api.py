@@ -68,9 +68,17 @@ def _ev_public(e: dict) -> dict:
     }
 
 
+def _ort_filter(tok: str | None) -> list[str]:
+    """Ortsnamen für den Ortsfilter. Trenner ist '|', NICHT ',' — Ortsnamen
+    enthalten selbst Kommas („Wildunger Weg, 13587 Berlin“), ein Komma-Split
+    würde sie zerschneiden."""
+    return [x.strip() for x in (tok or "").split("|") if x.strip()]
+
+
 def _filters(params) -> dict:
     return {
         "bezirk": _parse_list(params.get("bezirk")),
+        "orte": _ort_filter(params.get("ort")),
         "altersband": _altersband_filter(_parse_list(params.get("altersband"))),
         "uhrzeit": _uhrzeit_filter(_parse_list(params.get("uhrzeit"))),
         "von": params.get("von") or None,
@@ -125,16 +133,36 @@ def _band_label(tok: str) -> str:
     }.get(tok, tok)
 
 
+@router.get("/orte")
+def orte(request: Request,
+         bezirk: str | None = None, altersband: str | None = None,
+         uhrzeit: str | None = None, von: str | None = None,
+         bis: str | None = None, kostenlos: str | None = None,
+         quelle: str | None = None, q: str | None = None):
+    """Auswahlliste für den Ortsfilter — passt sich den übrigen Filtern an.
+
+    Ist ein Bezirk gewählt, enthält die Liste nur Veranstaltungsorte in diesen
+    Bezirken; dasselbe gilt für Alter, Uhrzeit, Zeitraum, „nur kostenlos“ und
+    die Volltextsuche. Der aktuell gesetzte Ortsfilter zählt bewusst nicht mit,
+    damit eine getroffene Auswahl sichtbar und abwählbar bleibt.
+    """
+    params = {"bezirk": bezirk, "altersband": altersband, "uhrzeit": uhrzeit,
+              "von": von, "bis": bis, "kostenlos": kostenlos, "quelle": quelle, "q": q}
+    liste = _store(request).list_orte(_filters(params))
+    return {"orte": liste, "anzahl": len(liste)}
+
+
 @router.get("/events")
 def events(request: Request,
            bezirk: str | None = None, altersband: str | None = None,
            uhrzeit: str | None = None, von: str | None = None,
            bis: str | None = None, kostenlos: str | None = None,
            quelle: str | None = None, q: str | None = None,
+           ort: str | None = None,
            limit: int = Query(500, le=2000)):
     params = {"bezirk": bezirk, "altersband": altersband, "uhrzeit": uhrzeit,
               "von": von, "bis": bis, "kostenlos": kostenlos, "quelle": quelle,
-              "q": q, "limit": limit}
+              "q": q, "ort": ort, "limit": limit}
     rows = _store(request).query_events(_filters(params))
     return [_ev_public(e) for e in rows]
 
@@ -145,10 +173,11 @@ def events_geojson(request: Request,
                    uhrzeit: str | None = None, von: str | None = None,
                    bis: str | None = None, kostenlos: str | None = None,
                    quelle: str | None = None, q: str | None = None,
+                   ort: str | None = None,
                    limit: int = Query(2000, le=5000)):
     params = {"bezirk": bezirk, "altersband": altersband, "uhrzeit": uhrzeit,
               "von": von, "bis": bis, "kostenlos": kostenlos, "quelle": quelle,
-              "q": q, "limit": limit}
+              "q": q, "ort": ort, "limit": limit}
     rows = _store(request).query_events(_filters(params))
     features = []
     ohne = []

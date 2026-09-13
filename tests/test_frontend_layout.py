@@ -36,6 +36,23 @@ def test_karte_wird_nach_layoutaenderungen_neu_vermessen():
         "Filter-Umschalten zieht die Karte nicht nach"
 
 
+def test_ortsfilter_im_frontend_vorhanden():
+    """Der Ortsfilter muss als eigener Tab mit Panel in der Startseite stehen und
+    im Request landen (Nutzer-Vorgabe: weiterer Filter „Ort", der sich den
+    übrigen Filtern anpasst)."""
+    html = pathlib.Path("app/static/index.html").read_text(encoding="utf-8")
+    assert 'data-panel="ort"' in html and 'id="panel-ort"' in html
+    assert 'id="ort-list"' in html and 'id="ort-suche"' in html
+    # Auswahlliste kommt gefiltert vom Server …
+    assert "/api/orte?" in JS
+    # … und die Auswahl geht als 'ort' in die Abfrage (Trenner '|', damit
+    # Ortsnamen mit Komma heil bleiben).
+    assert 'p.set("ort", state.orte.join("|"))' in JS
+    assert 'state.orte = (p.get("ort") || "").split("|")' in JS
+    # Lange Ortslisten brauchen einen eigenen Scrollbereich.
+    assert "#ort-list" in CSS and "max-height" in CSS
+
+
 def test_mobile_filter_schieben_die_liste_nach_unten():
     """Mobil: Kopfzeile fest, main scrollt, Liste ~5 Einträge, Karte im Bild."""
     block = _block(r"@media \(max-width: 820px\)\s*\{.*?\n\}")

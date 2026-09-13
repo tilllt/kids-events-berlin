@@ -115,6 +115,33 @@ def test_filter_uhrzeit_ganztags_ohne_flag(tmp_path):
     assert "Vormittag" not in {e["titel"] for e in s.query_events({"uhrzeit": ["nachmittag"]})}
 
 
+def test_filter_ort_und_ortsliste_folgt_bezirk(tmp_path):
+    """Ortsfilter: Auswahlliste passt sich dem Bezirk an, der Ortsfilter selbst
+    zählt in der Liste nicht mit (sonst wäre die eigene Auswahl nicht abwählbar).
+
+    Nutzer-Vorgabe: wenn ein Bezirk gesetzt ist, dürfen nur Orte in den
+    gewählten Bezirken sichtbar sein.
+    """
+    s = Store(tmp_path / "t.db")
+    _ev(s, titel="A", ort="Bibliothek Mitte", bezirk="mitte")
+    _ev(s, titel="B", ort="Bibliothek Mitte", bezirk="mitte")
+    _ev(s, titel="C", ort="Halle Pankow", bezirk="pankow")
+
+    alle = {o["ort"]: o for o in s.list_orte({})}
+    assert set(alle) == {"Bibliothek Mitte", "Halle Pankow"}
+    assert alle["Bibliothek Mitte"]["n"] == 2
+
+    nur_mitte = s.list_orte({"bezirk": ["mitte"]})
+    assert {o["ort"] for o in nur_mitte} == {"Bibliothek Mitte"}
+    assert all(o["bezirk"] == "mitte" for o in nur_mitte)
+
+    # Auswahl bleibt in der Liste sichtbar, obwohl sie gerade gefiltert wird.
+    assert {o["ort"] for o in s.list_orte({"bezirk": ["mitte"], "orte": ["Bibliothek Mitte"]})} == {"Bibliothek Mitte"}
+
+    treffer = s.query_events({"orte": ["Halle Pankow"]})
+    assert [e["titel"] for e in treffer] == ["C"]
+
+
 def test_filter_datum_von_bis(tmp_path):
     s = Store(tmp_path / "t.db")
     _ev(s, titel="Heute", start=datetime.now(TZ_BERLIN))

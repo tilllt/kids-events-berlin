@@ -37,6 +37,7 @@
       <!-- Filterkategorien als Tabs: spart vertikalen Platz, ein Panel je Kategorie -->
       <div class="filter-tabs" role="tablist" aria-label="Filter">
         <button type="button" class="filter-tab on" id="tab-bezirk" role="tab" aria-selected="true" aria-controls="panel-bezirk" data-panel="bezirk">Bezirk</button>
+        <button type="button" class="filter-tab" id="tab-ort" role="tab" aria-selected="false" aria-controls="panel-ort" data-panel="ort">Ort</button>
         <button type="button" class="filter-tab" id="tab-alter" role="tab" aria-selected="false" aria-controls="panel-alter" data-panel="alter">Alter</button>
         <button type="button" class="filter-tab" id="tab-uhrzeit" role="tab" aria-selected="false" aria-controls="panel-uhrzeit" data-panel="uhrzeit">Uhrzeit</button>
         <button type="button" class="filter-tab" id="tab-wann" role="tab" aria-selected="false" aria-controls="panel-wann" data-panel="wann">Wann</button>
@@ -44,6 +45,12 @@
 
       <div class="filter-panel" id="panel-bezirk" role="tabpanel" aria-labelledby="tab-bezirk">
         <div id="bezirk-list" class="checkgrid"></div>
+      </div>
+      <div class="filter-panel hidden" id="panel-ort" role="tabpanel" aria-labelledby="tab-ort">
+        <label for="ort-suche" class="visually-hidden">Veranstaltungsort suchen</label>
+        <input type="search" id="ort-suche" placeholder="Ort suchen… (z. B. Bibliothek)" autocomplete="off" />
+        <div id="ort-list" class="checkgrid"></div>
+        <p id="ort-hinweis" class="ort-hinweis hidden"></p>
       </div>
       <div class="filter-panel hidden" id="panel-alter" role="tabpanel" aria-labelledby="tab-alter">
         <div id="alter-list" class="chips"></div>

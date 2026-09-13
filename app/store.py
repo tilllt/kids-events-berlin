@@ -520,8 +520,30 @@ class Store:
         return cur.rowcount > 0
 
 
+    def list_orte(self, filters: dict, limit: int = 400) -> list[dict]:
+        """Veranstaltungsorte mit Anzahl im aktuellen Filterkontext.
+
+        Für den Ortsfilter der Startseite: die Auswahlliste muss sich den
+        übrigen Filtern anpassen — ist ein Bezirk gewählt, dürfen nur Orte in
+        diesem Bezirk erscheinen. Der Ortsfilter selbst zählt dabei NICHT mit
+        (sonst würde eine Auswahl ihre eigene Optionsliste auf einen Eintrag
+        zusammenstreichen und man käme nicht mehr heraus).
+        """
+        f = {k: v for k, v in (filters or {}).items() if k != "orte"}
+        f["limit"] = 20000
+        zaehler: dict[tuple, int] = {}
+        for e in self.query_events(f):
+            ort = (e.get("ort") or "").strip()
+            if not ort or ort == "Ohne Angabe":
+                continue
+            schluessel = (ort, e.get("bezirk"))
+            zaehler[schluessel] = zaehler.get(schluessel, 0) + 1
+        out = [{"ort": ort, "bezirk": bez, "n": n} for (ort, bez), n in zaehler.items()]
+        out.sort(key=lambda o: (-o["n"], o["ort"].lower()))
+        return out[:limit]
+
     def query_events(self, filters: dict) -> list[dict]:
-        """Filter: bezirk(list), altersband(list of (lo,hi,family)),
+        """Filter: bezirk(list), orte(list), altersband(list of (lo,hi,family)),
         uhrzeit(list of band keys), von/bis (Datum lokal, YYYY-MM-DD),
         kostenlos(bool), quelle(list), q."""
         where: list[str] = []
@@ -561,6 +583,11 @@ class Store:
             if alt_or:
                 where.append("(" + " OR ".join(alt_or) + ")")
                 args.extend(alt_args)
+
+        if filters.get("orte"):
+            orte = list(filters["orte"])
+            where.append(f"ort IN ({','.join('?' * len(orte))})")
+            args.extend(orte)
 
         if filters.get("uhrzeit"):
             band_or: list[str] = []
