@@ -83,5 +83,5 @@ def test_mobile_filter_schieben_die_liste_nach_unten():
     assert "overflow-y: auto" in liste.group(0) and "flex: 1 1 auto" in liste.group(0), \
         "Liste nimmt den Restplatz und scrollt in sich (~5 Einträge)"
     assert "min-height: 150px" in liste.group(0), "Liste darf nicht ganz verschwinden"
-    assert re.search(r"#mapwrap\s*\{[^}]*height:\s*min\(24vh, 185px\)", block), \
+    assert re.search(r"#mapwrap\s*\{[^}]*height:\s*min\(32vh, 250px\)", block), \
         "Karte braucht mobil eine feste, kleine Höhe, damit sie ohne Scrollen sichtbar ist"

@@ -569,7 +569,7 @@ async function load() {
     }
     renderGeo(gj);
     renderList(gj);
-    setzeStatus("zeit", `Aktualisiert ${new Date().toLocaleTimeString("de-DE")}`);
+    setzeStatus("zeit", `Aktualisiert ${new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}`);
   } catch (err) {
     setzeStatus("roh", "Fehler beim Laden.");
     $("#errortext").textContent = `API nicht erreichbar: ${err.message}`;

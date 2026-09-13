@@ -108,8 +108,12 @@ async def lifespan(app: FastAPI):
             except Exception as e:  # pragma: no cover
                 print(f"[scheduler] Lauf fehlgeschlagen: {e}", flush=True)
 
-    t = threading.Thread(target=worker, name="scrape-scheduler", daemon=True)
-    t.start()
+    if os.environ.get("KINDERKRAM_SCHEDULER", "1") != "0":
+        # In Tests abgeschaltet (conftest setzt KINDERKRAM_SCHEDULER=0): Der
+        # Scheduler scrapet sonst echte Adressen im Testprozess und arbeitet in
+        # Tests hinein — das war die Ursache der wiederkehrenden Segfaults.
+        t = threading.Thread(target=worker, name="scrape-scheduler", daemon=True)
+        t.start()
     try:
         yield
     finally:

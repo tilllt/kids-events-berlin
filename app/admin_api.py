@@ -392,6 +392,23 @@ def settings_put(body: dict, request: Request):
     return _redigiere_settings(store.all_settings())
 
 
+# --- Laufende Hintergrund-Laeufe -------------------------------------------
+# Scrapes und Recherchen laufen in Threads. Sie werden hier gefuehrt, damit
+# Tests (und ein Herunterfahren) auf sie warten koennen: Ohne das lief ein
+# Scrape-Thread nach Testende weiter und stiess in einem spaeteren Test mit
+# SQLite/lxml zusammen — die Suite brach mit einem Segfault ab (Exit 139).
+# Entstanden 2026-09-13 aus einem Faulthandler-Protokoll.
+LAUF_THREADS: list[threading.Thread] = []
+
+
+def _thread_starten(ziel, name: str) -> threading.Thread:
+    t = threading.Thread(target=ziel, name=name, daemon=True)
+    LAUF_THREADS.append(t)
+    t.start()
+    LAUF_THREADS[:] = [x for x in LAUF_THREADS if x.is_alive()]
+    return t
+
+
 # --- LLM-Endpunkt der Recherche (Change 010) --------------------------------
 @router.get("/llm")
 def llm_get(request: Request):
@@ -475,7 +492,7 @@ def recherche_lauf_starten(request: Request, body: dict | None = None):
             store.log_error("recherche", f"Recherche-Lauf fehlgeschlagen: {e}")
             print(f"[recherche] Lauf fehlgeschlagen: {e}", flush=True)
 
-    threading.Thread(target=_lauf, name="schul-recherche", daemon=True).start()
+    _thread_starten(_lauf, "schul-recherche")
     return {"status": "gestartet", "limit": limit, "nur_bsn": nur_bsn,
             "anzahl_auswahl": len(bsn_liste), "ohne_termin": ohne_termin,
             "bezirk": bezirk, "schulform": schulform, "dry_run": dry_run}
@@ -640,8 +657,7 @@ def source_scrape(quelle: str, request: Request):
             ergebnis.update(scrape(store, quelle, online=True, geo=True))
         except Exception as e:  # pragma: no cover
             ergebnis["fehler"] = str(e)
-    t = threading.Thread(target=_lauf, name=f"scrape-{quelle}", daemon=True)
-    t.start()
+    _thread_starten(_lauf, f"scrape-{quelle}")
     return {"status": "gestartet", "quelle": quelle}
 
 

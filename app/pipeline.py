@@ -41,7 +41,35 @@ def _markup_bereinigen(ev: dict, store: Store, quelle: str) -> None:
         ev[feld] = sauber
 
 
-def scrape(store: Store, quelle: str = "jup-berlin", *, online: bool = True,
+import threading
+
+# Nur EIN Lauf zur Zeit: der Scheduler (main.py) und der Admin-Knopf
+# (admin_api.py) können sonst gleichzeitig dieselbe Datenbank beschreiben. Genau
+# das endete am 2026-09-13 in einem Segfault im SQLite/lxml-Zugriff (per
+# Faulthandler-Protokoll gefunden: zwei Threads in pipeline._scrape_mit_adapter).
+LAUF_SPERRE = threading.Lock()
+
+
+def scrape(store, quelle="jup-berlin", *, online=True, geo=True, max_pages=80,
+           max_details=None, sleep_s=None, detail_html=None, listing_htmls=None,
+           jetzt=None) -> dict:
+    """Serialisierter Einstieg: wartet auf einen laufenden Lauf.
+
+    Wartezeit begrenzt (5 min); läuft dann noch einer, wird dieser Aufruf
+    übersprungen statt parallel zu schreiben.
+    """
+    if not LAUF_SPERRE.acquire(timeout=300):
+        return {"quelle": quelle, "uebersprungen": "ein Lauf laeuft bereits"}
+    try:
+        return _scrape_gesperrt(
+            store, quelle, online=online, geo=geo, max_pages=max_pages,
+            max_details=max_details, sleep_s=sleep_s, detail_html=detail_html,
+            listing_htmls=listing_htmls, jetzt=jetzt)
+    finally:
+        LAUF_SPERRE.release()
+
+
+def _scrape_gesperrt(store: Store, quelle: str = "jup-berlin", *, online: bool = True,
            geo: bool = True, max_pages: int = 80, max_details: int | None = None,
            sleep_s: float | None = None, detail_html: dict[str, str] | None = None,
            listing_htmls: list[str] | None = None,
