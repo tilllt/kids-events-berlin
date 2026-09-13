@@ -34,6 +34,11 @@
     .panel { border: 1px solid var(--border); border-radius: 8px; padding: 14px; background: var(--panel); margin: 10px 0; }
     .formgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px 14px; }
     label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
+    /* Zeilen-Label: Kontrollkästchen links, Beschriftung daneben (nicht darüber) */
+    label.zeile { flex-direction: row; align-items: center; gap: 7px; }
+    label.zeile input[type="checkbox"] { flex: 0 0 auto; }
+    label .klein { font-size: 11.5px; }
+    label:has(textarea) { grid-column: 1 / -1; }
     input, select, textarea { background: #0f131a; color: var(--text); border: 1px solid var(--border);
       border-radius: 5px; padding: 6px 8px; font-size: 13px; font-family: inherit; }
     input[type="checkbox"] { accent-color: var(--accent); width: auto; }
@@ -314,46 +319,60 @@
           Fach. Standardwerte sind vorgefüllt.
         </p>
         <div class="formgrid">
-          <label for="setMailFrom">Absenderadresse</label>
-          <div><input id="setMailFrom" type="email" autocomplete="off"></div>
-          <label for="setMailPass">Postfach-Passwort</label>
-          <div><input id="setMailPass" type="password" autocomplete="new-password"
-                 placeholder="leer = gespeichertes Passwort behalten">
-            <span id="mailPassMsg" class="msg klein"></span></div>
-          <label for="setSmtpHost">SMTP-Server</label>
-          <div><input id="setSmtpHost" type="text" style="width:16em">
-            <input id="setSmtpPort" type="number" min="1" max="65535" style="width:6em">
+          <label>Absenderadresse
+            <input id="setMailFrom" type="email" autocomplete="off">
+          </label>
+          <label>Postfach-Passwort
+            <input id="setMailPass" type="password" autocomplete="new-password"
+                   placeholder="leer = gespeichertes Passwort behalten">
+          </label>
+          <label>SMTP-Server
+            <input id="setSmtpHost" type="text" placeholder="w00d77ee.kasserver.com">
+          </label>
+          <label>SMTP-Port
+            <input id="setSmtpPort" type="number" min="1" max="65535" placeholder="465">
+          </label>
+          <label>SMTP-Verschlüsselung
             <select id="setSmtpVerschl">
               <option value="ssl">SSL (465)</option>
               <option value="starttls">STARTTLS (587)</option>
               <option value="keine">ohne Verschlüsselung</option>
-            </select></div>
-          <label for="setImapHost">IMAP-Server (Empfang)</label>
-          <div><input id="setImapHost" type="text" style="width:16em">
-            <input id="setImapPort" type="number" min="1" max="65535" style="width:6em">
+            </select>
+          </label>
+          <label>IMAP-Server (Empfang)
+            <input id="setImapHost" type="text" placeholder="w00d77ee.kasserver.com">
+          </label>
+          <label>IMAP-Port
+            <input id="setImapPort" type="number" min="1" max="65535" placeholder="993">
+          </label>
+          <label>IMAP-Verschlüsselung
             <select id="setImapVerschl">
               <option value="ssl">SSL (993)</option>
               <option value="keine">ohne Verschlüsselung</option>
-            </select></div>
-          <label for="setMailReplyTo">Reply-To</label>
-          <div><input id="setMailReplyTo" type="email" style="width:20em">
-            <span class="muted klein">hierhin antworten die Schulen</span></div>
-          <label for="setMailBetreff">Betreff</label>
-          <div><input id="setMailBetreff" type="text" style="width:32em"></div>
-          <label for="setMailText">Nachricht</label>
-          <div><textarea id="setMailText" class="mail" spellcheck="false"
-                 style="min-height:14em"></textarea>
-            <span class="muted klein">Platzhalter: {schule} {schulform} {bezirk} {jahr} {heute}</span></div>
-          <label for="setMailAktiv">Versand erlauben</label>
-          <div><label><input id="setMailAktiv" type="checkbox"> Anfragen dürfen rausgehen</label>
-            <span class="muted klein">aus = es wird nichts gesendet</span></div>
-          <label for="setMailMaxTag">Grenzen</label>
-          <div><input id="setMailMaxTag" type="number" min="0" max="1000" style="width:6em">
-            <span class="muted klein">Mails je Tag (0 = ohne Grenze)</span>
-            <input id="setMailMaxStunde" type="number" min="0" max="1000" style="width:6em">
-            <span class="muted klein">Mails je Stunde</span></div>
+            </select>
+          </label>
+          <label>Reply-To — hierhin antworten die Schulen
+            <input id="setMailReplyTo" type="email" placeholder="kinderkram@mekotools.de">
+          </label>
+          <label>Betreff
+            <input id="setMailBetreff" type="text">
+          </label>
+          <label>Mails je Tag (0 = ohne Grenze)
+            <input id="setMailMaxTag" type="number" min="0" max="1000" placeholder="40">
+          </label>
+          <label>Mails je Stunde
+            <input id="setMailMaxStunde" type="number" min="0" max="1000" placeholder="20">
+          </label>
+          <label class="zeile">
+            <input id="setMailAktiv" type="checkbox">
+            <span>Versand erlauben — aus: es wird nichts gesendet</span>
+          </label>
         </div>
-        <div class="btnrow">
+        <label style="margin-top:12px">Nachricht an die Schulen
+          <span class="muted klein">Platzhalter: {schule} {schulform} {bezirk} {jahr} {heute}</span>
+          <textarea id="setMailText" class="mail" spellcheck="false"></textarea>
+        </label>
+        <div class="btnrow" style="margin-top:10px">
           <button id="mailSpeichern" type="button" class="primary">E-Mail speichern</button>
           <button id="mailTesten" type="button">Verbindung testen (SMTP + IMAP)</button>
           <button id="mailTestmail" type="button">Testmail senden</button>
@@ -377,24 +396,26 @@
           damit keine Kosten entstehen.
         </p>
         <div class="formgrid">
-          <label for="setBraveKey">API-Key</label>
-          <div><input id="setBraveKey" type="password" autocomplete="off"
-                 placeholder="leer = gespeicherten Schlüssel behalten">
-            <span id="braveKeyMsg" class="msg klein"></span></div>
-          <label for="setBraveMonat">Anfragen je Monat</label>
-          <div><input id="setBraveMonat" type="number" min="1" max="100000" style="width:7em"></div>
-          <label for="setBraveTag">Anfragen je Tag</label>
-          <div><input id="setBraveTag" type="number" min="0" max="10000" style="width:7em">
-            <span class="muted klein">0 = kein Tageslimit</span></div>
-          <label for="setBraveRate">Anfragen pro Sekunde</label>
-          <div><input id="setBraveRate" type="number" min="1" max="50" style="width:7em">
-            <span class="muted klein">Brave erlaubt bis 50/s — höflich bleiben</span></div>
-          <label for="setBraveWdh">Wiederholung je Schule</label>
-          <div><input id="setBraveWdh" type="number" min="0" max="365" style="width:7em">
-            <span class="muted klein">Tage bis dieselbe Schule erneut gesucht wird
-            (0 = jedes Mal) — schont das Kontingent</span></div>
-          <label for="setBraveAktiv">Websuche nutzen</label>
-          <div><label><input id="setBraveAktiv" type="checkbox"> im Recherche-Lauf verwenden</label></div>
+          <label>API-Key
+            <input id="setBraveKey" type="password" autocomplete="off"
+                   placeholder="leer = gespeicherten Schlüssel behalten">
+          </label>
+          <label>Anfragen je Monat
+            <input id="setBraveMonat" type="number" min="1" max="100000" placeholder="900">
+          </label>
+          <label>Anfragen je Tag (0 = kein Limit)
+            <input id="setBraveTag" type="number" min="0" max="10000" placeholder="30">
+          </label>
+          <label>Anfragen pro Sekunde (Brave erlaubt bis 50)
+            <input id="setBraveRate" type="number" min="1" max="50" placeholder="1">
+          </label>
+          <label>Wiederholung je Schule in Tagen (0 = jedes Mal)
+            <input id="setBraveWdh" type="number" min="0" max="365" placeholder="30">
+          </label>
+          <label class="zeile">
+            <input id="setBraveAktiv" type="checkbox">
+            <span>Websuche im Recherche-Lauf verwenden</span>
+          </label>
         </div>
         <div class="btnrow">
           <button id="braveSpeichern" type="button" class="primary">Websuche speichern</button>

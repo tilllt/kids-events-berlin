@@ -594,19 +594,21 @@ function mailFormularZeigen(s) {
   p.classList.remove("hidden");
   p.innerHTML = `
     <h3>Termin-Anfrage an ${esc(s.name)}</h3>
-    <div class="formgrid" style="max-width:780px">
-      <label for="m_an">An</label>
-      <div><input id="m_an" type="email" readonly>
-        <span class="muted klein">Empfänger aus dem Schuldatensatz</span></div>
-      <label for="m_replyto">Reply-To</label>
-      <div><input id="m_replyto" type="email" style="width:20em">
-        <span class="muted klein">hierhin antwortet die Schule (Vorgabe aus den Einstellungen)</span></div>
-      <label for="m_betreff">Betreff</label>
-      <div><input id="m_betreff" type="text" style="width:34em"></div>
-      <label for="m_text">Nachricht</label>
-      <div><textarea id="m_text" class="mail" spellcheck="false" style="min-height:14em"></textarea>
-        <span class="muted klein">Platzhalter sind schon durch die Schuldaten ersetzt — hier direkt änderbar.</span></div>
+    <div class="formgrid">
+      <label>An — Empfänger aus dem Schuldatensatz
+        <input id="m_an" type="email" readonly>
+      </label>
+      <label>Reply-To — hierhin antwortet die Schule
+        <input id="m_replyto" type="email">
+      </label>
+      <label>Betreff
+        <input id="m_betreff" type="text">
+      </label>
     </div>
+    <label style="margin-top:10px">Nachricht
+      <span class="muted klein">Platzhalter sind schon durch die Schuldaten ersetzt — hier direkt änderbar.</span>
+      <textarea id="m_text" class="mail" spellcheck="false"></textarea>
+    </label>
     <div class="btnrow" style="margin-top:10px">
       <button id="m_vorlage" type="button" class="ghost">Vorschau neu laden</button>
       <button id="m_senden" type="button" class="primary">Senden</button>

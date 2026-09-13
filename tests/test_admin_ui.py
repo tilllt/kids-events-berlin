@@ -54,3 +54,48 @@ def test_websuche_bereich_ist_offen():
 
 def test_baustand_marke_ist_in_der_kopfzeile():
     assert "<!--BAUSTAND-->" in HTML, "Kopfzeile zeigt den Oberflächen-Stand nicht"
+
+
+def _formgrid_kinder(markup: str) -> list:
+    """Alle direkten Kind-Elemente jedes .formgrid-Containers (DOM-Walk)."""
+    from html.parser import HTMLParser
+
+    class P(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.stack = []
+            self.kinder = []
+
+        def handle_starttag(self, tag, attrs):
+            a = dict(attrs)
+            eltern = self.stack[-1] if self.stack else None
+            if eltern is not None and "formgrid" in (eltern[1] or ""):
+                self.kinder.append(tag)
+            self.stack.append((tag, a.get("class")))
+
+        def handle_endtag(self, tag):
+            for i in range(len(self.stack) - 1, -1, -1):
+                if self.stack[i][0] == tag:
+                    del self.stack[i:]
+                    return
+
+    p = P()
+    p.feed(markup)
+    return p.kinder
+
+
+def test_formgrid_enthaelt_nur_labels():
+    """Layout-Regel: .formgrid ist ein Grid aus Feldern — jedes Kind ist ein label.
+
+    Anlass: die Mail-/Websuche-Bereiche hatten „<label>Text</label><div><input></div>"
+    eingebaut. Das verdoppelt die Grid-Zellen und zerlegt das Desktop-Layout.
+    """
+    kinder = _formgrid_kinder(HTML)
+    assert kinder, "keine formgrid-Bereiche gefunden"
+    assert set(kinder) == {"label"}, f"formgrid enthält Nicht-Label-Elemente: {kinder}"
+
+
+def test_dialog_im_js_nutzt_dieselbe_layout_regel():
+    """Auch der Mail-Dialog (per innerHTML gebaut) muss Labels als Felder nutzen."""
+    kinder = _formgrid_kinder(JS)
+    assert kinder and set(kinder) == {"label"}, f"Dialog-formgrid: {kinder}"
