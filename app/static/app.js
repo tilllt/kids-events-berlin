@@ -157,7 +157,10 @@ async function loadMeta() {
   $("#retrybtn").addEventListener("click", () => { $("#errorbar").classList.add("hidden"); load(); });
   const note = $("#meta-note");
   const nq = (state.meta.quellen || []).length;
-  note.textContent = `${nq} aktive Quellen · ${state.meta.events_gesamt} Events im Bestand · LLM-freie Auswertung`;
+  // Steht jetzt in der Kopfzeile neben „Aktualisiert“ — hier bleibt nichts.
+  note.textContent = "";
+  note.classList.add("hidden");
+  setzeStatus("bestand", `${nq} aktive Quellen · ${state.meta.events_gesamt} Events im Bestand · LLM-freie Auswertung`);
 }
 
 function chip(id, label, key) {
@@ -465,11 +468,32 @@ function renderList(gj) {
   ul.innerHTML = "";
   const ls = $("#liststate");
   if (all.length === 0) {
-    ls.textContent = "Keine Veranstaltungen für diese Filter.";
-    ls.classList.remove("hidden");
+    setzeStatus("auswahl", "Keine Veranstaltungen für diese Filter");
+    ls.textContent = "";
+    ls.classList.add("hidden");
     return;
   }
-  ls.textContent = `${all.length} Veranstaltung(en)${gj.ohne_position && gj.ohne_position.length ? ` (${gj.ohne_position.length} ohne Kartenposition)` : ""} — Filter teilen: URL kopieren`;
+  setzeStatus("auswahl", `${all.length} Veranstaltung(en)${gj.ohne_position && gj.ohne_position.length ? ` (${gj.ohne_position.length} ohne Kartenposition)` : ""}`);
+  // Die Zeile über der Liste trägt nur noch die Aktionen — vorher stand dort
+  // zusätzlich die Anzahl (jetzt in der Statuszeile), und „URL kopieren“ war
+  // nur Text ohne Funktion.
+  ls.innerHTML = "";
+  const teilen = document.createElement("button");
+  teilen.type = "button";
+  teilen.className = "ghost";
+  teilen.textContent = "Filter teilen: URL kopieren";
+  teilen.addEventListener("click", async () => {
+    const url = location.href;
+    try {
+      await navigator.clipboard.writeText(url);
+      teilen.textContent = "URL kopiert";
+    } catch (e) {
+      // Ohne Zwischenablage-Recht die URL zeigen, statt still zu scheitern.
+      window.prompt("URL zum Kopieren:", url);
+    }
+    setTimeout(() => { teilen.textContent = "Filter teilen: URL kopieren"; }, 2000);
+  });
+  ls.appendChild(teilen);
   ls.classList.remove("hidden");
   all.sort((a, b) => a.start_local.localeCompare(b.start_local));
   all.forEach((e) => {
@@ -502,12 +526,34 @@ function renderList(gj) {
   });
 }
 
+/* ---------- Statuszeile ----------
+   Zeit, Auswahl und Bestand standen bisher an drei Stellen: „Aktualisiert“ im
+   Kopf, Quellen und Bestand in der Filterseite, die Anzahl über der Liste. Sie
+   laufen jetzt in EINER Zeile neben „Aktualisiert“ zusammen. Jeder Erzeuger
+   setzt nur seinen Teil, damit die Reihenfolge des Eintreffens egal ist
+   (Meta und Termine laden parallel). */
+const statusTeile = { zeit: "", auswahl: "", bestand: "" };
+let statusRoh = "Lade…";
+
+function setzeStatus(teil, text) {
+  if (teil === "roh") {
+    statusRoh = text;
+  } else {
+    statusTeile[teil] = text || "";
+    statusRoh = null;
+  }
+  const teile = [statusTeile.zeit, statusTeile.auswahl, statusTeile.bestand]
+    .filter(Boolean);
+  $("#statusline").textContent = statusRoh != null ? statusRoh : (teile.join(" · ") || "Lade…");
+}
+
 /* ---------- Laden ---------- */
 let busy = false;
 async function load() {
   if (busy) return;
   busy = true;
-  $("#statusline").textContent = "Lade Veranstaltungen…";
+  statusTeile.auswahl = "";              // alte Auswahl nicht stehen lassen
+  setzeStatus("roh", "Lade Veranstaltungen…");
   try {
     const qs = queryParams();
     const r = await fetch(`/api/events.geojson${qs ? "?" + qs : ""}`);
@@ -523,9 +569,9 @@ async function load() {
     }
     renderGeo(gj);
     renderList(gj);
-    $("#statusline").textContent = `Aktualisiert ${new Date().toLocaleTimeString("de-DE")} · ${gj.anzahl} Events`;
+    setzeStatus("zeit", `Aktualisiert ${new Date().toLocaleTimeString("de-DE")}`);
   } catch (err) {
-    $("#statusline").textContent = "Fehler beim Laden.";
+    setzeStatus("roh", "Fehler beim Laden.");
     $("#errortext").textContent = `API nicht erreichbar: ${err.message}`;
     $("#errorbar").classList.remove("hidden");
   } finally {
