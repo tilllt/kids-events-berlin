@@ -1057,7 +1057,14 @@ def ort_uebernehmen(body: dict, request: Request):
         if "ort_vorschlag" in felder:
             felder["ort"] = felder.pop("ort_vorschlag")
         if "adresse_vorschlag" in felder:
-            felder["adresse"] = felder.pop("adresse_vorschlag")
+            neu = felder.pop("adresse_vorschlag")
+            # Live-Test 14.09.: Die Modelladresse ist oft kürzer („Königin-Luise-Str. 6-8")
+            # als die vorhandene („…, 14195 Berlin"). Eine bestehende vollständigere
+            # Adresse wird deshalb behalten — die Übernahme soll den Ort verbessern,
+            # nicht die Adresse verschlechtern.
+            alt = (store.get_event(v["event_id"]) or {}).get("adresse") or ""
+            if re.search(r"\d{5}", neu) or not re.search(r"\d{5}", alt):
+                felder["adresse"] = neu
         if not store.update_event_admin(v["event_id"], felder):
             ergebnis.append({"id": vid, "ok": False, "grund": "Event nicht gefunden"})
             continue

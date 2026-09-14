@@ -168,6 +168,22 @@ def test_uebernahme_setzt_ort_und_ueberlebt_den_naechsten_scrape(tmp_path):
     assert r2.json()["ergebnis"][0]["grund"] == "schon uebernommen"
 
 
+def test_uebernahme_verschlechtert_die_adresse_nicht(tmp_path):
+    """Live-Fund 14.09.: Die Modelladresse war kürzer als die vorhandene
+    („Königin-Luise-Str. 6-8" statt „…, 14195 Berlin") — die vollständigere
+    Adresse bleibt stehen, der Ort wird trotzdem übernommen."""
+    client, store, ev = _client(tmp_path)
+    vid = store.list_ort_vorschlaege()[0]["id"]
+    v = store.ort_vorschlag_holen(vid)
+    assert v["adresse_vorschlag"] == "Königin-Luise-Str. 6-8"      # ohne PLZ
+    assert "14195" in (store.get_event(ev["id"])["adresse"] or "")
+    r = client.post("/api/admin/ort/uebernehmen", json={"ids": [vid]})
+    assert r.json()["uebernommen"] == 1
+    danach = store.get_event(ev["id"])
+    assert danach["ort"] == "Botanischer Garten"
+    assert danach["adresse"] == "Königin-Luise-Str. 6-8, 14195 Berlin"   # unverändert
+
+
 def test_verwerfen_aendert_das_event_nicht(tmp_path):
     client, store, ev = _client(tmp_path)
     vid = store.list_ort_vorschlaege()[0]["id"]
