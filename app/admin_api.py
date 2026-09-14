@@ -11,9 +11,12 @@ import re
 import threading
 from datetime import datetime
 
+import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
+from . import ort_ki
+from .geo import adresse_amtlich, ort_koordinaten
 from .model import TZ_BERLIN, iso_utc
 from .regeln import validate_regeln_yaml
 
@@ -1006,6 +1009,178 @@ def events_admin_list(request: Request, quelle: str | None = None,
     """ALLE Events (auch gescrapte) für die Termin-Verwaltung."""
     return _store(request).list_events_admin(quelle=quelle, status=status,
                                              q=q, limit=limit)
+
+
+# --- Ortsvorschläge (Change 022) -------------------------------------------
+# Nutzerentscheid 14.09.2026: Die LLM-Ortsprüfung schlägt nur VOR. In die
+# Ortsfelder kommt etwas erst hier — übernehmen heißt: Ort/Adresse/Treffpunkt
+# am Event setzen und `manuell=1`, damit kein Scrape das Ergebnis zurücksetzt.
+
+@router.get("/ort/vorschlaege")
+def ort_vorschlaege_list(request: Request, status: str | None = "vorschlag",
+                         quelle: str | None = None, q: str | None = None,
+                         band: str | None = None, limit: int = Query(500, le=3000)):
+    """Prüfliste: Vorschläge + Zähler + letzter Lauf."""
+    store = _store(request)
+    return {"vorschlaege": store.list_ort_vorschlaege(
+                status=status, quelle=quelle, q=q, band=band, limit=limit),
+            "zaehler": store.ort_vorschlaege_zaehlen(),
+            "letzter_lauf": ort_ki.letzter_lauf(store)}
+
+
+@router.post("/ort/uebernehmen")
+def ort_uebernehmen(body: dict, request: Request):
+    """Vorschläge übernehmen (einzeln oder Liste).
+
+    Setzt ort/adresse/treffpunkt am Event und `manuell=1` — ab dann gewinnt die
+    Bearbeitung gegen jeden weiteren Scrape (`upsert_event`, manuell_schutz).
+    Danach wird die Position aus der Adresse (sonst aus dem Ortsnamen) neu
+    bestimmt; findet sich keine, bleibt die alte Position und das steht in der
+    Antwort (kein stiller Teil-Erfolg).
+    """
+    store = _store(request)
+    ids = [int(i) for i in (body.get("ids") or [])]
+    if not ids:
+        raise HTTPException(400, "ids fehlt (Liste von Vorschlags-IDs)")
+    ergebnis, uebernommen = [], 0
+    for vid in ids:
+        v = store.ort_vorschlag_holen(vid)
+        if not v:
+            ergebnis.append({"id": vid, "ok": False, "grund": "Vorschlag unbekannt"})
+            continue
+        if v["status"] != "vorschlag":
+            ergebnis.append({"id": vid, "ok": False,
+                             "grund": f"schon {v['status']}"})
+            continue
+        felder = {k: v[k] for k in ("ort_vorschlag", "adresse_vorschlag", "treffpunkt")
+                  if v.get(k)}
+        if "ort_vorschlag" in felder:
+            felder["ort"] = felder.pop("ort_vorschlag")
+        if "adresse_vorschlag" in felder:
+            felder["adresse"] = felder.pop("adresse_vorschlag")
+        if not store.update_event_admin(v["event_id"], felder):
+            ergebnis.append({"id": vid, "ok": False, "grund": "Event nicht gefunden"})
+            continue
+        position = _position_setzen(store, v["event_id"], felder)
+        store.ort_vorschlaege_pruefen([vid], "uebernommen")
+        uebernommen += 1
+        ergebnis.append({"id": vid, "ok": True, "event_id": v["event_id"],
+                         "ort": felder.get("ort"), "treffpunkt": felder.get("treffpunkt"),
+                         "position": position})
+    return {"uebernommen": uebernommen, "ergebnis": ergebnis}
+
+
+def _position_setzen(store, ev_id: str, felder: dict) -> str:
+    """Position nach der Übernahme neu bestimmen. Rückgabe: was passiert ist."""
+    adresse = (felder.get("adresse") or "").strip()
+    ort = (felder.get("ort") or "").strip()
+    with httpx.Client(timeout=20, follow_redirects=True) as c:
+        koord = None
+        if adresse:
+            try:
+                koord = adresse_amtlich(store, adresse, client=c)
+            except Exception:
+                koord = None
+        if not koord and ort:
+            try:
+                koord = ort_koordinaten(store, ort, client=c)
+            except Exception:
+                koord = None
+    if not koord or not koord.get("lat"):
+        return "keine Position gefunden"
+    store.set_event_position(ev_id, koord["lat"], koord["lon"])
+    return f"Position gesetzt ({koord['lat']:.5f}, {koord['lon']:.5f})"
+
+
+@router.post("/ort/verwerfen")
+def ort_verwerfen(body: dict, request: Request):
+    """Vorschläge verwerfen (einzeln oder Liste). Ändert das Event nicht."""
+    store = _store(request)
+    ids = [int(i) for i in (body.get("ids") or [])]
+    if not ids:
+        raise HTTPException(400, "ids fehlt (Liste von Vorschlags-IDs)")
+    return {"verworfen": store.ort_vorschlaege_pruefen(ids, "verworfen",
+                                                       grund=body.get("grund"))}
+
+
+@router.post("/ort/import")
+def ort_import(body: dict, request: Request):
+    """Bootstrap-Import eines Schattenlauf-Ergebnisses (JSONL-Zeilen oder Liste).
+
+    Für Ergebnisse, die außerhalb der App mit demselben Prompt entstanden sind.
+    Importiert wird nur, was die Prüfregeln der Stufe passiert (Bezirksname,
+    generisch, kein Gewinn fliegen raus) — die Herkunft wird mitgespeichert,
+    damit eine Liste erkennbar aus einem Import stammt.
+    """
+    store = _store(request)
+    roh = body.get("jsonl") or ""
+    zeilen: list[dict] = []
+    for zeile in roh.splitlines():
+        zeile = zeile.strip()
+        if not zeile:
+            continue
+        try:
+            zeilen.append(json.loads(zeile))
+        except json.JSONDecodeError:
+            continue
+    if isinstance(body.get("vorschlaege"), list):
+        zeilen += body["vorschlaege"]
+    importiert, verworfen = 0, 0
+    for z in zeilen:
+        text = (z.get("text") or z.get("beleg") or "")
+        ort = (z.get("ort_llm") or z.get("ort") or "").strip()
+        belegt = bool(z.get("name_im_text")) or bool(z.get("beleg_woertlich"))
+        ok, _grund = ort_ki.plausibel(ort, belegt, (z.get("ort_live") or ""))
+        if not ok:
+            verworfen += 1
+            continue
+        ev = store.get_event_by_url(z.get("url") or z.get("source_url") or "")
+        if not ev:
+            verworfen += 1
+            continue
+        meter = z.get("abstand_m")
+        store.ort_vorschlaege_speichern([{
+            "event_id": ev["id"], "quelle": ev["quelle"], "ort_vorschlag": ort,
+            "adresse_vorschlag": z.get("adresse_llm") or z.get("adresse"),
+            "treffpunkt": z.get("treffpunkt_llm") or z.get("treffpunkt"),
+            "beleg": z.get("beleg"), "belegherkunft": z.get("belegherkunft") or
+            ort_ki.belegherkunft(z.get("beleg") or ""),
+            "abstand_m": meter, "ortsband": z.get("ortsband") or ort_ki.abstand_band(meter),
+            "name_im_text": belegt, "modell": z.get("modell") or body.get("modell"),
+            "herkunft": z.get("herkunft") or "Import Schattenlauf"}])
+        importiert += 1
+    return {"importiert": importiert, "verworfen": verworfen, "zeilen": len(zeilen)}
+
+
+@router.get("/ort/status")
+def ort_status(request: Request):
+    from .recherche.llm import konfiguration as llm_konfiguration
+    store = _store(request)
+    return {"zaehler": store.ort_vorschlaege_zaehlen(),
+            "letzter_lauf": ort_ki.letzter_lauf(store),
+            "llm": {k: v for k, v in llm_konfiguration(store).items()
+                    if k in ("llm_model", "llm_base_url")}}
+
+
+@router.post("/ort/lauf")
+def ort_lauf(request: Request, body: dict | None = None):
+    """Ortsprüfung starten (Hintergrund) — pro Quelle oder für alle aktiven."""
+    store = _store(request)
+    koerper = body or {}
+    quelle = koerper.get("quelle") or None
+    limit = koerper.get("limit")
+    if quelle and not store.get_source(quelle):
+        raise HTTPException(404, f"Unbekannte Quelle: {quelle}")
+
+    def _lauf():
+        try:
+            ort_ki.lauf(store, quelle=quelle, limit=limit)
+        except Exception as e:                      # sichtbar, nie still
+            store.set_setting("ort_ki_letzter_lauf", json.dumps(
+                {"fehler": f"{type(e).__name__}: {e}"}, ensure_ascii=False))
+
+    _thread_starten(_lauf, "ort-ki")
+    return {"status": "gestartet", "quelle": quelle or "alle aktiven"}
 
 
 @router.put("/events/{ev_id}")

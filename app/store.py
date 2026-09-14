@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS events (
     bezirk TEXT,
     lat REAL,
     lon REAL,
+    treffpunkt TEXT,
     altersband_min INTEGER,
     altersband_max INTEGER,
     alters_familie INTEGER NOT NULL DEFAULT 0,
@@ -116,6 +117,31 @@ CREATE TABLE IF NOT EXISTS ort_geo (
     gefunden INTEGER NOT NULL DEFAULT 1,
     aktualisiert_am TEXT NOT NULL
 );
+-- Change 022: Vorschläge der LLM-Ortsprüfung. Getrennt vom Event, damit nie
+-- etwas ohne menschliche Prüfung in den Ortsfeldern landet (Nutzerentscheid
+-- 14.09.: eigener Wert + Prüfliste, nicht automatisch übernehmen).
+CREATE TABLE IF NOT EXISTS ort_vorschlaege (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id TEXT NOT NULL,
+    quelle TEXT NOT NULL,
+    ort_vorschlag TEXT,
+    adresse_vorschlag TEXT,
+    treffpunkt TEXT,
+    beleg TEXT,
+    belegherkunft TEXT,
+    abstand_m INTEGER,
+    ortsband TEXT,
+    name_im_text INTEGER NOT NULL DEFAULT 0,
+    modell TEXT,
+    herkunft TEXT,
+    status TEXT NOT NULL DEFAULT 'vorschlag',
+    erstellt_am TEXT NOT NULL,
+    geprueft_am TEXT,
+    grund TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_ort_vorschlaege_status ON ort_vorschlaege(status);
+CREATE INDEX IF NOT EXISTS idx_ort_vorschlaege_event ON ort_vorschlaege(event_id);
+CREATE INDEX IF NOT EXISTS idx_ort_vorschlaege_quelle ON ort_vorschlaege(quelle);
 CREATE TABLE IF NOT EXISTS sources (
     quelle TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -299,6 +325,10 @@ class Store:
             # Termine (deterministisch: die Quelle selbst ist das Signal).
             if "zuletzt_gesehen" not in ev_cols:
                 self._conn.execute("ALTER TABLE events ADD COLUMN zuletzt_gesehen TEXT")
+            # Change 022: Treffpunkt getrennt vom Ortsnamen („Besuchszentrum" ist
+            # ein Treffpunkt, der Ort ist der Botanische Garten).
+            if "treffpunkt" not in ev_cols:
+                self._conn.execute("ALTER TABLE events ADD COLUMN treffpunkt TEXT")
             # Altbestand: alles, was schon da ist, gilt als zuletzt beim Holen
             # gesehen — sonst würde der erste Lauf nach dem Update den ganzen
             # Bestand als „nicht mehr angeboten" einstufen.
@@ -521,7 +551,7 @@ class Store:
         kategorien, kostenlos, ganztags. Nur gesendete Felder ändern
         (Partial-Update), nie Scrape-Felder wie quelle/source_*.
         Rückgabe: True wenn geändert."""
-        erlaubt = {"titel", "beschreibung_kurz", "ort", "adresse", "bezirk",
+        erlaubt = {"titel", "beschreibung_kurz", "ort", "adresse", "bezirk", "treffpunkt",
                    "kategorien", "kostenlos", "ganztags", "start_local",
                    "ende_local"}
         sets, vals = [], []
@@ -1738,6 +1768,128 @@ class Store:
                    LEFT JOIN tags k ON k.id = t.kategorie_id
                    WHERE t.id=?""", (tid,)).fetchone()
         return dict(r) if r else None
+
+    def get_event_by_url(self, url: str) -> dict | None:
+        """Event über seine Quell-URL finden (Bootstrap-Import von Vorschlägen)."""
+        if not url:
+            return None
+        r = self._conn.execute(
+            "SELECT * FROM events WHERE source_url = ? ORDER BY start_iso LIMIT 1",
+            (url,)).fetchone()
+        return dict(r) if r else None
+
+    def set_event_position(self, ev_id: str, lat: float, lon: float) -> bool:
+        """Position setzen, ohne den manuell-Schutz zu berühren (Change 022).
+
+        Wird nach einer übernommenen Ortskorrektur aufgerufen, wenn die Adresse
+        (oder der Name) amtlich auflösbar ist. Das Event ist zu dem Zeitpunkt
+        bereits manuell=1 — ein Scrape überschreibt die Position also nicht.
+        """
+        with self._lock:
+            cur = self._conn.execute(
+                "UPDATE events SET lat = ?, lon = ? WHERE id = ?",
+                (float(lat), float(lon), ev_id))
+            self._conn.commit()
+        return cur.rowcount > 0
+
+    # --- Ortsvorschläge (Change 022) --------------------------------------
+    def ort_vorschlaege_speichern(self, liste: list[dict]) -> int:
+        """Vorschläge speichern (idempotent je Event + Ortsvorschlag).
+
+        - offener Vorschlag (status='vorschlag') → Felder aktualisieren
+        - bereits übernommener/verworfener Vorschlag → unangetastet lassen
+          (eine Übernahme darf durch einen neuen Lauf nicht zurückfallen)
+        Rückgabe: Anzahl neu angelegter Vorschläge.
+        """
+        neu = 0
+        jetzt = datetime.now(TZ_BERLIN).isoformat(timespec="seconds")
+        with self._lock:
+            for v in liste:
+                alt = self._conn.execute(
+                    """SELECT id, status FROM ort_vorschlaege
+                       WHERE event_id = ? AND COALESCE(ort_vorschlag,'') = COALESCE(?,'')
+                       ORDER BY id DESC LIMIT 1""",
+                    (v["event_id"], v.get("ort_vorschlag"))).fetchone()
+                werte = (v.get("adresse_vorschlag"), v.get("treffpunkt"), v.get("beleg"),
+                         v.get("belegherkunft"), v.get("abstand_m"), v.get("ortsband"),
+                         int(bool(v.get("name_im_text"))), v.get("modell"), v.get("herkunft"))
+                if alt is not None:
+                    if alt["status"] != "vorschlag":
+                        continue          # geprüft bleibt geprüft
+                    self._conn.execute(
+                        """UPDATE ort_vorschlaege
+                           SET adresse_vorschlag=?, treffpunkt=?, beleg=?, belegherkunft=?,
+                               abstand_m=?, ortsband=?, name_im_text=?, modell=?, herkunft=?
+                           WHERE id=?""", werte + (alt["id"],))
+                    continue
+                self._conn.execute(
+                    """INSERT INTO ort_vorschlaege
+                       (event_id, quelle, ort_vorschlag, adresse_vorschlag, treffpunkt,
+                        beleg, belegherkunft, abstand_m, ortsband, name_im_text, modell,
+                        herkunft, status, erstellt_am)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'vorschlag',?)""",
+                    (v["event_id"], v["quelle"], v.get("ort_vorschlag")) + werte + (jetzt,))
+                neu += 1
+            self._conn.commit()
+        return neu
+
+    def list_ort_vorschlaege(self, status: str | None = "vorschlag",
+                             quelle: str | None = None, q: str | None = None,
+                             band: str | None = None, limit: int = 500) -> list[dict]:
+        """Vorschläge samt Event-Daten für die Prüfliste (neueste zuerst)."""
+        where, args = [], []
+        if status:
+            where.append("v.status = ?")
+            args.append(status)
+        if quelle:
+            where.append("v.quelle = ?")
+            args.append(quelle)
+        if band:
+            where.append("COALESCE(v.ortsband,'n/v') = ?")
+            args.append(band)
+        if q:
+            where.append("(v.ort_vorschlag LIKE ? OR e.titel LIKE ? OR v.adresse_vorschlag LIKE ?)")
+            args += [f"%{q}%"] * 3
+        sql = f"""
+            SELECT v.*, e.titel, e.start_local, e.ort AS ort_jetzt, e.adresse AS adresse_jetzt,
+                   e.bezirk, e.source_url, e.manuell, e.treffpunkt AS treffpunkt_jetzt
+            FROM ort_vorschlaege v
+            LEFT JOIN events e ON e.id = v.event_id
+            {'WHERE ' + ' AND '.join(where) if where else ''}
+            ORDER BY v.quelle, v.ort_vorschlag, e.start_local
+            LIMIT ?"""
+        return [dict(r) for r in self._conn.execute(sql, args + [int(limit)]).fetchall()]
+
+    def ort_vorschlaege_zaehlen(self) -> dict:
+        """Anzahl je Status (+ offene nach Band für die Anzeige)."""
+        aus: dict = {"vorschlag": 0, "uebernommen": 0, "verworfen": 0}
+        for r in self._conn.execute(
+                "SELECT status, COUNT(*) AS n FROM ort_vorschlaege GROUP BY status").fetchall():
+            aus[r["status"]] = r["n"]
+        aus["gesamt"] = sum(aus.values())
+        aus["band"] = {r["ortsband"] or "n/v": r["n"] for r in self._conn.execute(
+            "SELECT COALESCE(ortsband,'n/v') AS ortsband, COUNT(*) AS n FROM ort_vorschlaege "
+            "WHERE status='vorschlag' GROUP BY COALESCE(ortsband,'n/v')").fetchall()}
+        return aus
+
+    def ort_vorschlag_holen(self, vid: int) -> dict | None:
+        r = self._conn.execute("SELECT * FROM ort_vorschlaege WHERE id = ?", (int(vid),)).fetchone()
+        return dict(r) if r else None
+
+    def ort_vorschlaege_pruefen(self, ids: list[int], status: str, grund: str | None = None) -> int:
+        """Status setzen (uebernommen/verworfen); Rückgabe: Anzahl geänderter Zeilen."""
+        if status not in ("vorschlag", "uebernommen", "verworfen"):
+            raise ValueError(f"Unbekannter Status: {status}")
+        jetzt = datetime.now(TZ_BERLIN).isoformat(timespec="seconds")
+        with self._lock:
+            n = 0
+            for vid in ids:
+                cur = self._conn.execute(
+                    "UPDATE ort_vorschlaege SET status=?, geprueft_am=?, grund=? WHERE id=?",
+                    (status, jetzt, grund, int(vid)))
+                n += cur.rowcount
+            self._conn.commit()
+        return n
 
     def upsert_termin_manuell(self, t: dict) -> int:
         """Anlegen (id None) oder aktualisieren. Pflicht: schule_bsn, titel,

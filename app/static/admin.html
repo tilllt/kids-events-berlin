@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Verwaltung — Kinder-Events Berlin</title>
-  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="stylesheet" href="/static/style.css?v=18" />
   <style>
     body { max-width: 1200px; margin: 0 auto; padding: 16px; }
     header { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
@@ -107,6 +107,7 @@
     <button data-tab="quellen" class="aktiv">Quellen</button>
     <button data-tab="termine">Termine</button>
     <button data-tab="schulrecherche">Schul-Recherche</button>
+    <button data-tab="ortsvorschlaege">Ortsvorschläge</button>
     <button data-tab="einstellungen">Einstellungen</button>
   </nav>
 
@@ -211,6 +212,53 @@
     <div id="termineListe" style="max-height:70vh; overflow:auto; border:1px solid var(--border); border-radius:8px;">
       <table>
         <thead><tr><th>Datum</th><th>Quelle</th><th>Titel</th><th>Ort</th><th>Tags</th><th>Status</th><th>Aktionen</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ OBER-TAB: ORTSVORSCHLÄGE (LLM-Prüfliste, Change 022) ======== -->
+  <section class="tabinhalt hidden" id="tab-ortsvorschlaege">
+    <div class="muted" style="margin-bottom:6px">
+      Die Ortsprüfung liest die Quellseiten und schlägt Orte vor, die die Regeln nicht finden konnten.
+      <b>Übernehmen</b> setzt Ort, Adresse und Treffpunkt am Termin und markiert ihn als manuell gepflegt —
+      der nächste Scrape setzt ihn dann nicht mehr zurück. <b>Verwerfen</b> lässt den Termin unberührt.
+      Vorgeschlagen wird nur, was wörtlich auf der Quellseite steht (Beleg-Spalte zeigt die Fundstelle).
+    </div>
+    <div class="btnrow" style="margin-bottom:8px">
+      <select id="ortFilterStatus">
+        <option value="vorschlag">Offene Vorschläge</option>
+        <option value="uebernommen">Übernommen</option>
+        <option value="verworfen">Verworfen</option>
+        <option value="">Alle</option>
+      </select>
+      <select id="ortFilterQuelle"><option value="">Alle Quellen</option></select>
+      <select id="ortFilterBand">
+        <option value="">Alle Abstände</option>
+        <option value="an derselben Adresse">an derselben Adresse</option>
+        <option value="gleiche Anlage">gleiche Anlage (Gelände)</option>
+        <option value="nicht ortsgleich">nicht ortsgleich</option>
+        <option value="n/v">Abstand nicht prüfbar</option>
+      </select>
+      <input id="ortSuche" type="search" placeholder="Ort, Titel oder Adresse…" style="min-width:200px" />
+      <button id="ortRefresh" class="ghost" type="button">Aktualisieren</button>
+      <button id="ortLauf" class="ghost" type="button">Prüfung starten</button>
+      <span class="muted" id="ortLaufInfo"></span>
+    </div>
+    <div class="btnrow" style="margin-bottom:8px">
+      <button id="ortWaehlen" class="ghost" type="button">Alle sichtbaren auswählen</button>
+      <button id="ortUebernehmen" class="primary" type="button">Ausgewählte übernehmen</button>
+      <button id="ortVerwerfen" class="ghost" type="button">Ausgewählte verwerfen</button>
+      <span class="muted" id="ortZaehler"></span>
+    </div>
+    <div id="ortErgebnis" class="meldung hidden"></div>
+    <div id="ortListe" style="max-height:70vh; overflow:auto; border:1px solid var(--border); border-radius:8px;">
+      <table>
+        <thead><tr>
+          <th style="width:26px"><input type="checkbox" id="ortAlle" title="Alle sichtbaren" /></th>
+          <th>Vorschlag</th><th>Adresse</th><th>Treffpunkt</th><th>bisher</th>
+          <th>Beleg</th><th>Herkunft</th><th>Abstand</th><th>Termin</th><th>Aktionen</th>
+        </tr></thead>
         <tbody></tbody>
       </table>
     </div>
@@ -504,6 +552,6 @@
     </details>
   </section>
 
-  <script src="/static/admin.js"></script>
+  <script src="/static/admin.js?v=18"></script>
 </body>
 </html>

@@ -54,6 +54,9 @@ def _ev_public(e: dict) -> dict:
         "ganztags": bool(e.get("ganztags")),
         "ort": e.get("ort"),
         "adresse": e.get("adresse"),
+        # Change 022: Treffpunkt getrennt vom Ortsnamen („Besuchszentrum" ist ein
+        # Treffpunkt, der Ort ist z.B. „Botanischer Garten").
+        "treffpunkt": e.get("treffpunkt"),
         "bezirk": bez,
         "bezirk_label": BEZIRK_LABELS.get(bez or "", bez or "Ohne Angabe"),
         "altersband_min": e.get("altersband_min"),

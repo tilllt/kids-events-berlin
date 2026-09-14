@@ -339,11 +339,12 @@ function unterTabZeigen(name) {
 function tabAktiv(name) {
   obentab = name;
   $$("#tabs button").forEach((b) => b.classList.toggle("aktiv", b.dataset.tab === name));
-  ["quellen", "termine", "einstellungen"].forEach((t) => {
+  ["quellen", "termine", "einstellungen", "ortsvorschlaege"].forEach((t) => {
     const el = $("#tab-" + t);
     if (el) el.classList.toggle("hidden", t !== name);
   });
   if (name === "termine") loadAlleTermine();
+  if (name === "ortsvorschlaege") loadOrtsvorschlaege();
   if (name === "quellen" && !$("#unterTabs").dataset.gefuellt) baueUnterTabs();
 }
 $("#tabs").addEventListener("click", (ev) => {
@@ -1548,6 +1549,153 @@ $("#dedupeAnwenden").onclick = async () => {
     loadRuns(); loadQuellen();
   } catch (e) { meldung(msg, e.message, false); }
 };
+
+/* ================= Ortsvorschläge (Change 022) =================
+   Vorschläge der LLM-Ortsprüfung prüfen und einzeln oder im Batch übernehmen.
+   Übernehmen setzt Ort/Adresse/Treffpunkt am Termin und markiert ihn als
+   manuell gepflegt — der nächste Scrape setzt ihn dann nicht zurück. */
+
+let ortDaten = [];
+
+function ortQuellenFilterFuellen() {
+  const sel = $("#ortFilterQuelle");
+  if (sel.dataset.gefuellt) return;
+  sel.dataset.gefuellt = "1";
+  api("/api/admin/sources").then((qs) => {
+    qs.forEach((q) => {
+      const o = document.createElement("option");
+      o.value = q.quelle;
+      o.textContent = `${q.name} (${q.events})`;
+      sel.appendChild(o);
+    });
+  }).catch((e) => fehlerZeigen(`Quellen für Ortsfilter: ${e.message}`));
+}
+
+async function loadOrtsvorschlaege() {
+  ortQuellenFilterFuellen();
+  const p = new URLSearchParams({ limit: "1500" });
+  if ($("#ortFilterStatus").value) p.set("status", $("#ortFilterStatus").value);
+  if ($("#ortFilterQuelle").value) p.set("quelle", $("#ortFilterQuelle").value);
+  if ($("#ortFilterBand").value) p.set("band", $("#ortFilterBand").value);
+  const s = $("#ortSuche").value.trim();
+  if (s) p.set("q", s);
+  try {
+    const d = await api(`/api/admin/ort/vorschlaege?${p.toString()}`);
+    ortDaten = d.vorschlaege || [];
+    const z = d.zaehler || {};
+    $("#ortZaehler").textContent =
+      `${ortDaten.length} angezeigt · offen ${z.vorschlag ?? 0} · übernommen ${z.uebernommen ?? 0}` +
+      ` · verworfen ${z.verworfen ?? 0}`;
+    const ll = d.letzter_lauf || {};
+    $("#ortLaufInfo").textContent = ll.feendet_am || ll.beendet_am
+      ? `Letzter Lauf ${fmtZeit(ll.beendet_am)}: ${ll.kandidaten ?? 0} Kandidaten, ` +
+        `${ll.vorschlaege ?? 0} Vorschläge, ${ll.verworfen ?? 0} verworfen, ` +
+        `${(ll.llm_fehler ?? 0) + (ll.abruf_fehler ?? 0)} Fehler (${ll.modell || "?"})`
+      : (ll.fehler ? `Letzter Lauf FEHLER: ${ll.fehler}` : "Noch kein Lauf in der App");
+    const tb = $("#ortListe tbody");
+    tb.innerHTML = "";
+    if (!ortDaten.length) {
+      tb.innerHTML = '<tr><td colspan="10" class="muted">Keine Vorschläge für diese Auswahl.</td></tr>';
+    }
+    ortDaten.forEach((v) => tb.appendChild(ortZeile(v)));
+    $("#ortAlle").checked = false;
+    $("#ortErgebnis").className = "meldung hidden";
+  } catch (e) {
+    fehlerZeigen(`Ortsvorschläge laden: ${e.message}`);
+  }
+}
+
+function ortZeile(v) {
+  const tr = document.createElement("tr");
+  const offen = v.status === "vorschlag";
+  const adresse = v.adresse_vorschlag ? ` · ${esc(v.adresse_vorschlag)}`
+    : (v.adresse_jetzt ? ` · ${esc(v.adresse_jetzt)}` : "");
+  tr.innerHTML = `
+    <td>${offen ? `<input type="checkbox" class="ortHaken" value="${v.id}" />` : ""}</td>
+    <td><b>${esc(v.ort_vorschlag || "—")}</b></td>
+    <td>${esc(v.adresse_vorschlag || "—")}</td>
+    <td>${esc(v.treffpunkt || "—")}</td>
+    <td class="muted">${esc(v.ort_jetzt || "—")}${v.adresse_jetzt ? `<br>${esc(v.adresse_jetzt)}` : ""}
+      ${v.manuell ? '<span class="badge">manuell gepflegt</span>' : ""}</td>
+    <td class="muted" style="max-width:300px">${esc(v.beleg || "—")}</td>
+    <td>${esc(v.belegherkunft || "—")}${v.name_im_text ? "" : '<br><span class="muted">Name nicht wörtlich geprüft</span>'}</td>
+    <td>${esc(v.ortsband || "n/v")}${v.abstand_m != null ? `<br><span class="muted">${v.abstand_m} m</span>` : ""}</td>
+    <td>${esc((v.titel || "").slice(0, 60))}<br><span class="muted">${esc((v.start_local || "").slice(0, 16).replace("T", " "))}</span>
+      ${v.source_url ? ` <a href="${esc(v.source_url)}" target="_blank" rel="noopener">Fundstelle</a>` : ""}</td>
+    <td>${offen
+        ? `<button class="primary" data-ort-uebernehmen="${v.id}">übernehmen</button>
+           <button class="ghost" data-ort-verwerfen="${v.id}">verwerfen</button>`
+        : esc(v.status) + (v.geprueft_am ? `<br><span class="muted">${fmtZeit(v.geprueft_am)}</span>` : "")}</td>`;
+  return tr;
+}
+
+function ortAusgewaehlt() {
+  return $$("#ortListe .ortHaken").filter((c) => c.checked).map((c) => Number(c.value));
+}
+
+async function ortAktion(aktion, ids) {
+  const el = $("#ortErgebnis");
+  if (!ids.length) {
+    meldung(el, "Nichts ausgewählt — bitte die Zeilen ankreuzen.", false);
+    return;
+  }
+  const wort = aktion === "verwerfen" ? "verwerfen" : "übernehmen";
+  if (ids.length > 25 && !confirm(`${ids.length} Vorschläge wirklich ${wort}?`)) return;
+  meldung(el, `${ids.length} Vorschlag/Vorschläge werden bearbeitet…`, false);
+  try {
+    const d = await api(`/api/admin/ort/${aktion}`,
+      { method: "POST", body: JSON.stringify({ ids }) });
+    if (aktion === "verwerfen") {
+      meldung(el, `${d.verworfen} verworfen.`, true);
+    } else {
+      const fehl = (d.ergebnis || []).filter((r) => !r.ok);
+      const ohnePos = (d.ergebnis || []).filter((r) => r.ok && /keine Position/.test(r.position || ""));
+      meldung(el, `${d.uebernommen} übernommen`
+        + (ohnePos.length ? `, davon ${ohnePos.length} ohne neue Position` : "")
+        + (fehl.length ? ` · ${fehl.length} nicht übernommen: `
+            + fehl.slice(0, 3).map((f) => `#${f.id} ${f.grund}`).join(", ") : ""), fehl.length === 0);
+    }
+    await loadOrtsvorschlaege();
+  } catch (e) {
+    meldung(el, `Fehler: ${e.message}`, false);
+  }
+}
+
+document.addEventListener("click", (ev) => {
+  const ueber = ev.target.closest("[data-ort-uebernehmen]");
+  if (ueber) {
+    ortAktion("uebernehmen", [Number(ueber.dataset.ortUebernehmen)]);
+    return;
+  }
+  const ver = ev.target.closest("[data-ort-verwerfen]");
+  if (ver) {
+    ortAktion("verwerfen", [Number(ver.dataset.ortVerwerfen)]);
+  }
+});
+
+$("#ortRefresh").addEventListener("click", () => loadOrtsvorschlaege());
+$("#ortSuche").addEventListener("keydown", (e) => { if (e.key === "Enter") loadOrtsvorschlaege(); });
+["ortFilterStatus", "ortFilterQuelle", "ortFilterBand"].forEach((id) =>
+  $("#" + id).addEventListener("change", () => loadOrtsvorschlaege()));
+$("#ortWaehlen").addEventListener("click", () => {
+  $$("#ortListe .ortHaken").forEach((c) => { c.checked = true; });
+});
+$("#ortAlle").addEventListener("change", (e) => {
+  $$("#ortListe .ortHaken").forEach((c) => { c.checked = e.target.checked; });
+});
+$("#ortUebernehmen").addEventListener("click", () => ortAktion("uebernehmen", ortAusgewaehlt()));
+$("#ortVerwerfen").addEventListener("click", () => ortAktion("verwerfen", ortAusgewaehlt()));
+$("#ortLauf").addEventListener("click", async () => {
+  const el = $("#ortErgebnis");
+  if (!confirm("Ortsprüfung jetzt starten? Das liest die Quellseiten und fragt das Modell — "
+               + "das dauert bei vielen Terminen eine Weile. Es wird nichts automatisch übernommen.")) return;
+  try {
+    const d = await api("/api/admin/ort/lauf", { method: "POST", body: JSON.stringify({}) });
+    meldung(el, `Lauf gestartet (${d.quelle}) — Ergebnis erscheint oben nach dem „Aktualisieren“.`, true);
+  } catch (e) {
+    meldung(el, `Start fehlgeschlagen: ${e.message}`, false);
+  }
+});
 
 /* ---------- Init ---------- */
 fuelleSchulFilter();

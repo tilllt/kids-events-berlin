@@ -97,12 +97,20 @@ def test_static_dateien_mit_versionsnummer():
     wurde „nicht angekommen“, obwohl die Datei live war. Deshalb: jede
     statische Datei trägt ?v=N, und alle tragen DIESELBE Nummer (ein Knopf,
     damit niemand style.css allein vergisst).
+
+    Erweitert 14.09.2026 (Change 022): gilt auch für die Admin-Seite. Genau dort
+    wäre die neue Oberfläche sonst im Cache hängengeblieben.
     """
-    dateien = re.findall(r'(?:href|src)="(/static/[^"?]+)(\?[^"]*)?"', HTML)
-    assert dateien, "keine statischen Dateien gefunden"
+    seiten = ["index.html", "admin.html"]
     nummern = set()
-    for pfad, query in dateien:
-        m = re.match(r"\?v=(\d+)$", query or "")
-        assert m, f"{pfad} ohne Versionsnummer — der Browser liefert sonst die alte Datei"
-        nummern.add(m.group(1))
+    for seite in seiten:
+        pfad = pathlib.Path("app/static") / seite
+        if not pfad.exists():
+            continue
+        for datei, query in re.findall(r'(?:href|src)="(/static/[^"?]+)(\?[^"]*)?"',
+                                       pfad.read_text(encoding="utf-8")):
+            m = re.match(r"\?v=(\d+)$", query or "")
+            assert m, f"{seite}: {datei} ohne Versionsnummer — der Browser liefert sonst die alte Datei"
+            nummern.add(m.group(1))
+    assert nummern, "keine statischen Dateien gefunden"
     assert len(nummern) == 1, f"ungleiche Versionsnummern: {sorted(nummern)}"

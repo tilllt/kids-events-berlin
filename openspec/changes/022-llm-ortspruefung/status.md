@@ -168,10 +168,59 @@ steht als „Botanischer Garten" mit dem Beleg „Anbieter: Botanischer Garten u
 Botanisches Museum Berlin" und dem Treffpunkt „Besuchszentrum, Eingang
 Königin-Luise-Platz" in der Prüfliste.
 
+## Umsetzung 14.09.2026 (Review-Werkzeug im Backend)
+
+Nutzerauftrag: „Review-Werkzeug ins Backend, einzeln oder per Batch akzeptieren".
+Gebaut ist es als Teil von Change 022 — **ohne** etwas zu übernehmen:
+
+**Datenbank (`app/store.py`)**
+- Neue Tabelle `ort_vorschlaege` (Vorschlag mit Ort, Adresse, Treffpunkt, Beleg,
+  Belegherkunft, Abstand + Band, Modell, Herkunft, Status, Prüfzeitpunkt, Grund).
+- Neue Spalte `events.treffpunkt` — im `CREATE TABLE` **und** in der Migration
+  (die Migration läuft vor `executescript`; ein neues Feld nur dort anzulegen
+  lässt frische Datenbanken ohne die Spalte zurück — genau der Fehler, der hier
+  zuerst passiert ist).
+- Methoden: `ort_vorschlaege_speichern` (idempotent je Event+Ort; ein
+  übernommener/verworfener Vorschlag wird **nicht** zurückgesetzt),
+  `list_ort_vorschlaege`, `ort_vorschlaege_zaehlen`, `ort_vorschlag_holen`,
+  `ort_vorschlaege_pruefen`, `get_event_by_url`, `set_event_position`.
+
+**Stufe (`app/ort_ki.py`)** — Prompt v2, Namentest, Abstandsbänder, Filter.
+Kandidaten, Textquelle je Quellentyp, Zähler und Fehlerliste; läuft über
+`POST /api/admin/ort/lauf` in einem Hintergrund-Thread.
+
+**API (`app/admin_api.py`)**
+- `GET /api/admin/ort/vorschlaege` (Filter: Status, Quelle, Band, Suche) +
+  Zähler + letzter Lauf
+- `POST /api/admin/ort/uebernehmen` `{ids:[…]}` — setzt Ort/Adresse/Treffpunkt
+  und `manuell=1`, bestimmt die Position neu (Adresse, sonst Ortsname) und
+  meldet je Vorschlag „ok" oder den Grund des Scheiterns (kein stiller Teil-Erfolg)
+- `POST /api/admin/ort/verwerfen` `{ids:[…]}` — ändert den Termin nicht
+- `POST /api/admin/ort/import` — Bootstrap-Import eines Schattenlaufs
+- `GET /api/admin/ort/status`, `POST /api/admin/ort/lauf`
+
+**Oberfläche (`app/static/admin.html`, `admin.js`)** — Tab „Ortsvorschläge":
+Filter (Status/Quelle/Abstand/Suche), Zähler, Tabelle mit Vorschlag, Adresse,
+Treffpunkt, bisherigem Wert, Belegzitat, Herkunft, Abstand, Termin und
+Fundstellen-Link; Ankreuzen einzeln oder „alle sichtbaren", Sammelaktionen
+„Ausgewählte übernehmen/verwerfen" (ab 25 mit Rückfrage) plus Einzelknöpfe je
+Zeile. Rückmeldung nennt Anzahl, übernommene ohne neue Position und Fehlgründe.
+
+**Die entscheidende Invariante ist getestet** (`tests/test_ort_ki.py`, 12 Tests):
+eine übernommene Korrektur setzt `manuell=1`, und `upsert_event` schreibt ein
+manuell gepflegtes Event **nicht** mehr um — der nächste Scrape lässt den Ort
+also stehen. Ohne diese Eigenschaft wäre das Werkzeug wertlos gewesen.
+
+**Nebenbei behoben:** `admin.html` lud `style.css` und `admin.js` **ohne**
+Versionsnummer (Browser-Cache-Falle aus dem Skill). Jetzt `?v=18` auf beiden
+Seiten, und `test_static_dateien_mit_versionsnummer` prüft auch die Admin-Seite.
+Volle Suite: **343 Tests grün**.
+
 ## Offen
 
-- Prüfliste durchsehen und übernehmen (dein Schritt); erst danach eine
-  Übernahme-Möglichkeit in der App — die Admin-Prüfliste ist noch nicht gebaut.
+- **Deine Prüfung:** Prüfliste im Admin-Tab „Ortsvorschläge" durchsehen und
+  übernehmen/verwerfen. Der Bootstrap-Import der 839 Schattenlauf-Ergebnisse
+  läuft beim Ausliefern mit.
 - Nebenfund: „Berlinweit" (79 Termine, familienportal) ist noch nicht in
   `_GENERISCH` (`app/orte.py`) — mit dieser Stufe mitnehmen.
 - Rate-Limit/Scheduler: nur neue oder geänderte Termine prüfen, damit der
