@@ -66,4 +66,36 @@ darin den Straßenteil (`Ort/Treffpunkt: *[^,]+,? *([^,]+)`).
   Mohriner Allee“) werden bewusst **nicht** bevorzugt: der Name vor der PLZ
   gewinnt, weil er der bekanntere Ort ist.
 
-## Nach dem Lauf gemessen (live)
+## Nach dem Lauf gemessen (live, 2026-09-14)
+
+- Anschrift im Ortsnamen: **818 → 449** von 1350 Terminen.
+- Ortsname fehlt („Ohne Angabe"/„Berlin"): 15 → 14.
+- Echte Ortsnamen stehen jetzt im Ortsfeld, z. B. „OTTO Textilwerkstatt",
+  „Tempelhofer Feld", „Gartenarbeitsschule Lichtenberg", „Leopoldplatz".
+- Der gemeldete Fall selbst ist live nicht mehr prüfbar — „Schiff ahoi!" lief
+  nur am 13.09. und ist mit Change 016 als vergangener Termin entfernt worden.
+  Der Regressionstest führt den Fall an der echten Fixture-Detailseite:
+  `tests/test_umweltkalender_ort.py::test_ort_und_adresse_aus_echter_detailseite`.
+
+## Nachtrag — Bezirksnamen aus der Detailseite (2026-09-14)
+
+Die Messung nach dem Lauf zeigte einen **zweiten** Weg ins Ortsfeld: **185 von
+1350** Terminen standen mit „Friedrichshain-Kreuzberg", „Mitte" & Co. als Ort.
+
+Ursache: Bei manchen Angeboten nennt die Quelle nur „<Bezirk>, <PLZ> Berlin" —
+keine Straße, keinen Namen. Die Prüfung „Bezirksname ist kein Ort" sah nur das
+Feld der Übersichtsseite an; das erst danach gelesene Detail-Feld wurde
+ungeprüft übernommen und überschrieb das Ergebnis.
+
+- Die Prüfung gilt jetzt für **jede** Quelle der Ortsangabe (Übersicht,
+  Detail, feste Vorgabe); der Bezirksname wandert weiterhin in den Bezirk —
+  aus jedem Ortsfeld, damit keine Information verloren geht.
+- Debugging-Befund am Rande: Ein erster Versuch, den Wert einfach zu verwerfen,
+  ließ den Bezirk auf `None` fallen — deshalb wandert er weiterhin in `bezirk`.
+- „vielerorts" (89 Termine) ist in `app/orte.py` als generische Angabe
+  aufgenommen — wie „verschiedene Orte": kein Ort, keine Geokodierung.
+
+**Offen, dem Nutzer zur Entscheidung:** „vielerorts" (89) und „online" (34)
+stehen weiterhin als Werte in der Orts-Auswahlliste, weil `Store.list_orte`
+generische Angaben nicht ausschließt. Das ist eine Produktentscheidung (will
+man „online" filtern können?), nicht offensichtlich ein Fehler.

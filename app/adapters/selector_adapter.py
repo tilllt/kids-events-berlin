@@ -563,7 +563,22 @@ class SelectorAdapter:
         # steht weiterhin in der Adresszeile (und dient der Geokodierung).
         adresse = (row.get("adresse") or detail.get("adresse")
                    or self._standard.get("adresse"))
-        ort = (row.get("ort") or detail.get("ort")
+
+        def _ohne_bezirksname(wert: str | None) -> str | None:
+            """Bezirks-/Stadtname ist kein Veranstaltungsort (Nutzerfund 2026-09-13).
+
+            Gilt für JEDE Quelle der Ortsangabe — auch für das Detail-Feld:
+            In der Quelle Umweltkalender steht bei manchen Angeboten nur
+            „Friedrichshain-Kreuzberg, 10965 Berlin“ (keine Straße, kein Name).
+            Ohne diese Prüfung landete der Bezirk im Ortsfilter (185 von 1350
+            Terminen gemessen am 2026-09-14) und die Geokodierung suchte einen
+            Ort, den es nicht gibt.
+            """
+            if wert and _LABEL_ZU_SLUG.get(str(wert).strip().lower()) not in (None, "unbekannt"):
+                return None
+            return wert
+
+        ort = (_ohne_bezirksname(row.get("ort")) or _ohne_bezirksname(detail.get("ort"))
                or self._standard.get("ort")
                or (adresse and "Berlin")
                or "Ohne Angabe")
@@ -573,16 +588,17 @@ class SelectorAdapter:
         # Kalender-Orte (standard) gelten nur, wenn die Quelle nichts liefert.
         bezirk = (_LABEL_ZU_SLUG.get((row.get("bezirk") or "").strip().lower())
                   or _LABEL_ZU_SLUG.get((self._standard.get("bezirk") or "").strip().lower()))
-        # Steht im Ortsfeld nur ein Bezirks- oder Stadtname („Mitte": 77 Termine,
-        # Nutzerfund 2026-09-13), ist das kein Veranstaltungsort: der Wert wandert
-        # in den Bezirk, der Ort wird aus Detailseite / fester Vorgabe / Adresse
-        # neu bestimmt. Sonst stehen Bezirke im Ortsfilter, und die Geokodierung
-        # sucht einen Ort, den es nicht gibt.
-        slug_aus_ort = _LABEL_ZU_SLUG.get((ort or "").strip().lower())
-        if slug_aus_ort and slug_aus_ort != "unbekannt":
-            bezirk = bezirk or slug_aus_ort
-            ort = (self._standard.get("ort") or detail.get("ort")
-                   or (adresse and "Berlin") or "Ohne Angabe")
+        # Steht in einem Ortsfeld nur ein Bezirks- oder Stadtname („Mitte":
+        # 77 Termine, Nutzerfund 2026-09-13), ist das kein Veranstaltungsort:
+        # der Wert wandert in den Bezirk — aus JEDEM Ortsfeld, auch dem der
+        # Detailseite (dort steht bei manchen Angeboten der Umweltkalender-Quelle
+        # nur „<Bezirk>, <PLZ> Berlin"; gemessen 2026-09-14: 185 von 1350
+        # Terminen standen so mit einem Bezirk im Ortsfeld). Der Ort selbst wird
+        # danach aus Detail / fester Vorgabe / Adresse bestimmt.
+        for kandidat in (row.get("ort"), detail.get("ort")):
+            slug = _LABEL_ZU_SLUG.get((kandidat or "").strip().lower())
+            if slug and slug != "unbekannt":
+                bezirk = bezirk or slug
         if ende is None:
             ende = row.get("ende")
         if ganztags is None:

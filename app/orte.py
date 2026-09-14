@@ -34,7 +34,7 @@ _GENERISCH = {
     "stadion", "sportplatz", "gymnasium", "schule", "bibliothek",
     "online", "digital", "webinar", "zoom",
     "ohne angabe", "kein ort", "keine angabe", "ohne ort", "unbekannt",
-    "diverse", "verschiedene", "verschiedene orte", "mehrere orte",
+    "diverse", "verschiedene", "verschiedene orte", "mehrere orte", "vielerorts",
     "berlin", "berlinweit", "ganz berlin", "stadtweit",
     "nach absprache", "wird bekannt gegeben", "folgt", "siehe beschreibung",
     "siehe anbieter", "treffpunkt wird bekannt gegeben", "vor ort",

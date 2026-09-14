@@ -27,11 +27,50 @@ def test_generische_angaben_sind_keine_orte():
     """„Aula", „online", „Kein Ort" sagen keinen Ort — sie dürfen nicht als
     Veranstaltungsort geführt werden (Nutzerhinweis: „Kein spezifischer Ort")."""
     for roh in ("Aula", "aula", "online", "Kein Ort", "Ohne Angabe", "Berlinweit",
-                "verschiedene Orte", ""):
+                "verschiedene Orte", "vielerorts", "vielerorts "):
         assert ist_generisch(roh), roh
     for echt in ("B.L.O. Ateliers", "Gärten der Welt", "Zühlsdorfer Str. 16-18",
                  "Humboldt-Bibliothek"):
         assert not ist_generisch(echt), echt
+
+
+def test_bezirksname_wird_auch_aus_dem_detail_kein_ort():
+    """Bezirksnamen gehören nicht ins Ortsfeld — auch nicht aus dem Detail.
+
+    Messung 2026-09-14 (Umweltkalender): 185 von 1350 Terminen standen mit
+    „Friedrichshain-Kreuzberg" & Co. im Ortsfeld, weil die Prüfung nur das
+    Feld der Übersichtsseite ansah und das Detail-Feld ungeprüft übernahm
+    (dort steht bei manchen Angeboten nur „<Bezirk>, <PLZ> Berlin").
+    """
+    from datetime import datetime
+
+    from app.adapters.selector_adapter import SelectorAdapter
+    from app.model import TZ_BERLIN
+
+    regel = """
+quelle: testbezirk
+listing:
+  url: https://example.org/liste
+  item_css: 'div.item'
+  felder:
+    titel: {css: 'h3'}
+    start: {css: 'a', attr: 'href', regex: 'dat=([0-9]{4}-[0-9]{2}-[0-9]{2})', format: '%Y-%m-%d'}
+detail:
+  felder:
+    ort: {css: 'div.ort'}
+"""
+    ad = SelectorAdapter("testbezirk", regel_yaml=regel)
+    jetzt = datetime(2026, 9, 14, 12, 0, tzinfo=TZ_BERLIN)
+    row = {"slug": "x", "titel": "Testangebot", "start": jetzt,
+           "url": "https://example.org/details/1", "ort": "Friedrichshain-Kreuzberg"}
+    # Detail liefert ebenfalls nur den Bezirk
+    ev = ad.zu_event(row, {"ort": "Friedrichshain-Kreuzberg", "adresse": "10965 Berlin"},
+                     jetzt)
+    assert ev["ort"] != "Friedrichshain-Kreuzberg", "Bezirksname im Ortsfeld"
+    assert ev["bezirk"] == "friedrichshain-kreuzberg"
+    # Detail liefert einen echten Ort → der zählt
+    ev2 = ad.zu_event(row, {"ort": "Gleisdreieckpark", "adresse": "10965 Berlin"}, jetzt)
+    assert ev2["ort"] == "Gleisdreieckpark"
 
 
 def test_automatische_zuordnung_nur_bei_gleicher_normalform():
