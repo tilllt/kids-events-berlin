@@ -219,7 +219,7 @@
 
   /* Zeitraum-Filter gehören nicht ins Abo: Heute/Morgen/Demnächst sind
      Ansichtssache, das Abo deckt immer die nächsten 21 Tage ab. */
-  var NICHT_IM_ABO = ["zeitraum", "von", "bis", "limit", "seite", "lat", "lon", "umkreis_km"];
+  var NICHT_IM_ABO = ["zeitraum", "von", "bis", "limit", "lat", "lon", "umkreis_km"];
 
   /* Die App nennt den Uhrzeit-Filter in ihrer Adresse `zeitstufe`, die
      Kalender-Schnittstelle liest `uhrzeit`. Ohne diese Übersetzung kam der

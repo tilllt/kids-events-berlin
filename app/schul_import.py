@@ -16,6 +16,8 @@ import json
 import re
 from datetime import date, datetime, timedelta
 
+from app.model import TZ_BERLIN
+
 # Schularten, die Kinder/Jugendliche allgemeinbildend aufnehmen
 SCHULARTEN_ALLGEMEINBILDEND = {
     "Grundschule",
@@ -186,7 +188,7 @@ def import_crawl_termine(store, crawl_json_pfad: str) -> dict:
     """Crawl-Rohdaten → termine_manuell (ungeprueft, dedupliziert)."""
     with open(crawl_json_pfad, encoding="utf-8") as f:
         eintraege = json.load(f)
-    heute = datetime.now().astimezone().date()
+    heute = datetime.now(TZ_BERLIN).date()
     n_schulen_gefunden = n_roh = n_importiert = n_duplikat = n_alt = 0
     gesehen: set[tuple] = set()
     fehler_schulen: list[str] = []

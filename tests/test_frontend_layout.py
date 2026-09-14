@@ -85,3 +85,24 @@ def test_mobile_filter_schieben_die_liste_nach_unten():
     assert "min-height: 150px" in liste.group(0), "Liste darf nicht ganz verschwinden"
     assert re.search(r"#mapwrap\s*\{[^}]*height:\s*min\(32vh, 250px\)", block), \
         "Karte braucht mobil eine feste, kleine Höhe, damit sie ohne Scrollen sichtbar ist"
+
+
+HTML = pathlib.Path("app/static/index.html").read_text(encoding="utf-8")
+
+
+def test_static_dateien_mit_versionsnummer():
+    """Lehre 2026-09-13: ohne neue ?v= sieht der Nutzer die Änderung nicht.
+
+    `style.css` kam unter gleicher Adresse aus dem Browser-Cache — gemeldet
+    wurde „nicht angekommen“, obwohl die Datei live war. Deshalb: jede
+    statische Datei trägt ?v=N, und alle tragen DIESELBE Nummer (ein Knopf,
+    damit niemand style.css allein vergisst).
+    """
+    dateien = re.findall(r'(?:href|src)="(/static/[^"?]+)(\?[^"]*)?"', HTML)
+    assert dateien, "keine statischen Dateien gefunden"
+    nummern = set()
+    for pfad, query in dateien:
+        m = re.match(r"\?v=(\d+)$", query or "")
+        assert m, f"{pfad} ohne Versionsnummer — der Browser liefert sonst die alte Datei"
+        nummern.add(m.group(1))
+    assert len(nummern) == 1, f"ungleiche Versionsnummern: {sorted(nummern)}"

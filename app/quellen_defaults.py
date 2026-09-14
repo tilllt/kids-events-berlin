@@ -198,8 +198,66 @@ detail:
   termine_autoritativ: true
 """
 
+# Umweltkalender Berlin (Kampagne „Umweltkalender“ des Landes Berlin).
+# Auf der Detailseite steht der Wert in einem EIGENEN div:
+#   <strong>Ort/Treffpunkt:</strong><br><div>Spandau, Niederneuendorfer Allee
+#   81, 13587 Berlin, Waldschule Spandau</div>
+# Darum liest die Ortsregel genau dieses div (nicht die ganze Section: sonst
+# läuft der Treffername in die folgende „Anfahrt:“-Zeile hinein) und greift
+# darin den Ortsnamen ab — die alte Fassung griff den Straßenteil, dadurch
+# standen Anschriften im Ortsfilter („Schiff ahoi!“ zeigte
+# „Niederneuendorfer Allee 81“ statt „Waldschule Spandau“).
+# Reihenfolge der Alternativen (erste mit Treffer gewinnt), gemessen an 375
+# Detailseiten: adressartige Ortsnamen 254 -> 125, KEIN Termin verliert dabei
+# einen Ortsnamen, kein vorher sauberer Name wird zur Anschrift.
+#   (1) „online“
+#   (2) <Bezirk>, <Ort>, <Straße>, PLZ   -> Ortsname (Teil 2)
+#   (3) <Ort>, PLZ Stadt                 -> Teil vor der PLZ, ziffernfrei
+#   (4) <Straße>, PLZ Stadt, <Ort>       -> Teil nach der PLZ (nur wenn Teil 3
+#       eine Hausnummer trägt, also eine Anschrift ist)
+#   (5) wie bisher: die Straße aus dem Section-Text — Rettungsnetz, falls die
+#       Seitenstruktur sich ändert, sonst stünde gar kein Ort da.
+# Ortsnamen beginnen groß; Treffpunkt-Hinweise und Satzanfänge („Weitere
+# Informationen …“, „Wir kommen …“) fallen durch die Liste in (2)-(4) heraus.
+# Grenzen der Regel, ehrlich: Straßennamen OHNE Hausnummer („Altonaer
+# Straße/Klopstockstraße“, „Hobrechtsfelder Dorfstraße“) sind von einem
+# Ortsnamen nicht unterscheidbar und bleiben stehen.
+_UK_STOPP = ("Treffpunkt|Eingang|Parkplatz|Kreuzung|Übersichtstafel|Wiese|"
+             "Ostseite|Main|Brücke|Vorplatz|Der |Die |Das |Wir |Weitere |Bitte |"
+             "Sie |Hier |Räume|Raum |Kasse|Richtung|Es |Bei |Nach |Für |"
+             "Anmeldung|Endhaltestelle")
+
+UMWELTKALENDER_REGELN = r"""quelle: umweltkalender-berlin
+name: Umweltkalender Berlin — Natur, Wasser, Umwelt
+robots: 'erlaubt: /angebote (robots.txt sperrt nur /cms/…)'
+listing:
+  url: https://www.umweltkalender-berlin.de/angebote/filter
+  horizont_tage: 60
+  item_css: 'div.grid-item.teaser'
+  felder:
+    titel: {css: 'h3'}
+    url: {css: 'a', attr: 'href'}
+    start: {css: 'a', attr: 'href', regex: 'dat=([0-9]{4}-[0-9]{2}-[0-9]{2})', format: '%Y-%m-%d'}
+    ort: {css: '.location'}
+    bezirk: {css: '.location'}
+detail:
+  felder:
+    beschreibung_kurz: {css: '.read-more-content p'}
+    # Adresse = Straße + PLZ + Berlin; das ist der Wert für die amtliche Suche
+    # und liefert beim Geokodieren auch den Bezirk (Detail-Felder dürfen keinen
+    # Bezirk setzen — geprüft über den Regel-Prüfer).
+    adresse: {css: 'section.veranstaltungsdetail', regex: 'Ort/Treffpunkt:\s*[^,]*?(?:,\s*)?([A-ZÄÖÜ][^,]{2,40},\s*[0-9]{5}\s*Berlin)'}
+    ort:
+      - {css: 'section.veranstaltungsdetail strong:contains("Ort/Treffpunkt:") + br + div', regex: '^(?:[^,]+, )*(online)(?:,|$)'}
+      - {css: 'section.veranstaltungsdetail strong:contains("Ort/Treffpunkt:") + br + div', regex: '^(?:[^,]+,\s*)(?!(?:STOPP))([A-ZÄÖÜ][^,\d]{2,80}),\s*[^,]{2,60},\s*[0-9]{5}\s+[A-ZÄÖÜ]'}
+      - {css: 'section.veranstaltungsdetail strong:contains("Ort/Treffpunkt:") + br + div', regex: '^(?:[^,]+,\s*)?(?!(?:STOPP))([A-ZÄÖÜ][^,\d]{2,80}),\s*[0-9]{5}\s+[A-ZÄÖÜ]'}
+      - {css: 'section.veranstaltungsdetail strong:contains("Ort/Treffpunkt:") + br + div', regex: '^.*?[0-9]{5}\s+[A-ZÄÖÜ][^,]*,\s*(?!(?:STOPP))([A-ZÄÖÜ][^,]{2,80})'}
+      - {css: 'section.veranstaltungsdetail', regex: 'Ort/Treffpunkt:\s*[^,]+,?\s*([^,]+)'}
+""".replace("STOPP", _UK_STOPP)
+
 DEFAULT_REGELN: dict[str, str] = {
     "zlb": ZLB_REGELN,
+    "umweltkalender-berlin": UMWELTKALENDER_REGELN,
     "museumsportal": MUSEUMS_REGELN,
     "familienportal": FAMILIENPORTAL_REGELN,
     "tempelhoferfeld": TEMPELHOFER_FELD_REGELN,

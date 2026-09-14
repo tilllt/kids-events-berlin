@@ -34,6 +34,8 @@ from datetime import date, datetime
 
 import httpx
 
+from app.model import TZ_BERLIN
+
 BASIS = "https://api.search.brave.com/res/v1/web/search"
 PREIS_PRO_1000_USD = 5.0
 
@@ -67,8 +69,20 @@ def _int(wert, standard: int) -> int:
         return standard
 
 
+def heute_berlin() -> date:
+    """Heute in Berlin — die eine Wahrheit für Tageszähler und Monatsbudget.
+
+    `date.today()` nimmt die Systemzeitzone (im Container: UTC). Nachts weicht
+    sie damit vom Berliner Datum ab, während `Store.brave_verbrauch` die
+    Aufrufe im Berliner Datum stempelt — die Tageszählung fand dann 0 Aufrufe
+    und das TAGESBUDGET griff nicht (gefunden 2026-09-14 durch
+    tests/test_recherche_websuche.py::test_tagesbudget_stoppt_und_nennt_die_zahlen).
+    """
+    return datetime.now(TZ_BERLIN).date()
+
+
 def monat(heute: date | None = None) -> str:
-    return (heute or date.today()).strftime("%Y-%m")
+    return (heute or heute_berlin()).strftime("%Y-%m")
 
 
 def status(store, konfig: dict | None = None, heute: date | None = None) -> dict:
@@ -119,10 +133,12 @@ def zuletzt_gesucht(store, bsn: str, konfig: dict | None = None,
     if not zuletzt:
         return None
     try:
-        d = datetime.fromisoformat(zuletzt).date()
+        # Zeitstempel wird in UTC gespeichert (Audit) — für das Alter zählt
+        # aber das Berliner Datum, sonst „1 Tag" kurz nach Mitternacht.
+        d = datetime.fromisoformat(zuletzt).astimezone(TZ_BERLIN).date()
     except ValueError:
         return None
-    alter = ((heute or date.today()) - d).days
+    alter = ((heute or heute_berlin()) - d).days
     if alter < tage:
         return (f"Websuche für diese Schule erst vor {alter} Tagen gelaufen "
                 f"(Wiederholung nach {tage} Tagen) — Kontingent geschont.")
@@ -152,7 +168,7 @@ class BraveSuche:
     """Brave-Aufrufe mit Budget-Prüfung, Reservierung, Rate Limit und Audit."""
 
     def __init__(self, store, konfig: dict | None = None, client: httpx.Client | None = None,
-                 heute_fn=date.today, bsn: str | None = None):
+                 heute_fn=heute_berlin, bsn: str | None = None):
         self.store = store
         self.bsn = bsn
         self.konfig = konfig or konfiguration(store)

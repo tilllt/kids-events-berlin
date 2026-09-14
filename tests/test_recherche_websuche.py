@@ -5,11 +5,13 @@ Brave-Tarif (offizielle Preisseite, abgerufen 13.09.2026): 5 $ je 1.000 Anfragen
 hinterlegtes Guthaben, deshalb muss HIER hart gestoppt werden.
 """
 import json
-from datetime import date
+from datetime import date, datetime
+import inspect
 
 import httpx
 import pytest
 
+from app.model import TZ_BERLIN
 from app.recherche import kern, websearch
 from app.store import Store
 
@@ -61,6 +63,22 @@ def test_tagesbudget_stoppt_und_nennt_die_zahlen(tmp_path):
         suche.suche("b")
     assert "Tagesbudget erreicht (1/1" in str(e.value)
     assert websearch.status(s)["verbraucht_monat"] == 1
+    s.close()
+
+
+def test_tageszaehler_und_verbrauch_rechnen_in_berliner_zeit(tmp_path):
+    """Ursache 2026-09-14: `date.today()` (Systemzeit = UTC) gegen das Berliner
+    Datum im Verbrauch — nachts zählte der Tageszähler 0 und das TAGESBUDGET
+    griff nicht (echtes Guthaben war ungeschützt). Beide Seiten müssen
+    dasselbe Datum benutzen; dieser Vergleich gilt zu jeder Uhrzeit.
+    """
+    s = _store(tmp_path, brave_monat_limit=100, brave_tages_limit=30)
+    assert websearch.heute_berlin() == datetime.now(TZ_BERLIN).date()
+    assert s.brave_verbrauch()["tag"] == websearch.heute_berlin().strftime("%Y-%m-%d")
+    assert websearch.monat() == datetime.now(TZ_BERLIN).strftime("%Y-%m")
+    # Der Vorgabewert der Suche muss die Berliner Uhr sein, nicht die Systemuhr.
+    vorgabe = inspect.signature(websearch.BraveSuche.__init__).parameters["heute_fn"]
+    assert vorgabe.default is websearch.heute_berlin
     s.close()
 
 
