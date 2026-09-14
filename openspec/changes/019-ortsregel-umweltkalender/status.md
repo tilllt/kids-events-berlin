@@ -68,10 +68,31 @@ darin den Straßenteil (`Ort/Treffpunkt: *[^,]+,? *([^,]+)`).
 
 ## Nach dem Lauf gemessen (live, 2026-09-14)
 
-- Anschrift im Ortsnamen: **818 → 449** von 1350 Terminen.
-- Ortsname fehlt („Ohne Angabe"/„Berlin"): 15 → 14.
+Zwei Läufe (204 und 205) über 1350 Termine; **497** Termine bekamen dabei neue
+Werte für Ort/Adresse.
+
+**Entscheidend ist die Einschränkung auf das Quellenfenster** (Termine bis
+`heute + horizont_tage`, hier 60 Tage = 1143 Termine). Nur sie werden von einem
+Lauf neu gelesen; ältere Termine außerhalb des Fensters behalten ihre Werte.
+
+| Messgröße (im Quellenfenster, 1143 Termine) | vor Change 019 | jetzt |
+| --- | --- | --- |
+| Bezirksname im Ortsfeld | 185 | **0** |
+| Anschrift (Ziffer) im Ortsfeld | 818 (alle 1350) | 444 (39 %) |
+
 - Echte Ortsnamen stehen jetzt im Ortsfeld, z. B. „OTTO Textilwerkstatt",
-  „Tempelhofer Feld", „Gartenarbeitsschule Lichtenberg", „Leopoldplatz".
+  „Tempelhofer Feld", „Gartenarbeitsschule Lichtenberg", „Leopoldplatz",
+  „Bauwagen auf dem Edeka-Parkplatz".
+- Die verbliebenen 39 % sind **Quelleneigenschaft, nicht Regelfehler**:
+  Stichprobe an 5 Seiten zeigt, dass „Ort/Treffpunkt:" dort nur
+  „Bezirk, Straße Hausnr, PLZ Berlin" enthält (z. B. details/99461
+  „Lichtenberg, Am Tierpark 125, 10319 Berlin" — der Tierpark selbst steht
+  nicht im Feld). Die Straße ist dann die beste verfügbare Angabe, die
+  Adresszeile trägt sie ohnehin für die Karte.
+- **Altbestand außerhalb des Fensters (207 Termine, davon 174 mit Bezirksnamen)
+  bleibt stehen, bis der Termin ins Fenster rutscht** — er wird von einem Lauf
+  nicht mehr besucht. Kein Fehler, aber eine Falle für jede Messung: ohne die
+  Fenster-Einschränkung hält man den Altbestand für eine Restschuld der Regel.
 - Der gemeldete Fall selbst ist live nicht mehr prüfbar — „Schiff ahoi!" lief
   nur am 13.09. und ist mit Change 016 als vergangener Termin entfernt worden.
   Der Regressionstest führt den Fall an der echten Fixture-Detailseite:
