@@ -47,7 +47,7 @@ Lauf über die produktive Instanz (`POST /api/admin/recherche/lauf` mit
 ## Technik-Stand
 
 - Endpunkt im Admin konfigurierbar (Basis-URL, Modell, Key, Timeout,
-  Zusatz-Parameter als JSON), voreingestellt auf `http://192.168.178.140:8088/v1`
+  Zusatz-Parameter als JSON), voreingestellt auf `http://<LLM_PORT>/v1`
   (`llamacpp-gemma4-12B-unsloth`), Pflichtparameter `enable_thinking: false`
   vorbelegt. Gemessen: 0,7 s pro Extraktion, 263 tok/s.
 - Admin-UI: „LLM-Endpunkt" (mit Verbindungstest samt echter Antwort) und

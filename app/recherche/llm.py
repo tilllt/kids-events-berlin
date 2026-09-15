@@ -22,7 +22,7 @@ import httpx
 
 # Voreinstellung: lokaler Endpunkt der KI-Box im LAN des Containerhosts.
 STANDARD = {
-    "llm_base_url": "http://192.168.178.140:8088/v1",
+    "llm_base_url": "<LLM_BASE_URL>",
     "llm_model": "llamacpp-gemma4-12B-unsloth",
     "llm_api_key": "",
     "llm_timeout_s": "120",

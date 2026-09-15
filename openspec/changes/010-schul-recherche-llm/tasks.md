@@ -11,7 +11,7 @@ ist „fertig", weil er ohne Fehler durchlief.
 - [ ] Freie-Endpunkt-Matrix (design.md §4) gegen die Anbieter-Doku
       nachprüfen; gewähltes Modell + Ausweichmodell in litellm sicherstellen
       (`GET /v1/models`).
-- [ ] Postfach `kinderkram@cia-spandau.org` anlegen, IMAP/SMTP testen
+- [ ] Postfach `kinderkram@mekotools.de` anlegen, IMAP/SMTP testen
       (Testmail an sich selbst, Antwort landet im selben Postfach).
 
 ## 1. Store/Migration (TDD)

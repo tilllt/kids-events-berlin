@@ -121,7 +121,7 @@ Rechercheergebnis, keine Zusage.
 Alias **`llamacpp-gemma4-12B-unsloth`**.
 
 - **Erreichbar vom App-Host .50** über NetBird `http://100.117.139.29:8080/v1`
-  und im LAN über `http://192.168.178.140:8088/v1` (beide verifiziert, echter
+  und im LAN über `http://<LLM_PORT>/v1` (beide verifiziert, echter
   Completion-Call). GPU-Belegung 13,6 von 24,5 GB → läuft parallel zu ComfyUI.
 - **Pflicht-Einstellung:** `chat_template_kwargs: {"enable_thinking": false}`.
   Mit Thinking liefert das Modell `content: ""` und `finish_reason: length`
@@ -303,7 +303,7 @@ Verhaltensänderung ohne `bestaetigt`.
 
 ## 13. Offene Fragen an den User
 
-1. Postfach anlegen: `kinderkram@cia-spandau.org` bei IONOS (IMAP+SMTP) —
+1. Postfach anlegen: `kinderkram@mekotools.de` bei IONOS (IMAP+SMTP) —
    Zugangsdaten trägt der User in den Admin-Einstellungen ein.
 2. Antwort-Mails: lokal auf der KI-Box, EU-Endpunkt mit AVV oder Finger weg
    vom Auto-Parsing? (§4)

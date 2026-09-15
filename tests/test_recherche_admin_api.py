@@ -47,7 +47,7 @@ def test_llm_einstellungen_speichern_und_lesen(tmp_path):
 def test_ungueltige_llm_einstellungen_werden_abgelehnt(tmp_path):
     c, store = _client(tmp_path)
     for body, erwartet in (
-        ({"llm_base_url": "192.168.178.140:8088/v1"}, "http://"),
+        ({"llm_base_url": "127.0.0.1:8088/v1"}, "http://"),
         ({"llm_timeout_s": "1"}, "5 und 600"),
         ({"llm_extra_json": "{kaputt"}, "JSON-Objekt"),
         ({"llm_extra_json": '["liste"]'}, "JSON-Objekt"),
@@ -69,8 +69,8 @@ def test_llm_test_endpunkt_mit_abgeschaltetem_netz(tmp_path, monkeypatch):
     assert d["ok"] is False and d["fehler"] == "kein Netz"
     # Feldwerte überschreiben die gespeicherten Einstellungen
     d2 = c.post("/api/admin/llm/test",
-                json={"llm_base_url": "http://192.168.178.140:8088/v1"}).json()
-    assert d2["basis_url"] == "http://192.168.178.140:8088/v1"
+                json={"llm_base_url": "http://127.0.0.1:8088/v1"}).json()
+    assert d2["basis_url"] == "http://127.0.0.1:8088/v1"
     store.close()
 
 

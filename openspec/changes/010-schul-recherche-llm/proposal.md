@@ -102,7 +102,7 @@ Nur ein Bruchteil ist automatisch zu holen.
    öffentliche Webinhalte → Free-Tier ok; **eingehende Mails mit
    Personenbezug** → bevorzugt lokal (KI-Box) oder EU-Endpunkt mit
    Auftragsverarbeitung. Entscheidung des Users nötig (siehe design.md §4).
-2. **Postfach:** `kinderkram@cia-spandau.org` muss als Postfach existieren
+2. **Postfach:** `kinderkram@mekotools.de` muss als Postfach existieren
    (MX = IONOS bestätigt). IMAP-Zugang als Admin-Einstellung, nicht im Repo.
 3. **Rechtliches:** einmalige, sachliche Terminanfrage mit Absender,
    Kontakt und Opt-out-Satz; Datenschutzhinweis (Art. 14) verlinken;

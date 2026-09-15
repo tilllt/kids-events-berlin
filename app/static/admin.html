@@ -287,7 +287,7 @@
         </p>
         <div class="formgrid">
           <label>Basis-URL (OpenAI-kompatibel, …/v1)
-            <input id="setLlmBase" placeholder="http://192.168.178.140:8088/v1" />
+            <input id="setLlmBase" placeholder="<LLM_BASE_URL>" />
           </label>
           <label>Modellname
             <input id="setLlmModel" placeholder="llamacpp-gemma4-12B-unsloth" />
@@ -308,7 +308,7 @@
         </div>
         <p class="hint" style="margin:6px 0 0;font-size:12px;color:var(--muted)">
           Voreinstellung ist der lokale llama.cpp auf der KI-Box
-          (<code>http://192.168.178.140:8088/v1</code>, im gleichen Netz wie die App).
+          (<code><LLM_BASE_URL></code>, im gleichen Netz wie die App).
           <strong>Wichtig bei Gemma-4:</strong> <code>enable_thinking: false</code> in den
           Zusatz-Parametern — sonst liefert das Modell leeren Text (es „denkt“ nur).
           Andere Endpunkte (litellm, Gemini, Cerebras …) trägst du hier einfach ein.

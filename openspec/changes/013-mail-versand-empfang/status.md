@@ -54,7 +54,7 @@ zurückkommen).
 - **himalaya v2.1.0** im Agent-Container (`~/.local/bin/himalaya`), Konto
   `kinderkram` mit IMAP+SMTP konfiguriert; Passwort über `password.command`
   (`/opt/data/bin/mail_pass.sh`), nicht im Klartext in der Konfigurationsdatei.
-  `himalaya account check` → imap OK, smtp OK. Testmail an tilllt@yahoo.com
+  `himalaya account check` → imap OK, smtp OK. Testmail an <REDACTED>
   gesendet (SMTP bestätigt „Message successfully sent").
 
 ## Offen

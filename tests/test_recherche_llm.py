@@ -18,7 +18,7 @@ def _store(tmp_path, **settings):
 def test_standard_endpunkt_ist_die_ki_box(tmp_path):
     s = _store(tmp_path)
     k = llm.konfiguration(s)
-    assert k["llm_base_url"] == "http://192.168.178.140:8088/v1"
+    assert k["llm_base_url"] == "http://127.0.0.1:8088/v1"
     assert k["llm_model"] == "llamacpp-gemma4-12B-unsloth"
     # Pflicht bei Gemma-4: Thinking aus, sonst leere Antwort
     assert json.loads(k["llm_extra_json"])["chat_template_kwargs"]["enable_thinking"] is False
@@ -113,7 +113,7 @@ def test_http_fehler_und_netzfehler_sind_sichtbar(tmp_path):
 
 
 def test_ungueltige_basis_url_wird_abgewiesen(tmp_path):
-    s = _store(tmp_path, llm_base_url="192.168.178.140:8088/v1")
+    s = _store(tmp_path, llm_base_url="127.0.0.1:8088/v1")
     with pytest.raises(llm.LLMFehler, match="http://"):
         llm.chat(llm.konfiguration(s), "x", client=_client(_antwort("{}")))
     s.close()

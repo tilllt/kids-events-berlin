@@ -333,7 +333,7 @@ def settings_put(body: dict, request: Request):
         url = (body["llm_base_url"] or "").strip()
         if url and not url.startswith(("http://", "https://")):
             fehler.append("llm_base_url muss mit http:// oder https:// beginnen "
-                          "(z. B. http://192.168.178.140:8088/v1).")
+                          "(z. B. <LLM_BASE_URL>).")
     if "llm_timeout_s" in body:
         t = (body["llm_timeout_s"] or "").strip()
         if t:
