@@ -227,6 +227,19 @@ _UK_STOPP = ("Treffpunkt|Eingang|Parkplatz|Kreuzung|Übersichtstafel|Wiese|"
              "Sie |Hier |Räume|Raum |Kasse|Richtung|Es |Bei |Nach |Für |"
              "Anmeldung|Endhaltestelle")
 
+# Uhrzeit aus dem Terminblock: Das Listing trägt nur das Datum (die Zeit kommt
+# aus `dat=` in der URL), die Uhrzeit steht ausschließlich im Detail —
+#   <div class="date_detail">Freitag, 25. September 2026<div class="separator">|</div>12:00&nbsp;-&nbsp;18:30&nbsp;Uhr<br>
+# Gemessen an 163 Detailseiten mit Uhrzeit (2026-09-24) gibt es genau zwei
+# Formen: „12:00 - 18:30 Uhr“ (Spannen) und „17:00 Uhr“ (Einzelzeit). Beide
+# deckt die Zeitregel ab; `ende` greift nur bei einer Spanne.
+# Das „|“ ist Anker: die Zeit muss direkt nach dem Separator stehen. Damit
+# fällt eine Zeitangabe im Fließtext nicht ein, und eine hypothetische Form
+# „10:00 bis 13:00 Uhr“ ergibt lieber KEINE Zeit (Termin bleibt ganztägig)
+# als eine falsch gelesene Zahl — stille Fehlwerte sind hier das Schlimmere.
+# Die 17 Seiten ohne Uhrzeit gehören zu VIER Angeboten (Aktionswoche eines
+# Trägers, Dauerprogramme, „unterschiedliche Anfangszeiten“) — dort ist
+# „ganztägig“ die richtige Antwort, nicht ein Fehler.
 UMWELTKALENDER_REGELN = r"""quelle: umweltkalender-berlin
 name: Umweltkalender Berlin — Natur, Wasser, Umwelt
 robots: 'erlaubt: /angebote (robots.txt sperrt nur /cms/…)'
@@ -243,6 +256,10 @@ listing:
 detail:
   felder:
     beschreibung_kurz: {css: '.read-more-content p'}
+    # Uhrzeit nur im Detail (siehe Kopf dieser Regel) — angewendet nur, wenn
+    # der Listing-Termin ganztägig ist, also keine eigene Zeit mitbringt.
+    zeit: {css: 'div.date_detail', regex: '\|\s*([0-9]{1,2}:[0-9]{2})\s*(?:Uhr)?\s*(?:-\s*[0-9]{1,2}:[0-9]{2}\s*(?:Uhr)?)?\s*Uhr', format: '%H:%M'}
+    ende: {css: 'div.date_detail', regex: '[0-9]{1,2}:[0-9]{2}\s*(?:Uhr)?\s*-\s*([0-9]{1,2}:[0-9]{2})\s*Uhr', format: '%H:%M'}
     # Adresse = Straße + PLZ + Berlin; das ist der Wert für die amtliche Suche
     # und liefert beim Geokodieren auch den Bezirk (Detail-Felder dürfen keinen
     # Bezirk setzen — geprüft über den Regel-Prüfer).

@@ -548,10 +548,49 @@ class SelectorAdapter:
         """Erstes Event (Kompatibilität); Serien → zu_events."""
         return self.zu_events(row, detail, jetzt)[0]
 
+    def _zeit_aus_detail(self, datum: datetime, detail: dict,
+                         feld: str) -> datetime | None:
+        """Detail-Feld 'zeit'/'ende' („12:00“) → Uhrzeit am Tag von `datum`.
+
+        Das Format steht in der Detail-Regel (üblich '%H:%M'); fehlt der Wert
+        oder passt er nicht zum Format, kommt None zurück — eine Detailseite
+        ohne Uhrzeit ist kein Fehler (Dauerprogramme nennen keine).
+        """
+        wert = detail.get(feld)
+        if not wert:
+            return None
+        regel = (self._detail_cfg.get("felder") or {}).get(feld)
+        fmt = None
+        for r in (regel if isinstance(regel, list) else [regel]):
+            if isinstance(r, dict) and r.get("format"):
+                fmt = r["format"]
+                break
+        try:
+            t = _parse_zeit(wert, fmt, feld)
+        except ValueError:
+            return None
+        return datum.replace(hour=t.hour, minute=t.minute, second=0, microsecond=0)
+
     def _bau_event(self, row: dict, detail: dict, jetzt: datetime,
                    start: datetime, ende: datetime | None = None,
                    ganztags: bool | None = None) -> dict:
         """Ein Event aus row+detail mit konkretem Termin (start/ende/ganztags)."""
+        # Uhrzeit aus der DETAILseite: Quellen wie der Umweltkalender tragen im
+        # Listing nur das Datum, die Uhrzeit steht ausschließlich im Detail
+        # („Samstag, 26. September 2026 | 12:00 - 18:30 Uhr“). Sie gilt NUR für
+        # den Listing-Termin — ein Serien-Termin aus `termine_css` bringt seine
+        # Zeit selbst mit (ende/ganztags vorgegeben) und darf nicht
+        # überschrieben werden; und nur, wenn der Listing-Termin wirklich
+        # ganztägig ist (sonst stünde eine Listing-Zeit und würde ersetzt).
+        # Das Ende gilt nur, wenn es nach dem Start liegt; sonst bleibt es
+        # unbekannt (keine negative Dauer).
+        if ende is None and ganztags is None and row.get("ganztags"):
+            start_detail = self._zeit_aus_detail(start, detail, "zeit")
+            if start_detail is not None:
+                start = start_detail
+                ganztags = False
+                ende_detail = self._zeit_aus_detail(start, detail, "ende")
+                ende = ende_detail if (ende_detail and ende_detail > start) else None
         start_local = start.astimezone(TZ_BERLIN)
         occ = start_local.strftime("%Y%m%dT%H%M")
         source_event_id = f"{row['slug']}#{occ}"

@@ -18,6 +18,7 @@ Schema (Beispiel):
       jsonld: true
       felder:
         adresse: {jsonld: "$.location.address"}
+        zeit: {css: "div.date_detail", regex: "([0-9]{1,2}:[0-9]{2})", format: "%H:%M"}
     filter_kinder: {regex: ["kind", "familie"]}   # optional
 """
 from __future__ import annotations
@@ -41,6 +42,11 @@ _LISTING_FELDER = {
 }
 _DETAIL_FELDER = {
     "beschreibung_kurz", "adresse", "ort", "lat", "lon",
+    # Uhrzeit/Ende NUR aus der Detailseite: manche Quellen zeigen die Uhrzeit
+    # ausschließlich dort (Umweltkalender: Listing = Datum, Detail =
+    # „Samstag, 26. September 2026 | 12:00 - 18:30 Uhr“). Sie füllen den Termin
+    # nur, wenn das Listing keinen Zeitanteil hat (sonst ganztägig).
+    "zeit", "ende",
 }
 
 _TOP_KEYS = {"listing", "detail", "filter_kinder", "name", "robots", "quelle", "standard"}
