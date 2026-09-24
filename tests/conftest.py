@@ -105,3 +105,8 @@ def fixture_dir_kinderkulturkalender() -> Path:
 @pytest.fixture()
 def fixture_dir_umweltkalender() -> Path:
     return Path(__file__).parent / "fixtures" / "umweltkalender"
+
+
+@pytest.fixture()
+def fixture_dir_industriekultur() -> Path:
+    return Path(__file__).parent / "fixtures" / "industriekultur"

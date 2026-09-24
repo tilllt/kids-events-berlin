@@ -1003,7 +1003,7 @@ class Store:
         """
         with self._lock:
             rows = [dict(r) for r in self._conn.execute(
-                "SELECT id, titel, ort, start_local, ende_local FROM events "
+                "SELECT id, titel, ort, start_local, ende_local, ganztags FROM events "
                 "WHERE quelle=? AND COALESCE(manuell, 0) = 0 "
                 "ORDER BY start_local, id", (quelle,)).fetchall()]
 
@@ -1022,6 +1022,33 @@ class Store:
             gruppen.setdefault(_key(r), []).append(r)
 
         zu_loeschen: list[dict] = []
+        # 0) Tages-Dublette: ein ganztägiger Platzhalter und ein Eintrag MIT
+        # Uhrzeit am selben Tag sind nicht dieselbe Aussage — der Platzhalter
+        # ist die unpräzisere und geht. Anlass (2026-09-24): Die Uhrzeiten der
+        # Umweltkalender-Quelle kamen neu aus dem Detail; der alte ganztägige
+        # Satz desselben Tages hatte den FRÜHEREN Start und blieb nach der
+        # Kettenregel als „frühester" stehen — die Uhrzeit ging beim Dedup
+        # wieder verloren (gemessen: 976 frisch geschriebene Termine, davon
+        # 777 sofort gelöscht, Bestand unverändert ganztägig).
+        # Berührende Slots mit echten Zeiten (ZLB 09–10/10–11 Uhr) sind KEINE
+        # Dubletten — hier wird nur der ganztägige Platzhalter entfernt.
+        for items in gruppen.values():
+            if len(items) < 2:
+                continue
+            pro_tag: dict[str, list[dict]] = {}
+            for r in items:
+                pro_tag.setdefault((r.get("start_local") or "")[:10], []).append(r)
+            raus: set[str] = set()
+            for tag_items in pro_tag.values():
+                if len(tag_items) < 2:
+                    continue
+                if (any(not r.get("ganztags") for r in tag_items)
+                        and any(r.get("ganztags") for r in tag_items)):
+                    raus.update(r["id"] for r in tag_items if r.get("ganztags"))
+            if raus:
+                zu_loeschen.extend(r for r in items if r["id"] in raus)
+                items[:] = [r for r in items if r["id"] not in raus]
+
         for items in gruppen.values():
             if len(items) < 2:
                 continue

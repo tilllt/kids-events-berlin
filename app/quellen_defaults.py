@@ -253,6 +253,13 @@ listing:
     start: {css: 'a', attr: 'href', regex: 'dat=([0-9]{4}-[0-9]{2}-[0-9]{2})', format: '%Y-%m-%d'}
     ort: {css: '.location'}
     bezirk: {css: '.location'}
+    # Uhrzeit steht BEI VIELEN Karten schon in der Übersicht („div.date":
+    # „09:30 - 16:30 Uhr") — gemessen 2026-09-24 an der Filterliste: 1265 von
+    # 3095 Datumsfeldern nennen eine Zeit. Die Regel las sie bisher gar nicht
+    # und schrieb alle Termine ganztägig. Karten OHNE Zeit (Bauernmarkt:
+    # „Do., 24.09.2026") bekommen sie aus der Detailseite (siehe unten).
+    zeit: {css: 'div.date', regex: '([0-9]{1,2}:[0-9]{2})\s*(?:-\s*[0-9]{1,2}:[0-9]{2}\s*)?Uhr', format: '%H:%M'}
+    ende: {css: 'div.date', regex: '[0-9]{1,2}:[0-9]{2}\s*-\s*([0-9]{1,2}:[0-9]{2})\s*Uhr', format: '%H:%M'}
 detail:
   felder:
     beschreibung_kurz: {css: '.read-more-content p'}
@@ -272,9 +279,39 @@ detail:
       - {css: 'section.veranstaltungsdetail', regex: 'Ort/Treffpunkt:\s*[^,]+,?\s*([^,]+)'}
 """.replace("STOPP", _UK_STOPP)
 
+INDUSTRIEKULTUR_REGELN = r"""quelle: industriekultur-berlin
+name: Festival Industriekultur Berlin — Veranstaltungskalender
+robots: 'erlaubt: / (robots.txt ohne Disallow)'
+listing:
+  url: https://industriekultur.berlin/festival/
+  horizont_tage: 400
+  item_css: 'div.bzi-festival-event-item'
+  felder:
+    titel: {css: 'h3.bzi-festival-event-card-main'}
+    url: {css: 'a.bzi-festival-event-card-link', attr: 'href'}
+    start: {css: '[data-festival-date]', attr: 'data-festival-date', format: '%Y-%m-%d'}
+    bezirk: {css: '[data-festival-bezirk]', attr: 'data-festival-bezirk'}
+    ort: {css: '.bzi-festival-event-card-detail.is-place'}
+    adresse: {css: '.bzi-festival-event-card-detail.is-place'}
+    zeit: {css: '.bzi-festival-event-card-detail.is-time', regex: '([0-9]{1,2}:[0-9]{2})', format: '%H:%M'}
+    beschreibung_kurz: {css: '.bzi-festival-event-card-format'}
+detail:
+  felder:
+    ort: {css: '.bzi-festival-event-card-detail.is-place'}
+    adresse: {css: '.bzi-festival-event-card-detail.is-place'}
+    # Anlass (2026-09-24, Nutzerfund): 105 von 236 Terminen standen ganztägig in der
+    # App, obwohl die Detailseite die Uhrzeit nennt — die Übersichtskarte trägt bei
+    # diesen Terminen kein `.is-time`. Gemessen an 20 echten Detailseiten: 20× genau
+    # ein `h2.bzi-color-1` der Form „Do., 24.09.2026 | 10:00 Uhr", keine ohne Zeit.
+    # Die Regel greift nur, wenn der Listing-Termin sonst ganztägig wäre.
+    zeit: {css: 'h2.bzi-color-1', regex: '\|\s*([0-9]{1,2}:[0-9]{2})\s*(?:Uhr)?\s*(?:-\s*[0-9]{1,2}:[0-9]{2}\s*(?:Uhr)?)?\s*Uhr', format: '%H:%M'}
+    ende: {css: 'h2.bzi-color-1', regex: '[0-9]{1,2}:[0-9]{2}\s*(?:Uhr)?\s*-\s*([0-9]{1,2}:[0-9]{2})\s*Uhr', format: '%H:%M'}
+"""
+
 DEFAULT_REGELN: dict[str, str] = {
     "zlb": ZLB_REGELN,
     "umweltkalender-berlin": UMWELTKALENDER_REGELN,
+    "industriekultur-berlin": INDUSTRIEKULTUR_REGELN,
     "museumsportal": MUSEUMS_REGELN,
     "familienportal": FAMILIENPORTAL_REGELN,
     "tempelhoferfeld": TEMPELHOFER_FELD_REGELN,

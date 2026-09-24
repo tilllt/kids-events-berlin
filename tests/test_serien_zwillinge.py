@@ -15,7 +15,7 @@ QUELLE = "jup-berlin"
 
 def _ev(quelle: str, titel: str, start: datetime, ende: datetime | None,
         ort: str = "MAXIM, Kinder- und Jugendkulturzentrum", *, manuell: int = 0,
-        nummer: int = 0) -> dict:
+        nummer: int = 0, ganztags: bool = False) -> dict:
     """Minimal-Event für den Store (Pflichtfelder + Zeitspalten beide Formen)."""
     occ = start.astimezone(TZ_BERLIN).strftime("%Y%m%dT%H%M")
     seid = f"{titel}#{occ}#{nummer}"
@@ -28,7 +28,7 @@ def _ev(quelle: str, titel: str, start: datetime, ende: datetime | None,
         "start_local": start.astimezone(TZ_BERLIN).strftime("%Y-%m-%dT%H:%M:%S"),
         "ende_local": (ende.astimezone(TZ_BERLIN).strftime("%Y-%m-%dT%H:%M:%S")
                        if ende else None),
-        "ganztags": False,
+        "ganztags": ganztags,
         "ort": ort,
         "adresse": None,
         "bezirk": None,
@@ -167,4 +167,79 @@ def test_laufendes_mehrtaegiges_event_ueberlebt_prune_stale(tmp_path):
     assert weg == 1
     rest = [e["titel"] for e in store.query_events({})]
     assert titel in rest and "Alter Workshop" not in rest
+    store.close()
+
+
+# ---------------------------------------------------------------- Nutzerfund
+# 2026-09-24: Nachdem die Umweltkalender-Regel die Uhrzeit aus der Detailseite
+# lernt, schrieb der Lauf den Termin mit Zeit neu — der alte ganztägige Satz
+# desselben Tages stand aber nach `start_local` vorn und blieb als „frühester"
+# der Kette stehen, der neue Satz wurde als überlappender Zwilling gelöscht.
+# Messung live: 976 frisch geschriebene Termine, davon 777 sofort entfernt,
+# Bestand unverändert ganztägig (1144 von 1232). Regel: gleicher Tag, ein
+# ganztägiger Platzhalter gegen einen Eintrag mit Uhrzeit → Platzhalter geht.
+
+def test_ganztaegiger_platzhalter_verliert_gegen_uhrzeit(tmp_path):
+    store = Store(tmp_path / "events.db")
+    t = "Bauernmarkt Wittenbergplatz"
+    store.upsert_event(_ev(QUELLE, t, _d(24, 0), _d(25, 0), nummer=1, ganztags=True))
+    store.upsert_event(_ev(QUELLE, t, _d(24, 10), _d(24, 16), nummer=2))
+
+    weg = store.entferne_ueberlappende_zwillinge(QUELLE)
+
+    assert len(weg) == 1, weg
+    rest = [e for e in store.query_events({}) if e["titel"] == t]
+    assert len(rest) == 1, rest
+    assert not rest[0]["ganztags"], "Der Termin MIT Uhrzeit muss bleiben"
+    assert rest[0]["start_local"].endswith("T10:00:00")
+    store.close()
+
+
+def test_beruehrende_slots_zweier_zeiten_bleiben(tmp_path):
+    """Kontrolle: zwei echte Zeitfenster am selben Tag sind keine Dubletten.
+
+    ZLB-Stundenblöcke (09–10 Uhr, 10–11 Uhr) dürfen auch von der neuen
+    Tages-Regel nicht zusammengefasst werden — dort ist KEIN Platzhalter dabei.
+    """
+    store = Store(tmp_path / "events.db")
+    t = "Vorlesestunde"
+    store.upsert_event(_ev(QUELLE, t, _d(24, 9), _d(24, 10), nummer=1))
+    store.upsert_event(_ev(QUELLE, t, _d(24, 10), _d(24, 11), nummer=2))
+
+    weg = store.entferne_ueberlappende_zwillinge(QUELLE)
+
+    assert weg == []
+    assert len([e for e in store.query_events({}) if e["titel"] == t]) == 2
+    store.close()
+
+
+def test_zwei_identische_ganztaegige_saetze_vereint_schon_das_schreiben(tmp_path):
+    """Kontrolle: zwei identische ganztägige Sätze kommen gar nicht erst doppelt an.
+
+    `upsert_event` vereint denselben Termin (gleicher Tag, gleiche Zeit, gleicher
+    Titel/Ort) beim Schreiben — für das Dedup bleibt hier nichts zu tun. Wichtig
+    für den Nutzerfund: genau das passiert bei „ganztags + Uhrzeit" NICHT (der
+    Tag stimmt, die Uhrzeit nicht), deshalb musste die Tages-Regel her.
+    """
+    store = Store(tmp_path / "events.db")
+    t = "Dauerausstellung"
+    store.upsert_event(_ev(QUELLE, t, _d(24, 0), _d(25, 0), nummer=1, ganztags=True))
+    store.upsert_event(_ev(QUELLE, t, _d(24, 0), _d(25, 0), nummer=2, ganztags=True))
+
+    assert len([e for e in store.query_events({}) if e["titel"] == t]) == 1
+    assert store.entferne_ueberlappende_zwillinge(QUELLE) == []
+    store.close()
+
+
+def test_ganztaegige_serie_verschiedener_tage_bleibt(tmp_path):
+    """Kontrolle: aufeinanderfolgende Tage sind keine Zwillinge."""
+    store = Store(tmp_path / "events.db")
+    t = "Bauernmarkt Wittenbergplatz"
+    store.upsert_event(_ev(QUELLE, t, _d(24, 0), _d(25, 0), nummer=1, ganztags=True))
+    store.upsert_event(_ev(QUELLE, t, _d(31, 0), _d(1, 0, monat=11), nummer=2, ganztags=True))
+
+    weg = store.entferne_ueberlappende_zwillinge(QUELLE)
+
+    assert weg == []
+    assert len([e for e in store.query_events({}) if e["titel"] == t]) == 2
     store.close()

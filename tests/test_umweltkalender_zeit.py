@@ -170,3 +170,58 @@ def test_kaputte_detailzeit_wird_ignoriert():
                           {"zeit": "abends", "ende": "?"}, datetime.now(TZ_BERLIN))
     assert ev["ganztags"] is True
     adapter.close()
+
+
+# ------------------------------------------------------------ Nutzerfund 2
+# 2026-09-24: Die Uhrzeit steht BEI VIELEN Angeboten schon in der Übersicht —
+# die Regel las die Datumskarte gar nicht. Gemessen an der Filterliste:
+# 1265 von 3095 `div.date`-Feldern nennen eine Zeit; mit dem neuen Listing-Feld
+# bekommen 1199 von 1338 Zeilen (90 %) ihre Uhrzeit direkt aus dem Listing,
+# die übrigen (z. B. Bauernmarkt: nur Datum) aus der Detailseite.
+
+def _karte(dat_text: str, zeit_text: str = "") -> str:
+    """Listing-Karte in der echten Struktur (zwei `div.date`: Datum, Zeit)."""
+    zeit = f'<div class="separator">|</div><div class="date">{zeit_text}</div>' if zeit_text else ""
+    return ("<div class='grid-item teaser js-grid-item'>"
+            "<a href='/angebote/details/62508?dat=2026-09-24' target='_self'>"
+            "<h3>Bauernmarkt Wittenbergplatz</h3>"
+            "<div class='location'>Charlottenburg-Wilmersdorf | Wittenbergplatz</div>"
+            f"<div class='date'>Do., 24.09.2026</div>{zeit}"
+            "</a></div>")
+
+
+def test_listing_zeit_wird_gelesen():
+    """Der gemeldete Fall: Zeit steht in der Übersicht, der Scraper kannte sie nicht."""
+    ad = _adapter()
+    rows = ad.parse_listing(f"<html><body>{_karte('Do., 24.09.2026', '10:00 - 16:00 Uhr')}</body></html>")
+    assert len(rows) == 1
+    r = rows[0]
+    assert r["ganztags"] is False
+    assert r["start"].strftime("%Y-%m-%d %H:%M") == "2026-09-24 10:00"
+    assert r["ende"].strftime("%H:%M") == "16:00"
+    ad.close()
+
+
+def test_listing_ohne_zeit_bleibt_ganztags():
+    """Karte ohne Uhrzeit (nur Datum) → ganztägig, Detail entscheidet später."""
+    ad = _adapter()
+    rows = ad.parse_listing(f"<html><body>{_karte('Do., 24.09.2026')}</body></html>")
+    assert rows and rows[0]["ganztags"] is True
+    assert rows[0]["start"].strftime("%H:%M") == "00:00"
+    ad.close()
+
+
+def test_listing_zeit_schlaegt_nicht_bei_anderem_tag_zu():
+    """„+ weitere Termine“ in der Karte darf keine Uhrzeit erfinden.
+
+    Die Karte nennt nur den ersten Tag; eine Uhrzeit ohne „Uhr“ (z. B. eine
+    Jahreszahl oder ein anderes Datum) ergibt KEINE Zeit — lieber ganztägig
+    als eine falsche Zahl.
+    """
+    ad = _adapter()
+    rows = ad.parse_listing(
+        "<html><body><div class='grid-item teaser'><a href='/angebote/details/1?dat=2026-09-25'>"
+        "<h3>Angebot</h3><div class='date'>Do., 24.09.2026 + weitere Termine</div>"
+        "<div class='date'>24.09.2026</div></a></div></body></html>")
+    assert rows and rows[0]["ganztags"] is True
+    ad.close()
