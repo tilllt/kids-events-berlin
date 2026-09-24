@@ -361,11 +361,39 @@ detail:
 """
 
 
+BWB_REGELN = r"""quelle: bwb-veranstaltungen
+name: Berliner Wasserbetriebe — Veranstaltungen
+robots: 'erlaubt: / (keine Sperre auf /de/veranstaltungen.php)'
+listing:
+  # Eigene Terminübersicht der Wasserbetriebe (Berliner Wasser-Mobil-Tour,
+  # Tag des offenen Kanals). Datum/Ort/Beschreibung stehen als Maschinenfelder
+  # (.info-*) im Klartext, `div.expand` ist der Eintrag.
+  #
+  # Korrektur 2026-09-24: `info-begin` trägt Datum UND Uhrzeit
+  # („2026-06-06 17:00:00“). Die alte Regel zog per regex nur das Datum und
+  # formatierte mit '%Y-%m-%d' — damit wurde JEDER Termin ganztags, obwohl die
+  # Quelle die Uhrzeit nennt. Jetzt getrennt: Datum aus 'start', Uhrzeit aus
+  # 'zeit' (dieselbe Zelle), Ende aus 'info-end'. Einträge OHNE Uhrzeit
+  # (kommt auf der Seite vor) bleiben dadurch ganztags, statt ganz zu fehlen.
+  url: https://www.bwb.de/de/veranstaltungen.php
+  horizont_tage: 400
+  item_css: 'div.expand'
+  felder:
+    titel: {css: '.info-subject'}
+    start: {css: '.info-begin', regex: '([0-9]{4}-[0-9]{2}-[0-9]{2})', format: '%Y-%m-%d'}
+    zeit: {css: '.info-begin', regex: '([0-9]{2}:[0-9]{2})', format: '%H:%M'}
+    ende: {css: '.info-end', regex: '([0-9]{2}:[0-9]{2})', format: '%H:%M'}
+    beschreibung_kurz: {css: '.info-description'}
+    adresse: {css: '.info-location'}
+"""
+
+
 DEFAULT_REGELN: dict[str, str] = {
     "zlb": ZLB_REGELN,
     "umweltkalender-berlin": UMWELTKALENDER_REGELN,
     "industriekultur-berlin": INDUSTRIEKULTUR_REGELN,
     "wochenmarkt-flohmarkt": WOCHENMARKT_FLOHMARKT_REGELN,
+    "bwb-veranstaltungen": BWB_REGELN,
     "museumsportal": MUSEUMS_REGELN,
     "familienportal": FAMILIENPORTAL_REGELN,
     "tempelhoferfeld": TEMPELHOFER_FELD_REGELN,
