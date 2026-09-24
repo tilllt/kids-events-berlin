@@ -283,27 +283,39 @@ INDUSTRIEKULTUR_REGELN = r"""quelle: industriekultur-berlin
 name: Festival Industriekultur Berlin — Veranstaltungskalender
 robots: 'erlaubt: / (robots.txt ohne Disallow)'
 listing:
-  url: https://industriekultur.berlin/festival/
+  # Anlass 2026-09-24 (Nutzerfund): Die alte Adresse /festival/ leitet per 301
+  # auf /industriekultur-festival/ um — eine Marketing-Seite OHNE Termine.
+  # Seit dem Umzug (Läufe ab 2026-09-18) fand `item_css` 0 Elemente, jeder Lauf
+  # endete `anomalie-0-events`, der Bestand fror ein. Die Übersicht liegt jetzt
+  # unter /erleben/festival/ (gemessen: 165 Karten, alle mit `.is-time`).
+  url: https://industriekultur.berlin/erleben/festival/
   horizont_tage: 400
   item_css: 'div.bzi-festival-event-item'
   felder:
     titel: {css: 'h3.bzi-festival-event-card-main'}
     url: {css: 'a.bzi-festival-event-card-link', attr: 'href'}
     start: {css: '[data-festival-date]', attr: 'data-festival-date', format: '%Y-%m-%d'}
-    bezirk: {css: '[data-festival-bezirk]', attr: 'data-festival-bezirk'}
+    # Mehrwertig seit dem Umzug („mitte,pankow“, 4 von 165 Karten) — der
+    # Bezirksfilter kennt nur einen; die erste Nennung ist der Startbezirk.
+    bezirk: {css: '[data-festival-bezirk]', attr: 'data-festival-bezirk', regex: '^([a-zäöüß-]+)'}
     ort: {css: '.bzi-festival-event-card-detail.is-place'}
     adresse: {css: '.bzi-festival-event-card-detail.is-place'}
     zeit: {css: '.bzi-festival-event-card-detail.is-time', regex: '([0-9]{1,2}:[0-9]{2})', format: '%H:%M'}
     beschreibung_kurz: {css: '.bzi-festival-event-card-format'}
 detail:
   felder:
-    ort: {css: '.bzi-festival-event-card-detail.is-place'}
-    adresse: {css: '.bzi-festival-event-card-detail.is-place'}
-    # Anlass (2026-09-24, Nutzerfund): 105 von 236 Terminen standen ganztägig in der
-    # App, obwohl die Detailseite die Uhrzeit nennt — die Übersichtskarte trägt bei
-    # diesen Terminen kein `.is-time`. Gemessen an 20 echten Detailseiten: 20× genau
-    # ein `h2.bzi-color-1` der Form „Do., 24.09.2026 | 10:00 Uhr", keine ohne Zeit.
-    # Die Regel greift nur, wenn der Listing-Termin sonst ganztägig wäre.
+    # Ort/Adresse des Termins steht in der Fact-Box „Adresse" („Start:
+    # Hauptbahnhof"). NICHT `.bzi-festival-event-card-detail.is-place` — das
+    # trifft auch die Karten der „Weitere Termine"-Liste und verkettete 7 Orte
+    # zu einem Wert („Start: Bahnhof Spandau Start: Bahnhof Schöneweide …“).
+    ort: {css: "div.bzi-fact-box:contains('Adresse') p"}
+    adresse: {css: "div.bzi-fact-box:contains('Adresse') p"}
+    # Anlass (2026-09-24, Nutzerfund): 105 von 236 Terminen standen ganztägig in
+    # der App. Gemessen an 20 echten Detailseiten: 20× genau ein `h2.bzi-color-1`
+    # der Form „Do., 24.09.2026 | 10:00 Uhr", keine Seite ohne Zeit. Seit dem
+    # Umzug der Übersicht trägt JEDE Listing-Karte `.is-time` (165/165) — der
+    # Detailweg greift nur noch, wenn der Listing-Termin sonst ganztägig wäre,
+    # und ist das Sicherheitsnetz für Karten ohne Zeitangabe.
     zeit: {css: 'h2.bzi-color-1', regex: '\|\s*([0-9]{1,2}:[0-9]{2})\s*(?:Uhr)?\s*(?:-\s*[0-9]{1,2}:[0-9]{2}\s*(?:Uhr)?)?\s*Uhr', format: '%H:%M'}
     ende: {css: 'h2.bzi-color-1', regex: '[0-9]{1,2}:[0-9]{2}\s*(?:Uhr)?\s*-\s*([0-9]{1,2}:[0-9]{2})\s*Uhr', format: '%H:%M'}
 """

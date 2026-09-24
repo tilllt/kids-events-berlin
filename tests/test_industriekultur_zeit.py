@@ -12,6 +12,14 @@ Messung 2026-09-24 an 40 ganztägigen Terminen ab heute: 40 von 40 Detailseiten
 nennen eine Uhrzeit (Audit-Skript, Muster `\d{1,2}:\d{2}`); an 20 Seiten geprüft:
 je genau ein `h2.bzi-color-1`, immer die Form „<Wochentag>, <Datum> | HH:MM Uhr",
 keine Seite ohne Zeit.
+
+Nachtrag 2026-09-24 (zweiter Nutzerfund): Der Fix konnte nie greifen — die
+ÜBERSICHT ist umgezogen. `https://industriekultur.berlin/festival/` leitet per
+301 auf `/industriekultur-festival/` (Marketing-Seite ohne Termine) um; die
+Terminübersicht liegt jetzt unter `/erleben/festival/`. Folge: 0 Treffer je Lauf
+(`anomalie-0-events`, Läufe 262–358), der Bestand fror ein — die 105 ganztägigen
+Einträge waren stehengebliebene Alt-Dubletten. In der neuen Übersicht trägt JEDE
+Karte `.is-time` (gemessen: 165 von 165).
 """
 from datetime import datetime
 
@@ -132,3 +140,69 @@ def test_kaputte_detailzeit_wird_ignoriert():
                           datetime.now(TZ_BERLIN))
     assert ev["ganztags"] is True
     adapter.close()
+
+
+# --------------------------------------------------------------- Listing-Umzug
+# Zweiter Nutzerfund 2026-09-24: /festival/ → 301 → /industriekultur-festival/
+# (Marketing-Seite OHNE Termine). Die Übersicht liegt unter /erleben/festival/.
+# Fixture `listing_erleben.html` = echte Karten (Auszug; live 165 Karten).
+
+NEUE_LISTING_URL = "https://industriekultur.berlin/erleben/festival/"
+
+
+def _listing_rows(fixture_dir_industriekultur) -> list[dict]:
+    html = (fixture_dir_industriekultur / "listing_erleben.html").read_text(
+        encoding="utf-8")
+    adapter = _adapter()
+    rows = adapter.parse_listing(html)
+    assert adapter.drain_warnungen() == []
+    adapter.close()
+    return rows
+
+
+def test_uebersicht_liegt_nicht_mehr_unter_festival():
+    assert f"url: {NEUE_LISTING_URL}" in INDUSTRIEKULTUR_REGELN
+    # Die alte Adresse darf nirgends mehr als Listing stehen (sie leitet um).
+    assert "url: https://industriekultur.berlin/festival/" not in INDUSTRIEKULTUR_REGELN
+
+
+def test_neue_uebersicht_traegt_die_zeit_in_jeder_karte(fixture_dir_industriekultur):
+    rows = _listing_rows(fixture_dir_industriekultur)
+    assert len(rows) == 3
+    # Der Unterschied zur alten Übersicht: jede Karte hat `.is-time` — keine
+    # ganztägigen Platzhalter mehr (gemessen live: 165 von 165 Karten).
+    assert all(r["ganztags"] is False for r in rows)
+    assert all(r["start"].strftime("%H:%M") != "00:00" for r in rows)
+
+    r = next(x for x in rows if x["titel"].startswith("After Work Radtour: Warmes Licht"))
+    assert r["start"].strftime("%Y-%m-%dT%H:%M") == "2026-09-24T16:00"
+    assert r["ort"] == "Start: Hauptbahnhof"
+    assert r["beschreibung_kurz"] == "exklusive Einblicke Fahrrad- und Kanutouren"
+    assert r["url"].startswith(
+        "https://industriekultur.berlin/festival/veranstaltung/")
+
+
+def test_mehrwertiger_bezirk_ergibt_den_startbezirk(fixture_dir_industriekultur):
+    """`data-festival-bezirk` ist mehrwertig („mitte,pankow") — 4 von 165 Karten.
+
+    Der Bezirksfilter kennt nur einen Bezirk; ohne Regex auf den ersten Wert
+    scheiterte der Label-Lookup stumm (bezirk = None).
+    """
+    rows = _listing_rows(fixture_dir_industriekultur)
+    r = next(x for x in rows if x["titel"].startswith("After Work Radtour: Warmes Licht"))
+    assert r["bezirk"] == "mitte"
+    assert all("," not in (x["bezirk"] or "") for x in rows)
+
+
+def test_detail_ort_kommt_aus_der_adress_factbox(fixture_dir_industriekultur):
+    """Der Detail-Ort ist die Fact-Box „Adresse" — nicht die Folgetermin-Karten.
+
+    Der alte Anker `.bzi-festival-event-card-detail.is-place` trifft auch die
+    Karten der „Weitere Termine"-Liste und hängte deren Orte aneinander
+    (gemessen live: 7 Orte in einem Wert).
+    """
+    html = (fixture_dir_industriekultur
+            / "detail_alte_verkehrswege.html").read_text(encoding="utf-8")
+    d = _adapter().parse_detail(html)
+    assert "Start: Hauptbahnhof" in (d.get("ort") or "")
+    assert "Bahnhof Spandau" not in (d.get("ort") or ""), d.get("ort")

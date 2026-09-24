@@ -1003,7 +1003,8 @@ class Store:
         """
         with self._lock:
             rows = [dict(r) for r in self._conn.execute(
-                "SELECT id, titel, ort, start_local, ende_local, ganztags FROM events "
+                "SELECT id, titel, ort, start_local, ende_local, ganztags, source_url "
+                "FROM events "
                 "WHERE quelle=? AND COALESCE(manuell, 0) = 0 "
                 "ORDER BY start_local, id", (quelle,)).fetchall()]
 
@@ -1032,22 +1033,32 @@ class Store:
         # 777 sofort gelöscht, Bestand unverändert ganztägig).
         # Berührende Slots mit echten Zeiten (ZLB 09–10/10–11 Uhr) sind KEINE
         # Dubletten — hier wird nur der ganztägige Platzhalter entfernt.
-        for items in gruppen.values():
-            if len(items) < 2:
+        #
+        # Gruppiert wird über die EVENT-Identität (normalisierter Titel am
+        # selben Tag), NICHT über (Titel, Ort). Grund (Nutzerfund 2026-09-24,
+        # industriekultur-berlin): Wird ein Termin nachträglich präzisiert,
+        # steckt die Startzeit in der Termin-ID („<slug>#20260924T1600") → der
+        # gelernte Satz bekommt eine NEUE ID und wird eingefügt, der alte
+        # ganztägige Platzhalter bleibt unter seiner alten ID stehen. Der alte
+        # Satz trägt dabei oft einen schlechteren Ort („Ohne Angabe") und lag
+        # deshalb in einem anderen (Titel, Ort)-Topf — die Regel sah ihn nie.
+        # Gemessen: 105 von 236 Terminen der Quelle waren solche Alt-Dubletten.
+        pro_tag: dict[tuple[str, str], list[dict]] = {}
+        for r in rows:
+            pro_tag.setdefault(
+                ((r.get("titel") or "").strip().lower(),
+                 (r.get("start_local") or "")[:10]), []).append(r)
+        raus_ids: set[str] = set()
+        for tag_items in pro_tag.values():
+            if len(tag_items) < 2:
                 continue
-            pro_tag: dict[str, list[dict]] = {}
-            for r in items:
-                pro_tag.setdefault((r.get("start_local") or "")[:10], []).append(r)
-            raus: set[str] = set()
-            for tag_items in pro_tag.values():
-                if len(tag_items) < 2:
-                    continue
-                if (any(not r.get("ganztags") for r in tag_items)
-                        and any(r.get("ganztags") for r in tag_items)):
-                    raus.update(r["id"] for r in tag_items if r.get("ganztags"))
-            if raus:
-                zu_loeschen.extend(r for r in items if r["id"] in raus)
-                items[:] = [r for r in items if r["id"] not in raus]
+            if (any(not r.get("ganztags") for r in tag_items)
+                    and any(r.get("ganztags") for r in tag_items)):
+                raus_ids.update(r["id"] for r in tag_items if r.get("ganztags"))
+        if raus_ids:
+            zu_loeschen.extend(r for r in rows if r["id"] in raus_ids)
+            for k in list(gruppen):
+                gruppen[k] = [r for r in gruppen[k] if r["id"] not in raus_ids]
 
         for items in gruppen.values():
             if len(items) < 2:

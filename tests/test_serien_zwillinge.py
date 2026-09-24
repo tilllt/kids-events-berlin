@@ -243,3 +243,66 @@ def test_ganztaegige_serie_verschiedener_tage_bleibt(tmp_path):
     assert weg == []
     assert len([e for e in store.query_events({}) if e["titel"] == t]) == 2
     store.close()
+
+
+# ---------------------------------------------------------------- Nutzerfund
+# 2026-09-24, zweiter Teil: `industriekultur-berlin` stand mit 236 Terminen im
+# Bestand, davon 105 ganztägig — obwohl der Lauf sie nie neu schrieb (die Quelle
+# lieferte seit dem Umzug der Übersicht 0 Treffer, `anomalie-0-events`).
+# Ursache der Alt-Dubletten: Wird ein Termin nachträglich präzisiert, steckt die
+# Startzeit in der Termin-ID (`<slug>#20260924T1600`) → neue ID → INSERT statt
+# UPDATE. Der alte ganztägige Platzhalter bleibt unter seiner alten ID stehen
+# und trägt dabei meist einen schlechteren Ort („Ohne Angabe") — er lag deshalb
+# in einem anderen (Titel, Ort)-Topf und wurde von der Tages-Regel nie gesehen.
+# Messung an der Produktions-DB: 102 solche Alt-Dubletten (3 weitere haben nach
+# einer Titeländerung der Quelle „AUSGEBUCHT: …" keinen exakten Zwilling und
+# werden über `entferne_nicht_mehr_angeboten`/`prune_stale` abgeräumt),
+# 0 Fremdtreffer in allen anderen Quellen.
+
+def test_ganztaegiger_platzhalter_verliert_auch_bei_anderem_ort(tmp_path):
+    store = Store(tmp_path / "events.db")
+    t = "After Work Radtour: Warmes Licht und kühles Bier"
+    store.upsert_event(_ev(QUELLE, t, _d(24, 0), _d(24, 23), ort="Ohne Angabe",
+                           nummer=1, ganztags=True))
+    store.upsert_event(_ev(QUELLE, t, _d(24, 16), None, ort="Start: Hauptbahnhof",
+                           nummer=2))
+
+    weg = store.entferne_ueberlappende_zwillinge(QUELLE)
+
+    assert len(weg) == 1, weg
+    rest = [e for e in store.query_events({}) if e["titel"] == t]
+    assert len(rest) == 1, rest
+    assert rest[0]["start_local"].endswith("T16:00:00")
+    assert rest[0]["ort"] == "Start: Hauptbahnhof"
+    store.close()
+
+
+def test_gleicher_titel_anderer_ort_mit_zeit_bleibt(tmp_path):
+    """Kontrolle: die Tages-Regel greift nur gegen den ganztägigen Platzhalter.
+
+    Zwei echte Zeitfenster desselben Titels an verschiedenen Orten sind keine
+    Dublette — sonst würde die Erweiterung über (Titel, Tag) echte Parallel-
+    Termine löschen.
+    """
+    store = Store(tmp_path / "events.db")
+    t = "Keramikwerkstatt"
+    store.upsert_event(_ev(QUELLE, t, _d(24, 10), _d(24, 12), ort="Haus A", nummer=1))
+    store.upsert_event(_ev(QUELLE, t, _d(24, 14), _d(24, 16), ort="Haus B", nummer=2))
+
+    assert store.entferne_ueberlappende_zwillinge(QUELLE) == []
+    assert len([e for e in store.query_events({}) if e["titel"] == t]) == 2
+    store.close()
+
+
+def test_manuell_gepflegter_platzhalter_bleibt_auch_bei_anderem_ort(tmp_path):
+    """Der Admin-Schutz gilt weiter: manuell=1 wird nie als Dublette gelöscht."""
+    store = Store(tmp_path / "events.db")
+    t = "Zeitreise Anhalter Bahnhof"
+    store.upsert_event(_ev(QUELLE, t, _d(24, 0), _d(24, 23), ort="Ohne Angabe",
+                           nummer=1, ganztags=True, manuell=1))
+    store.upsert_event(_ev(QUELLE, t, _d(24, 16), None, ort="Start: Hauptbahnhof",
+                           nummer=2))
+
+    assert store.entferne_ueberlappende_zwillinge(QUELLE) == []
+    assert len([e for e in store.query_events({}) if e["titel"] == t]) == 2
+    store.close()
