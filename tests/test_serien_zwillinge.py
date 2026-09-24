@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 
 from app.model import TZ_BERLIN, make_event_id
 from app.pipeline import scrape
-from app.store import Store
+from app.store import Store, titel_kern
 
 QUELLE = "jup-berlin"
 
@@ -306,3 +306,39 @@ def test_manuell_gepflegter_platzhalter_bleibt_auch_bei_anderem_ort(tmp_path):
     assert store.entferne_ueberlappende_zwillinge(QUELLE) == []
     assert len([e for e in store.query_events({}) if e["titel"] == t]) == 2
     store.close()
+
+
+def test_status_vorsatz_verhindert_die_tages_dublette_nicht(tmp_path):
+    """„AUSGEBUCHT: …“ und „…“ sind derselbe Termin.
+
+    Die Quelle hängt dem Titel einen Status an und ändert ihn zwischen Läufen:
+    der alte ganztägige Satz hieß „Alte Verkehrswege im Südwesten“, der neue
+    mit Uhrzeit „AUSGEBUCHT: Alte Verkehrswege im Südwesten“. Gemessen an der
+    Produktiv-DB 2026-09-24: genau 3 solche Reste blieben nach dem ersten
+    Lauf stehen.
+    """
+    store = Store(tmp_path / "events.db")
+    store.upsert_event(_ev(QUELLE, "Alte Verkehrswege im Südwesten", _d(24, 0),
+                           _d(24, 23), ort="Ohne Angabe", nummer=1, ganztags=True))
+    store.upsert_event(_ev(QUELLE, "AUSGEBUCHT: Alte Verkehrswege im Südwesten",
+                           _d(24, 10), None, ort="14 km Wanderung", nummer=2))
+
+    weg = store.entferne_ueberlappende_zwillinge(QUELLE)
+
+    assert len(weg) == 1, weg
+    rest = store.query_events({})
+    assert len(rest) == 1, rest
+    assert rest[0]["start_local"].endswith("T10:00:00")
+    store.close()
+
+
+def test_titel_kern_streift_nur_den_status_vorsatz():
+    assert titel_kern("AUSGEBUCHT: Alte Verkehrswege im Südwesten") == \
+        "alte verkehrswege im südwesten"
+    assert titel_kern("ausgebucht – Bunkermythen") == "bunkermythen"
+    assert titel_kern("Abgesagt: Stadtführung") == "stadtführung"
+    assert titel_kern("Alte Verkehrswege im Südwesten") == \
+        "alte verkehrswege im südwesten"
+    assert titel_kern(None) == ""
+    # Kein Vorsatz, kein Eingriff: ein Titel, der nur so ANFÄNGT, bleibt ganz.
+    assert titel_kern("Ausgebuchtsein für Anfänger") == "ausgebuchtsein für anfänger"

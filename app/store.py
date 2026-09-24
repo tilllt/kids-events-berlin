@@ -10,6 +10,7 @@ damit die Uhrzeit-Bänder unabhängig von der Container-Zeitzone korrekt sind.
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import threading
 import time
@@ -279,6 +280,23 @@ UHRZEIT_SQL = {
 # Achtung: SQLites time() liefert „HH:MM:SS“ — der Vergleich gegen das
 # frühere „'00:00'“ war deshalb immer falsch (Gleichheit griff nie).
 GANZTAGS_SQL = "(ganztags = 1 OR time(start_local) < '00:01')"
+
+# Quellen stellen ihren Terminen einen Status voran und ändern ihn zwischen
+# Läufen: derselbe Termin heißt einmal „Alte Verkehrswege im Südwesten“ und
+# einmal „AUSGEBUCHT: Alte Verkehrswege im Südwesten“. Für die Tages-Dublette
+# (ganztägiger Platzhalter gegen Eintrag MIT Uhrzeit) ist das dieselbe
+# Veranstaltung — ohne diese Normalisierung bleiben genau diese Reste stehen
+# (gemessen 2026-09-24 an der Produktiv-DB: 3 von 105 Resten).
+_STATUS_PRAEFIXE = ("ausgebucht", "abgesagt", "entfällt", "entfaellt", "verschoben")
+# Nur ein ausdrücklicher Trenner zählt: „AUSGEBUCHT: X“, „Abgesagt – X“.
+# Ein Wort, das bloß so anfängt („Ausgebuchtsein für Anfänger“), bleibt ganz.
+_STATUS_VORSATZ = re.compile(
+    r"^(" + "|".join(_STATUS_PRAEFIXE) + r")\s*[:–—!-]\s*")
+
+
+def titel_kern(titel: str | None) -> str:
+    """Normalisierter Titel ohne Status-Vorsatz („AUSGEBUCHT: “, „Abgesagt: “)."""
+    return _STATUS_VORSATZ.sub("", (titel or "").strip().lower(), count=1)
 
 
 class Store:
@@ -1046,7 +1064,7 @@ class Store:
         pro_tag: dict[tuple[str, str], list[dict]] = {}
         for r in rows:
             pro_tag.setdefault(
-                ((r.get("titel") or "").strip().lower(),
+                (titel_kern(r.get("titel")),
                  (r.get("start_local") or "")[:10]), []).append(r)
         raus_ids: set[str] = set()
         for tag_items in pro_tag.values():
