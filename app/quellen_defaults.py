@@ -320,10 +320,52 @@ detail:
     ende: {css: 'h2.bzi-color-1', regex: '[0-9]{1,2}:[0-9]{2}\s*(?:Uhr)?\s*-\s*([0-9]{1,2}:[0-9]{2})\s*Uhr', format: '%H:%M'}
 """
 
+WOCHENMARKT_FLOHMARKT_REGELN = r"""quelle: wochenmarkt-flohmarkt
+name: Wochenmärkte & Flohmärkte Berlin — Trödelmarkttermine
+robots: 'erlaubt: / (robots.txt disallowt nur /administrator/, /cache/, /cli/, /components/, /includes/, /installation/, /language/, /libraries/, /logs/, /media/, /plugins/, /templates/, /tmp/ — Terminseiten und /eventdetail/ frei)'
+listing:
+  # Joomla + JEvents (com_jevents). Die Ansicht „nach Kategorie" OHNE Kategorie
+  # (`/-`) listet alle kommenden Termine, aufsteigend ab heute. `limit=100` hebt
+  # die Joomla-Seitengröße von 10 auf 100 — das ist das Maximum der Site
+  # (limit=200 und limit=0 liefern ebenfalls 100).
+  #
+  # Kein `pagination`-Abschnitt: die Engine ruft dieselbe URL ein zweites Mal ab,
+  # bekommt dieselben Slugs und bricht ab. Zwei Abrufe, 100 Zeilen, Zeitraum
+  # heute .. +63 Tage (gemessen 2026-09-24: 24.09. .. 26.11.2026). Das deckt
+  # `horizont_tage: 60` vollständig ab.
+  #
+  # NICHT `pagination: {param: start}` verwenden! Die Engine zählt je Seite um 1
+  # hoch (`start=0,1,2…`), die Seite blättert aber in 100er-Schritten — sie liefe
+  # bis 2028 durch (gemessen: Seite 3 endet am 22.04.2028), ~20 Seiten à 1,7 MB.
+  url: https://www.wochenmarkt-flohmarkt.de/eventsnachkategorie/-?limit=100
+  horizont_tage: 60
+  item_css: 'div.jev_listrow'
+  felder:
+    titel: {css: 'a.ev_link_row'}
+    url: {css: 'a.ev_link_row', attr: 'href'}
+    # Die Zeile nennt die Zeit nur als Fließtext („Dienstag, 01. September 2026
+    # 10:00 - 16:00"). `%B` wäre hier eine Falle: datetime.strptime liest
+    # Monatsnamen in der C-Locale, deutsche Namen scheitern ab „März/Mai/
+    # Oktober/Dezember" (im Projekt ist kein setlocale gesetzt). Verlässlich ist
+    # der maschinenlesbare Google-Kalender-Link JEDER Zeile —
+    # `dates=20260901T100000/20260901T160000` (gemessen: 100 von 100 Zeilen).
+    start: {css: 'a[href*="google.com/calendar"]', attr: 'href', regex: 'dates=([0-9]{8}T[0-9]{6})', format: '%Y%m%dT%H%M%S'}
+    ende: {css: 'a[href*="google.com/calendar"]', attr: 'href', regex: 'dates=[0-9]{8}T[0-9]{6}/([0-9]{8}T[0-9]{6})', format: '%Y%m%dT%H%M%S'}
+detail:
+  felder:
+    # Ortsblock der Detailseite (<div class="jev-detail__address">) ist mit
+    # <br/> getrennt: Zeile 1 = Ort, Zeile 2 = Straße, danach Ort/Region/PLZ/
+    # Land und ein Link. `_feld_wert` liest Textknoten einzeln, deshalb xpath.
+    ort: {xpath: '//div[contains(@class,"jev-detail__address")]/text()[1]'}
+    adresse: {xpath: '//div[contains(@class,"jev-detail__address")]/text()[2]'}
+"""
+
+
 DEFAULT_REGELN: dict[str, str] = {
     "zlb": ZLB_REGELN,
     "umweltkalender-berlin": UMWELTKALENDER_REGELN,
     "industriekultur-berlin": INDUSTRIEKULTUR_REGELN,
+    "wochenmarkt-flohmarkt": WOCHENMARKT_FLOHMARKT_REGELN,
     "museumsportal": MUSEUMS_REGELN,
     "familienportal": FAMILIENPORTAL_REGELN,
     "tempelhoferfeld": TEMPELHOFER_FELD_REGELN,

@@ -168,13 +168,24 @@ def _regex_ziehen(text: str | None, rx: str | None) -> str | None:
 
 
 def _detail_feld_wert(sel_css: parsel.Selector, regel: dict) -> str:
-    """Detail-Feld aus CSS(+attr/regex/urldecode) → Text ("" = kein Treffer).
+    """Detail-Feld aus CSS/xpath(+attr/regex/urldecode) → Text ("" = kein Treffer).
 
     Reihenfolge: Selektor/Attribut → Whitespace/Komma normalisieren →
     urldecode (Prozent-/Plus-Kodierung, z. B. Adresse im Kalender-Link) →
     regex (ohne Treffer bleibt das Feld LEER, kein Rohtext in der DB).
+
+    `xpath` wählt einen einzelnen TEXTKNOTEN (z. B. `…/text()[2]`), wenn ein
+    Block seine Werte nur mit <br/> trennt — mit CSS käme der ganze
+    zusammengeklebte Blocktext heraus.
     """
-    if regel.get("attr"):
+    if regel.get("xpath"):
+        txt = ""
+        for el in sel_css.xpath(regel["xpath"]):
+            v = (el.get() or "").strip()
+            if v:
+                txt = v
+                break
+    elif regel.get("attr"):
         txt = ""
         for el in sel_css.css(regel["css"]):
             v = el.attrib.get(regel["attr"])
@@ -435,13 +446,17 @@ class SelectorAdapter:
                     if isinstance(r, dict)]
 
         detail_felder = self._detail_cfg.get("felder") or {}
+        # Auch xpath-Felder zulassen: manche Blöcke trennen ihre Werte mit
+        # <br/> statt mit eigenen Elementen (JEvents-Adressblock: Zeile 1 Ort,
+        # Zeile 2 Straße). Über CSS kommt nur der zusammengeklebte Blocktext
+        # heraus, über xpath der einzelne Textknoten.
         css_felder = {k: _als_liste(v) for k, v in detail_felder.items()
-                      if any(r.get("css") for r in _als_liste(v))}
+                      if any(r.get("css") or r.get("xpath") for r in _als_liste(v))}
         if css_felder:
             sel_css = parsel.Selector(text=html)
             for feldname, regeln_liste in css_felder.items():
                 for regel in regeln_liste:
-                    if not regel.get("css"):
+                    if not (regel.get("css") or regel.get("xpath")):
                         continue
                     txt = _detail_feld_wert(sel_css, regel)
                     if txt:
