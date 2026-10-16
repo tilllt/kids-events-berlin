@@ -755,7 +755,10 @@ def heilung_get(heilung_id: int, request: Request):
     raus = _heilung_oeffentlich(h)
     aktuell = (store.get_regeln(h["quelle"]) or {}).get("regel_yaml") or ""
     raus["regeln_aktuell"] = aktuell
-    raus["diff"] = selbstheilung.regel_diff(aktuell, h.get("vorschlag_yaml") or "")
+    # Nur wenn es einen Vorschlag gibt, ist ein Unterschied aussagekräftig —
+    # sonst läse sich der Fall, als stünde eine Regeländerung an.
+    raus["diff"] = (selbstheilung.regel_diff(aktuell, h["vorschlag_yaml"])
+                    if (h.get("vorschlag_yaml") or "").strip() else "")
     return raus
 
 

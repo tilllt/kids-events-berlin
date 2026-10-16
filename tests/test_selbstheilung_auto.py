@@ -440,6 +440,8 @@ def test_api_ablehnen_und_verlauf(tmp_path):
     assert verlauf and verlauf[0]["quelle"] == Q and verlauf[0]["aktiv"] == 1
 
     fall = s.heilung_anlegen(Q, "selektoren_tot", {"art": "selektoren_tot"}, JETZT)
+    detail_ohne = c.get(f"/api/admin/heilungen/{fall}").json()
+    assert detail_ohne["diff"] == "", "ohne Vorschlag darf kein Unterschied erscheinen"
     r = c.post(f"/api/admin/heilungen/{fall}/ablehnen", json={"grund": "Seite wird gerade umgebaut"})
     assert r.status_code == 200
     assert s.heilung_holen(fall)["status"] == "abgelehnt"
