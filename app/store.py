@@ -108,9 +108,31 @@ CREATE TABLE IF NOT EXISTS heilungen (
     begruendung TEXT,
     beleg_json TEXT,
     erstellt_am TEXT NOT NULL,
-    geaendert_am TEXT
+    geaendert_am TEXT,
+    -- Change 028: Automatik. status zusätzlich: verworfen | angenommen |
+    -- zurueckgenommen; verursacher: auto | manuell | admin
+    verursacher TEXT,
+    meldung TEXT,               -- Klartext für Oberfläche und Mail
+    erwartete_treffer INTEGER,  -- Probelauf-Zahl des Gates (Maßstab der Beobachtung)
+    uebernommen_am TEXT,
+    pruefung_ergebnis TEXT,     -- NULL = noch nicht beobachtet | ok | rollback
+    benachrichtigt_am TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_heilungen_quelle ON heilungen(quelle, erstellt_am);
+-- Change 028: jede übernommene Regel-Fassung mit ihrer Vorgängerin. Grundlage
+-- der Rücknahme und der Frage „wer hat diese Regeln wann geändert?".
+CREATE TABLE IF NOT EXISTS regel_historie (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    quelle TEXT NOT NULL,
+    alt_yaml TEXT,
+    neu_yaml TEXT NOT NULL,
+    grund TEXT,
+    verursacher TEXT NOT NULL,
+    heilung_id INTEGER,
+    aktiv INTEGER NOT NULL DEFAULT 1,
+    erstellt_am TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_regel_historie_quelle ON regel_historie(quelle, erstellt_am);
 CREATE TABLE IF NOT EXISTS ort_geo (
     ort_key TEXT PRIMARY KEY,
     ort TEXT NOT NULL,
@@ -377,6 +399,17 @@ class Store:
                     "ALTER TABLE termin_kategorien RENAME TO tags")
                 self._conn.execute(
                     "ALTER TABLE tags ADD COLUMN template INTEGER NOT NULL DEFAULT 0")
+            # Change 028: Automatik der Selbstheilung. Frische DBs bekommen die
+            # Spalten aus SCHEMA; hier geht es nur um Bestands-DBs.
+            hl_cols = {r["name"] for r in self._conn.execute(
+                "PRAGMA table_info(heilungen)").fetchall()}
+            for spalte, typ in (("verursacher", "TEXT"), ("meldung", "TEXT"),
+                                ("erwartete_treffer", "INTEGER"),
+                                ("uebernommen_am", "TEXT"),
+                                ("pruefung_ergebnis", "TEXT"),
+                                ("benachrichtigt_am", "TEXT")):
+                if hl_cols and spalte not in hl_cols:
+                    self._conn.execute(f"ALTER TABLE heilungen ADD COLUMN {spalte} {typ}")
             # termine_manuell.kategorie_id zeigt ggf. noch auf termin_kategorien
             # (FK-Name ist nur Doku in SQLite — kein Umbau nötig, id bleibt id)
             self._conn.commit()
@@ -941,16 +974,24 @@ class Store:
         return dict(row) if row else None
 
     def heilung_anlegen(self, quelle: str, art: str, befund: dict, zeit: str,
-                        status: str = "offen") -> int:
+                        status: str = "offen", *, verursacher: str | None = None,
+                        meldung: str | None = None) -> int:
         with self._lock:
             cur = self._conn.execute(
                 "INSERT INTO heilungen (quelle, art, status, befund_json, "
-                "diagnose_json, erstellt_am) VALUES (?,?,?,?,?,?)",
+                "diagnose_json, erstellt_am, verursacher, meldung) "
+                "VALUES (?,?,?,?,?,?,?,?)",
                 (quelle, art, status,
                  json.dumps(befund, ensure_ascii=False),
-                 json.dumps(befund.get("diagnose") or {}, ensure_ascii=False), zeit))
+                 json.dumps(befund.get("diagnose") or {}, ensure_ascii=False), zeit,
+                 verursacher, meldung))
             self._conn.commit()
             return int(cur.lastrowid or 0)
+
+    def heilung_holen(self, heilung_id: int) -> dict | None:
+        row = self._conn.execute("SELECT * FROM heilungen WHERE id=?",
+                                 (heilung_id,)).fetchone()
+        return dict(row) if row else None
 
     def heilung_offen_fuer(self, quelle: str, tag: str = "") -> dict | None:
         """Schon eine offene Meldung? (Höchstens ein Heilungsversuch je Quelle/Tag)"""
@@ -962,6 +1003,60 @@ class Store:
         row = self._conn.execute(
             f"SELECT * FROM heilungen WHERE {where} ORDER BY id DESC LIMIT 1",
             args).fetchone()
+        return dict(row) if row else None
+
+    def heilung_heute(self, quelle: str, tag: str = "") -> dict | None:
+        """Irgendein Fall dieser Quelle heute — unabhängig vom Ergebnis.
+
+        Change 028: Die Automatik darf eine Quelle an einem Tag EINMAL
+        reparieren. Ohne diese Prüfung würde eine zurückgenommene Reparatur im
+        selben Lauf sofort wieder versucht.
+        """
+        where, args = "quelle=?", [quelle]
+        if tag:
+            where += " AND substr(erstellt_am,1,10)=?"
+            args.append(tag)
+        row = self._conn.execute(
+            f"SELECT * FROM heilungen WHERE {where} ORDER BY id DESC LIMIT 1",
+            args).fetchone()
+        return dict(row) if row else None
+
+    def heilungen_zaehlen(self, tag: str = "") -> int:
+        """Heilungsfälle eines Tages (Tageskontingent der Automatik)."""
+        if tag:
+            row = self._conn.execute(
+                "SELECT COUNT(*) AS n FROM heilungen WHERE substr(erstellt_am,1,10)=?",
+                (tag,)).fetchone()
+        else:
+            row = self._conn.execute("SELECT COUNT(*) AS n FROM heilungen").fetchone()
+        return int(row["n"] if row else 0)
+
+    def heilung_zur_beobachtung(self, quelle: str) -> dict | None:
+        """Übernommene Reparatur, deren Wirkung noch nicht geprüft wurde.
+
+        Change 028: Nach der Übernahme misst der NÄCHSTE Lauf nach — findet er
+        weniger als die Hälfte des Probelaufs, wird die alte Fassung
+        wiederhergestellt.
+        """
+        row = self._conn.execute(
+            "SELECT * FROM heilungen WHERE quelle=? AND status='angenommen' "
+            "AND pruefung_ergebnis IS NULL ORDER BY id DESC LIMIT 1",
+            (quelle,)).fetchone()
+        return dict(row) if row else None
+
+    def heilung_ruecknahme_kuerzlich(self, quelle: str, *, tage: int = 7,
+                                     tag: str = "") -> dict | None:
+        """Wurde für diese Quelle kürzlich eine Reparatur zurückgenommen?
+
+        Change 028: Nach einer Rücknahme pausiert die Automatik für diese Quelle.
+        Ohne die Pause könnte dasselbe Modell denselben Vorschlag immer wieder
+        durchsetzen (Muster: täglich übernehmen, täglich zurücknehmen).
+        """
+        stichtag = tag or self._jetzt()[:10]
+        row = self._conn.execute(
+            "SELECT * FROM heilungen WHERE quelle=? AND status='zurueckgenommen' "
+            "AND substr(erstellt_am,1,10) >= date(?, ?) ORDER BY id DESC LIMIT 1",
+            (quelle, stichtag, f"-{max(0, int(tage))} day")).fetchone()
         return dict(row) if row else None
 
     def heilungen_liste(self, quelle: str | None = None,
@@ -978,10 +1073,19 @@ class Store:
     def heilung_setzen(self, heilung_id: int, *, status: str | None = None,
                        vorschlag_yaml: str | None = None,
                        begruendung: str | None = None,
-                       beleg: dict | None = None, zeit: str = "") -> None:
+                       beleg: dict | None = None, zeit: str = "",
+                       verursacher: str | None = None, meldung: str | None = None,
+                       erwartete_treffer: int | None = None,
+                       uebernommen_am: str | None = None,
+                       pruefung_ergebnis: str | None = None,
+                       benachrichtigt_am: str | None = None) -> None:
         sets, args = [], []
         for spalte, wert in (("status", status), ("vorschlag_yaml", vorschlag_yaml),
-                             ("begruendung", begruendung)):
+                             ("begruendung", begruendung), ("verursacher", verursacher),
+                             ("meldung", meldung), ("uebernommen_am", uebernommen_am),
+                             ("pruefung_ergebnis", pruefung_ergebnis),
+                             ("benachrichtigt_am", benachrichtigt_am),
+                             ("erwartete_treffer", erwartete_treffer)):
             if wert is not None:
                 sets.append(f"{spalte}=?")
                 args.append(wert)
@@ -997,6 +1101,57 @@ class Store:
         with self._lock:
             self._conn.execute(f"UPDATE heilungen SET {', '.join(sets)} WHERE id=?", args)
             self._conn.commit()
+
+    # ---- Change 028: Regel-Historie und Rücknahme -------------------------
+
+    def regel_historie_anlegen(self, quelle: str, *, alt_yaml: str | None,
+                               neu_yaml: str, grund: str, verursacher: str,
+                               heilung_id: int | None, zeit: str) -> int:
+        """Eine wirksame Regel-Fassung festschreiben.
+
+        Die Vorgängerin bleibt als Zeile erhalten (aktiv=0) — sie ist die
+        Rücknahme-Quelle. Ohne diese Historie wäre eine Übernahme durch die
+        Automatik nicht nachvollziehbar und nicht zurückzudrehen.
+        """
+        with self._lock:
+            if alt_yaml is not None:
+                self._conn.execute(
+                    "UPDATE regel_historie SET aktiv=0 WHERE quelle=? AND aktiv=1",
+                    (quelle,))
+            cur = self._conn.execute(
+                "INSERT INTO regel_historie (quelle, alt_yaml, neu_yaml, grund, "
+                "verursacher, heilung_id, aktiv, erstellt_am) "
+                "VALUES (?,?,?,?,?,?,1,?)",
+                (quelle, alt_yaml, neu_yaml, grund, verursacher, heilung_id, zeit))
+            self._conn.commit()
+            return int(cur.lastrowid or 0)
+
+    def regel_historie_liste(self, quelle: str | None = None,
+                             limit: int = 50) -> list[dict]:
+        if quelle:
+            rows = self._conn.execute(
+                "SELECT * FROM regel_historie WHERE quelle=? ORDER BY id DESC LIMIT ?",
+                (quelle, limit)).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT * FROM regel_historie ORDER BY id DESC LIMIT ?",
+                (limit,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def regel_ruecknahme(self, quelle: str, *, grund: str, zeit: str,
+                         heilung_id: int | None = None) -> dict | None:
+        """Die Vorgänger-Fassung wiederherstellen → {alt_yaml, historie_id}."""
+        row = self._conn.execute(
+            "SELECT * FROM regel_historie WHERE quelle=? AND aktiv=1 "
+            "ORDER BY id DESC LIMIT 1", (quelle,)).fetchone()
+        if not row or not (row["alt_yaml"] or "").strip():
+            return None
+        alt = row["alt_yaml"]
+        self.set_regeln(quelle, alt)
+        self.regel_historie_anlegen(quelle, alt_yaml=None, neu_yaml=alt,
+                                    grund=grund, verursacher="rollback",
+                                    heilung_id=heilung_id, zeit=zeit)
+        return {"alt_yaml": alt, "historie_id": int(row["id"])}
 
     def entferne_ueberlappende_zwillinge(self, quelle: str) -> list[dict]:
         """Überlappende Serien-Zwillinge EINER Quelle zusammenfassen.

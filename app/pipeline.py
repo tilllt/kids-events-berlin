@@ -129,6 +129,10 @@ def _scrape_mit_adapter(store, adapter, quelle, *, online, geo,
     erstes_html: str | None = None
     erste_roh = 0
     http_fehler = ""
+    # Change 028: Warnungen beim Auslesen der Listing-Blöcke zählen mit — sie
+    # sind das häufigste echte Symptom („Feld nicht mehr gefunden") und waren
+    # für die Selbstheilung bisher unsichtbar.
+    n_warn_listing = 0
 
     if online:
         detail_html = {}
@@ -149,6 +153,7 @@ def _scrape_mit_adapter(store, adapter, quelle, *, online, geo,
                 erste_roh = len(rows)
             for w in getattr(adapter, "drain_warnungen", lambda: [])():
                 store.log_error(quelle, w)
+                n_warn_listing += 1
             rows = _filter_rows(rows)
             if not rows:
                 break
@@ -172,6 +177,7 @@ def _scrape_mit_adapter(store, adapter, quelle, *, online, geo,
             rows = adapter.parse_listing(html)
             for w in getattr(adapter, "drain_warnungen", lambda: [])():
                 store.log_error(quelle, w)
+                n_warn_listing += 1
             rows = _filter_rows(rows)
             if not rows:
                 continue
@@ -339,17 +345,22 @@ def _scrape_mit_adapter(store, adapter, quelle, *, online, geo,
         if geo_client is not None:
             geo_client.close()
 
-    # Change 017: Selbstheilung — Befund feststellen, gesunde Seite archivieren.
-    # Auslöser ist ein Fehler, nie eine kleinere Zahl. Fehler hier dürfen den
-    # Lauf nicht stören (deshalb abgesichert).
+    # Change 017/028: Selbstheilung — Befund feststellen, gesunde Seite
+    # archivieren, bei bewiesenem Defekt reparieren (Automatik), die letzte
+    # Übernahme beobachten und in jedem Fall melden. Ein Fehler hier darf den
+    # Lauf nie stören (deshalb abgesichert).
     try:
         from . import selbstheilung as _sh
-        _sh.pruefen(
+        _aus = _sh.lauf_auswerten(
             store, quelle=quelle,
             regeln=(store.get_regeln(quelle) or {}).get("regel_yaml") or "",
             url=getattr(adapter, "_listing_url", "") or "",
             html=erstes_html, roh_zeilen=erste_roh, n_zeilen=len(rows_all),
-            n_fehler=n_fehler, http_fehler=http_fehler, jetzt=jetzt.isoformat())
+            n_fehler=n_fehler, n_warn=n_warn_listing, http_fehler=http_fehler,
+            jetzt=jetzt.isoformat(),
+            holen=(_sh.holer(store, quelle) if online else None))
+        for _zeile in _aus.get("protokoll") or []:
+            print(f"[heilung] {quelle}: {_zeile}", flush=True)
     except Exception as e:
         store.log_error(quelle, f"Selbstheilung-Prüfung fehlgeschlagen: {e}")
 

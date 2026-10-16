@@ -129,8 +129,14 @@ def diagnose(*, regeln: str, html: str, url: str = "",
 def befund_ermitteln(*, regeln: str = "", html: str | None = None,
                      roh_zeilen: int = 0, n_zeilen: int = 0, n_fehler: int = 0,
                      archiv_treffer: int | None = None,
-                     http_fehler: str = "") -> dict | None:
-    """Liegt ein Fehler vor? (None = kein Fehler — auch bei weniger Terminen.)"""
+                     http_fehler: str = "", n_warn: int = 0) -> dict | None:
+    """Liegt ein Fehler vor? (None = kein Fehler — auch bei weniger Terminen.)
+
+    Change 028: `n_warn` sind die Fehler beim AUSLESEN der Listing-Blöcke
+    („Item 12: start: kein Wert extrahiert"). Sie zählten bisher nicht mit — der
+    Auslöser „Pflichtfeld bricht" konnte damit nie feuern (real: 45.568 solcher
+    Zeilen bei umweltkalender-berlin, aber n_fehler = 0 in 34 Läufen).
+    """
     status = status_aus_fehler(http_fehler)
     if status in STATUS_UMGEZOGEN:
         return {"art": "url_umgezogen", "status": status,
@@ -143,10 +149,15 @@ def befund_ermitteln(*, regeln: str = "", html: str | None = None,
         return {"art": "selektoren_tot", "status": None,
                 "text": "Seite erreichbar, aber kein Termin-Block passt noch",
                 "zahlen": {"frueher": archiv_treffer}}
-    if n_fehler >= FEHLER_ABSOLUT or (n_zeilen and n_fehler / max(n_zeilen, 1) >= FEHLERQUOTE):
+    gesamt = n_fehler + max(0, n_warn)
+    bezug = n_zeilen + max(0, n_warn)
+    if gesamt >= FEHLER_ABSOLUT or (bezug and gesamt / max(bezug, 1) >= FEHLERQUOTE):
+        zusatz = (f" ({n_warn} davon beim Auslesen der Listing-Blöcke)"
+                  if n_warn else "")
         return {"art": "fehlerquote", "status": None,
-                "text": f"{n_fehler} von {n_zeilen} gelesenen Zeilen sind fehlerhaft",
-                "zahlen": {"n_fehler": n_fehler, "n_zeilen": n_zeilen}}
+                "text": f"{gesamt} von {bezug} gelesenen Zeilen sind fehlerhaft{zusatz}",
+                "zahlen": {"n_fehler": n_fehler, "n_warn": max(0, n_warn),
+                           "n_zeilen": bezug}}
     return None
 
 
@@ -373,6 +384,17 @@ def vorschlag_erzeugen(*, quelle: str, regeln: str, befund: dict, diagnose: dict
             "antwort": (text or "")[:4000], "prompt": prompt}
 
 
+def llm_bereit(konfig: dict) -> bool:
+    """Zählt dieser Endpunkt als eingerichtet?
+
+    Ein Platzhalter wie `<LLM_BASE_URL>` ist nicht leer, aber keine Adresse.
+    Ohne diese Prüfung würde die Automatik bei unkonfiguriertem Endpunkt einen
+    Call versuchen und mit einer irreführenden Meldung scheitern (real: das
+    Repo enthält als Voreinstellung einen Platzhalter).
+    """
+    return (konfig.get("llm_base_url") or "").strip().startswith(("http://", "https://"))
+
+
 def heilen(store, *, quelle: str, befund: dict, diagnose: dict, html: str,
            jetzt: str, llm_ruf=None, holen=None,
            heilung_id: int | None = None) -> dict | None:
@@ -389,8 +411,9 @@ def heilen(store, *, quelle: str, befund: dict, diagnose: dict, html: str,
     if llm_ruf is None:
         from .recherche.llm import chat, konfiguration
         konf = konfiguration(store)
-        if not (konf.get("llm_base_url") or "").strip():
-            print(f"[heilung] {quelle}: kein LLM konfiguriert — Vorschlag entfällt",
+        if not llm_bereit(konf):
+            print(f"[heilung] {quelle}: kein LLM-Endpunkt eingerichtet — "
+                  f"Vorschlag entfällt (Basis-URL: {konf.get('llm_base_url')!r})",
                   flush=True)
             return None
         llm_ruf = lambda p: (chat(konf, p, max_tokens=2000) or {}).get("text", "")  # noqa: E731
@@ -449,18 +472,22 @@ def verdacht_ermitteln(*, roh_zeilen: int, n_zeilen: int = 0,
 
 def pruefen(store, *, quelle: str, regeln: str, url: str = "",
             html: str | None = None, roh_zeilen: int = 0, n_zeilen: int = 0,
-            n_fehler: int = 0, http_fehler: str = "",
-            jetzt: str = "") -> dict | None:
+            n_fehler: int = 0, http_fehler: str = "", n_warn: int = 0,
+            notieren: bool = True, jetzt: str = "") -> dict | None:
     """Nach dem Listing-Abruf: gesunde Seite archivieren, Fehler feststellen.
 
     Rückgabe: der Befund (Fehler) oder None. Ein Rückgang ohne Fehler hinterlässt
     höchstens einen Eintrag mit Status 'beobachtet' — es wird nichts geändert.
+
+    `notieren=False` stellt den Befund nur fest (kein Eintrag) — Change 028
+    nutzt das, wenn für diese Quelle heute schon ein Fall vorliegt oder das
+    Tageskontingent erschöpft ist.
     """
     archiv = store.seiten_archiv_holen(quelle, url) if url else None
     archiv_treffer = archiv["treffer"] if archiv else None
 
     b = befund_ermitteln(regeln=regeln, html=html, roh_zeilen=roh_zeilen,
-                         n_zeilen=n_zeilen, n_fehler=n_fehler,
+                         n_zeilen=n_zeilen, n_fehler=n_fehler, n_warn=n_warn,
                          archiv_treffer=archiv_treffer, http_fehler=http_fehler)
 
     # Gesunde Seiten ins Archiv: Grundlage der späteren Regressionsprobe.
@@ -480,6 +507,8 @@ def pruefen(store, *, quelle: str, regeln: str, url: str = "",
                                  archiv_html=(archiv or {}).get("html"))
         if store.heilung_offen_fuer(quelle, (jetzt or "")[:10]):
             return v          # heute schon notiert — nicht täglich wiederholen
+        if not notieren:
+            return v          # Tageskontingent erschöpft: nur feststellen
         # Beweis erbracht? (Seite hat datierte Einträge, unser Selektor nicht)
         if v["diagnose"]["urteil"] == "selektoren_tot_aber_inhalt_da":
             v["art"] = "selektoren_tot"
@@ -497,7 +526,396 @@ def pruefen(store, *, quelle: str, regeln: str, url: str = "",
         return b
     b["diagnose"] = diagnose(regeln=regeln, html=html or "", url=url,
                              archiv_html=(archiv or {}).get("html"))
+    if not notieren:
+        return b
     store.heilung_anlegen(quelle, b["art"], b, jetzt)
     print(f"[heilung] {quelle}: {b['art']} — {b['text']} "
           f"(Diagnose: {b['diagnose']['urteil']})", flush=True)
     return b
+
+
+# ---------------------------------------------------------------------------
+# Change 028: Automatik — reparieren, beobachten, zurücknehmen, melden
+# ---------------------------------------------------------------------------
+#
+# Auftrag des Nutzers (2026-10-16): „Baue den Knopf ein, aber etabliere auch
+# einen automatischen Modus, der versucht zu reparieren, oder wenn das nicht
+# klappt, Bescheid sagt." Heilen darf nur, was BEWIESEN kaputt ist (Change 017);
+# neu ist, dass der Befund auch zu einer Handlung führt: übernehmen, wenn das
+# Gate grün ist, den nächsten Lauf beobachten, bei Einbruch zurücknehmen — und
+# in jedem Fall melden.
+
+AUTO_STANDARD = "1"
+MAX_PRO_TAG_STANDARD = 3
+BEOBACHTUNG_ANTEIL = 0.5      # unter der Hälfte des Probelaufs → Rücknahme
+RUECKNAHME_SPERRE_TAGE = 7    # so lange kein automatischer zweiter Versuch
+HEILBAR = ("selektoren_tot", "fehlerquote", "url_umgezogen", "pflichtfeld")
+NUR_MELDUNG = ("verdacht", "gesperrt")
+
+
+def einstellungen(store) -> dict:
+    """Geltende Einstellungen der Automatik — ausschließlich aus der DB."""
+    def s(key: str, standard: str = "") -> str:
+        wert = store.get_setting(key)
+        wert = "" if wert is None else str(wert).strip()
+        return wert or standard
+
+    def wahr(key: str, standard: str = "1") -> bool:
+        return s(key, standard).lower() not in ("0", "false", "nein", "aus")
+
+    try:
+        grenze = int(s("heilung_max_pro_tag", str(MAX_PRO_TAG_STANDARD)))
+    except ValueError:
+        grenze = MAX_PRO_TAG_STANDARD
+    return {"auto": wahr("heilung_auto", AUTO_STANDARD),
+            "mail_aktiv": wahr("heilung_mail_aktiv", "1"),
+            "mail_an": s("heilung_mail_an", s("smtp_from", s("smtp_reply_to", ""))),
+            "max_pro_tag": max(0, grenze)}
+
+
+def melden(store, *, betreff: str, text: str, mailer=None,
+           konf: dict | None = None) -> dict:
+    """Meldung rausschicken (E-Mail, wenn eingerichtet) — nie eine Ausnahme."""
+    konf = konf if konf is not None else einstellungen(store)
+    if not konf.get("mail_aktiv"):
+        return {"mail": None, "fehler": "E-Mail-Meldungen sind abgeschaltet"}
+    an = (konf.get("mail_an") or "").strip()
+    if not an:
+        return {"mail": None, "fehler": "Keine Melde-Adresse gesetzt (heilung_mail_an)"}
+    try:
+        if mailer is not None:
+            mailer(an, betreff, text)
+        else:
+            from . import mail as _mail
+            _mail.sende(store, an, betreff=betreff, text=text)
+    except Exception as e:      # noqa: BLE001 — der Grund gehört in die Oberfläche
+        return {"mail": None, "fehler": f"{type(e).__name__}: {str(e)[:200]}"}
+    return {"mail": an, "fehler": None}
+
+
+def _melden(store, *, heilung_id: int | None, quelle: str, text: str,
+            mailer=None, konf: dict | None = None, zeit: str = "",
+            betreff: str | None = None) -> dict:
+    """Text in den Fall schreiben UND melden. Nichts fällt still aus."""
+    erg = melden(store, betreff=betreff or f"Kinderkram: Selbstheilung {quelle}",
+                 text=text, mailer=mailer, konf=konf)
+    felder: dict = {"meldung": text, "zeit": zeit}
+    if erg.get("mail"):
+        felder["benachrichtigt_am"] = zeit
+    if heilung_id:
+        store.heilung_setzen(heilung_id, **felder)
+    if erg.get("fehler"):
+        store.log_error(quelle, f"Selbstheilung-Meldung nicht versandt: {erg['fehler']}")
+    return erg
+
+
+def holer(store, quelle: str):
+    """Holt eine URL mit dem Projekt-UA — für umgezogene Listing-Seiten."""
+    from .adapters.selector_adapter import UA as _UA
+    import httpx
+
+    def holen(url: str) -> str:
+        with httpx.Client(headers={"User-Agent": _UA,
+                                   "Accept-Language": "de-DE,de;q=0.9"},
+                          follow_redirects=True, timeout=30) as c:
+            r = c.get(url)
+            r.raise_for_status()
+            return r.text
+    return holen
+
+
+def uebernehmen(store, *, quelle: str, alt_yaml: str, neu_yaml: str, grund: str,
+                verursacher: str, heilung_id: int | None,
+                erwartete_treffer: int | None, zeit: str,
+                beleg: dict | None = None) -> dict:
+    """Regeln wirksam setzen — nur nach grünem Gate, immer mit Historie."""
+    store.set_regeln(quelle, neu_yaml)
+    hist_id = store.regel_historie_anlegen(
+        quelle, alt_yaml=alt_yaml, neu_yaml=neu_yaml, grund=grund,
+        verursacher=verursacher, heilung_id=heilung_id, zeit=zeit)
+    if heilung_id:
+        store.heilung_setzen(heilung_id, status="angenommen", zeit=zeit,
+                             uebernommen_am=zeit, verursacher=verursacher,
+                             erwartete_treffer=erwartete_treffer,
+                             beleg=beleg)
+    return {"historie_id": hist_id, "regeln_geaendert": True}
+
+
+def beobachtung(store, *, quelle: str, roh_zeilen: int, jetzt: str,
+                konf: dict | None = None, mailer=None) -> dict | None:
+    """Wirkung der übernommenen Reparatur messen (im nächsten Lauf).
+
+    Findet der Lauf weniger als die Hälfte der Probelauf-Zahl, ist die Reparatur
+    gescheitert: alte Regeln zurück, Fall auf `zurueckgenommen`, Meldung raus.
+    """
+    h = store.heilung_zur_beobachtung(quelle)
+    if not h:
+        return None
+    erwartet = int(h.get("erwartete_treffer") or 0)
+    if erwartet and roh_zeilen < int(erwartet * BEOBACHTUNG_ANTEIL):
+        grund = (f"Nach der Übernahme nur {roh_zeilen} Treffer statt {erwartet} "
+                 f"im Probelauf")
+        rueck = store.regel_ruecknahme(quelle, grund=grund, zeit=jetzt,
+                                       heilung_id=h["id"])
+        text = (f"Quelle {quelle}: die automatisch übernommene Reparatur trägt "
+                f"nicht ({roh_zeilen} statt {erwartet} Termine). "
+                + ("Die vorherigen Regeln sind wieder in Kraft."
+                   if rueck else
+                   "ACHTUNG: keine Vorgänger-Fassung in der Historie gefunden — "
+                   "die Regeln müssen von Hand geprüft werden.")
+                + f" Die Automatik pausiert für diese Quelle {RUECKNAHME_SPERRE_TAGE} Tage.")
+        store.heilung_setzen(h["id"], status="zurueckgenommen",
+                             pruefung_ergebnis="rollback", zeit=jetzt)
+        _melden(store, heilung_id=h["id"], quelle=quelle, text=text,
+                mailer=mailer, konf=konf, zeit=jetzt)
+        print(f"[heilung] {quelle}: Rücknahme ({roh_zeilen} statt {erwartet})", flush=True)
+        return {"heilung_id": h["id"], "rollback": bool(rueck), "text": text}
+    store.heilung_setzen(h["id"], pruefung_ergebnis="ok", zeit=jetzt)
+    return {"heilung_id": h["id"], "rollback": False,
+            "text": (f"Reparatur trägt: {roh_zeilen} Treffer "
+                     f"(erwartet mindestens {int(erwartet * BEOBACHTUNG_ANTEIL)})")}
+
+
+def versuchen(store, *, quelle: str, befund: dict, diagnose: dict, html: str,
+              regeln: str, jetzt: str, auto: bool | None = None,
+              heilung_id: int | None = None, holen=None, llm_ruf=None,
+              mailer=None, konf: dict | None = None,
+              verursacher: str = "auto") -> dict | None:
+    """Einen bewiesenen Defekt reparieren — oder melden, warum nicht.
+
+    `auto=True`: bei grünem Gate wird gleich übernommen (Stufe 2).
+    `auto=False`: der Vorschlag wird nur geprüft und abgelegt (Admin bestätigt).
+    """
+    konf = konf if konf is not None else einstellungen(store)
+    if auto is None:
+        auto = konf["auto"]
+    art = (befund or {}).get("art")
+    if not art:
+        return None
+
+    if art in NUR_MELDUNG:
+        if art == "verdacht":
+            text = (f"Quelle {quelle}: {befund.get('text')} — kein Defekt bewiesen, "
+                    f"es wird nichts geändert (Diagnose: "
+                    f"{(diagnose or {}).get('urteil')}).")
+        else:
+            text = (f"Quelle {quelle}: Zugriff abgelehnt ({befund.get('status')}). "
+                    f"Das ist nicht reparierbar — bitte die Quelle prüfen. Sie "
+                    f"bleibt aktiv, damit nichts still verschwindet.")
+        _melden(store, heilung_id=heilung_id, quelle=quelle, text=text,
+                mailer=mailer, konf=konf, zeit=jetzt)
+        return {"art": art, "aktion": "gemeldet", "meldung": text,
+                "regeln_geaendert": False}
+
+    if art not in HEILBAR:
+        return None
+
+    if llm_ruf is None:
+        from .recherche.llm import konfiguration
+        if not llm_bereit(konfiguration(store)):
+            text = (f"Quelle {quelle}: {befund.get('text')} — die Automatik kann "
+                    f"nicht reparieren, weil kein LLM-Endpunkt eingerichtet ist "
+                    f"(Einstellungen → Schul-Recherche → LLM-Endpunkt).")
+            _melden(store, heilung_id=heilung_id, quelle=quelle, text=text,
+                    mailer=mailer, konf=konf, zeit=jetzt)
+            return {"art": art, "aktion": "kein-llm", "meldung": text,
+                    "regeln_geaendert": False}
+
+    alt_yaml = regeln or ""
+    b = heilen(store, quelle=quelle, befund=befund, diagnose=diagnose, html=html,
+               jetzt=jetzt, llm_ruf=llm_ruf, holen=holen, heilung_id=heilung_id)
+    if b is None:
+        text = (f"Quelle {quelle}: {befund.get('text')} — das Modell lieferte keine "
+                f"brauchbaren Regeln. Es wurde nichts geändert.")
+        _melden(store, heilung_id=heilung_id, quelle=quelle, text=text,
+                mailer=mailer, konf=konf, zeit=jetzt)
+        return {"art": art, "aktion": "vorschlag-unbrauchbar", "meldung": text,
+                "regeln_geaendert": False}
+
+    beleg = b.get("beleg") or {}
+    fehler = beleg.get("fehler") or []
+    zahl = beleg.get("treffer_heute")
+
+    if not b.get("ok"):
+        text = (f"Quelle {quelle}: {befund.get('text')} — Reparaturvorschlag "
+                f"DURCHGEFALLEN ({'; '.join(fehler[:3]) or 'Gate rot'}). Die Regeln "
+                f"sind unverändert.")
+        _melden(store, heilung_id=b.get("id"), quelle=quelle, text=text,
+                mailer=mailer, konf=konf, zeit=jetzt)
+        return {"art": art, "aktion": "verworfen", "meldung": text,
+                "regeln_geaendert": False, "beleg": beleg, "id": b.get("id")}
+
+    if auto:
+        uebernehmen(store, quelle=quelle, alt_yaml=alt_yaml, neu_yaml=b["yaml"],
+                    grund=f"{art}: {befund.get('text')}",
+                    verursacher=verursacher, heilung_id=b.get("id"),
+                    erwartete_treffer=zahl, zeit=jetzt, beleg=beleg)
+        text = (f"Quelle {quelle}: {befund.get('text')} — die Automatik hat die "
+                f"Regeln repariert und übernommen ({zahl} Termine im Probelauf, "
+                f"{beleg.get('treffer_alt')} auf der archivierten Seite). Der "
+                f"nächste Lauf wird geprüft; trägt die Reparatur nicht, werden die "
+                f"alten Regeln automatisch wiederhergestellt.")
+        _melden(store, heilung_id=b.get("id"), quelle=quelle, text=text,
+                mailer=mailer, konf=konf, zeit=jetzt)
+        print(f"[heilung] {quelle}: automatisch repariert ({zahl} Treffer)", flush=True)
+        return {"art": art, "aktion": "uebernommen", "meldung": text,
+                "regeln_geaendert": True, "beleg": beleg, "id": b.get("id")}
+
+    text = (f"Quelle {quelle}: {befund.get('text')} — Reparaturvorschlag geprüft "
+            f"({zahl} Termine heute, {beleg.get('treffer_alt')} auf der archivierten "
+            f"Seite). Die Automatik ist abgeschaltet — bitte in der Verwaltung "
+            f"bestätigen (Quellen → Selbstheilung).")
+    _melden(store, heilung_id=b.get("id"), quelle=quelle, text=text,
+            mailer=mailer, konf=konf, zeit=jetzt)
+    return {"art": art, "aktion": "vorgeschlagen", "meldung": text,
+            "regeln_geaendert": False, "beleg": beleg, "id": b.get("id")}
+
+
+def regel_diff(alt_yaml: str, neu_yaml: str, kontext: int = 1) -> str:
+    """Zeilen-Diff zweier Regel-Fassungen (für die Oberfläche)."""
+    import difflib
+    d = difflib.unified_diff((alt_yaml or "").splitlines(),
+                             (neu_yaml or "").splitlines(),
+                             fromfile="bisher", tofile="Vorschlag",
+                             lineterm="", n=kontext)
+    return "\n".join(d)
+
+
+def url_aus_regeln(regeln: str) -> str:
+    return ((regeln_lesen(regeln).get("listing") or {}).get("url") or "").strip()
+
+
+def lauf_auswerten(store, *, quelle: str, regeln: str, url: str = "",
+                   html: str | None = None, roh_zeilen: int = 0, n_zeilen: int = 0,
+                   n_fehler: int = 0, n_warn: int = 0, http_fehler: str = "",
+                   jetzt: str = "", holen=None, llm_ruf=None, mailer=None,
+                   konf: dict | None = None) -> dict:
+    """Der eine Einstiegspunkt nach dem Listing-Abruf (Change 028).
+
+    Reihenfolge ist Absicht: erst die Wirkung der letzten Übernahme messen (sie
+    betrifft die aktuell geltenden Regeln), dann den Befund feststellen, dann —
+    nur bei bewiesenem Defekt und freiem Kontingent — reparieren.
+    """
+    konf = konf if konf is not None else einstellungen(store)
+    tag = (jetzt or "")[:10]
+    aus: dict = {"befund": None, "beobachtung": None, "aktion": None, "protokoll": []}
+
+    try:
+        beob = beobachtung(store, quelle=quelle, roh_zeilen=roh_zeilen, jetzt=jetzt,
+                           konf=konf, mailer=mailer)
+    except Exception as e:      # darf den Lauf nie stören
+        beob = None
+        store.log_error(quelle, f"Selbstheilung-Beobachtung fehlgeschlagen: {e}")
+    if beob:
+        aus["beobachtung"] = beob
+        aus["protokoll"].append(beob["text"])
+
+    heute_schon = store.heilung_heute(quelle, tag) is not None
+    b = pruefen(store, quelle=quelle, regeln=regeln, url=url, html=html,
+                roh_zeilen=roh_zeilen, n_zeilen=n_zeilen, n_fehler=n_fehler,
+                n_warn=n_warn, http_fehler=http_fehler, notieren=not heute_schon,
+                jetzt=jetzt)
+    aus["befund"] = b
+    if b is None or heute_schon:
+        return aus
+
+    fall = store.heilung_heute(quelle, tag) or {}
+    hid = fall.get("id")
+    gruende = []
+    if store.heilungen_zaehlen(tag) > konf["max_pro_tag"]:
+        gruende.append(f"das Tageskontingent ist erschöpft "
+                       f"({konf['max_pro_tag']} Versuche pro Tag)")
+    if store.heilung_ruecknahme_kuerzlich(quelle, tage=RUECKNAHME_SPERRE_TAGE,
+                                          tag=tag):
+        gruende.append(f"nach einer Rücknahme pausiert die Automatik "
+                       f"{RUECKNAHME_SPERRE_TAGE} Tage")
+    if gruende:
+        text = (f"Quelle {quelle}: {b.get('text')} — kein Reparaturversuch: "
+                + " und ".join(gruende)
+                + ". Der Fall steht in der Liste; der Knopf „Regeln reparieren "
+                  "lassen“ umgeht das Kontingent.")
+        store.heilung_setzen(hid, meldung=text, zeit=jetzt)
+        aus["aktion"] = {"art": b.get("art"), "aktion": "uebersprungen",
+                         "meldung": text, "regeln_geaendert": False}
+        aus["protokoll"].append(text)
+        return aus
+
+    aktion = versuchen(store, quelle=quelle, befund=b,
+                       diagnose=b.get("diagnose") or {}, html=html or "",
+                       regeln=regeln, jetzt=jetzt, heilung_id=hid, holen=holen,
+                       llm_ruf=llm_ruf, mailer=mailer, konf=konf,
+                       verursacher="auto")
+    aus["aktion"] = aktion
+    if aktion and aktion.get("meldung"):
+        aus["protokoll"].append(aktion["meldung"])
+    return aus
+
+
+def manuell_versuchen(store, *, quelle: str, jetzt: str, mailer=None,
+                      konf: dict | None = None, llm_ruf=None) -> dict:
+    """Knopf „Regeln reparieren lassen".
+
+    Umgeht Tageskontingent und Automatik-Schalter (eine ausdrückliche Handlung),
+    NICHT aber das Prüf-Gate: übernommen wird nur, was alle Prüfungen besteht.
+    """
+    konf = konf if konf is not None else einstellungen(store)
+    regeln = (store.get_regeln(quelle) or {}).get("regel_yaml") or ""
+    if not regeln.strip():
+        return {"ok": False, "fehler": "Diese Quelle hat keine Regel-YAML — "
+                                       "interne Quellen und Feeds werden nicht repariert."}
+    from .adapters import build_adapter
+    try:
+        adapter = build_adapter(store, quelle)
+    except ValueError as e:
+        return {"ok": False, "fehler": str(e)}
+    try:
+        url = getattr(adapter, "_listing_url", "") or ""
+        try:
+            html = adapter.fetch_listing_page(0)
+        except Exception as e:      # Seite nicht da → nicht raten
+            text = (f"Quelle {quelle}: die Listing-Seite ist nicht abrufbar "
+                    f"({type(e).__name__}: {str(e)[:120]}). Ohne Seite wäre jede "
+                    f"Reparatur geraten — es wurde nichts geändert.")
+            hid = store.heilung_anlegen(quelle, "manuell",
+                                        {"art": "manuell", "text": text}, jetzt,
+                                        status="fehlgeschlagen",
+                                        verursacher="manuell", meldung=text)
+            _melden(store, heilung_id=hid, quelle=quelle, text=text, mailer=mailer,
+                    konf=konf, zeit=jetzt)
+            return {"ok": False, "fehler": text, "id": hid}
+        roh = len(adapter.parse_listing(html))
+        warns = len(getattr(adapter, "drain_warnungen", lambda: [])())
+    finally:
+        adapter.close()
+
+    archiv = store.seiten_archiv_holen(quelle, url) if url else None
+    b = befund_ermitteln(regeln=regeln, html=html, roh_zeilen=roh, n_zeilen=roh,
+                         n_fehler=0, n_warn=warns,
+                         archiv_treffer=(archiv or {}).get("treffer"))
+    if b is None:
+        d = diagnose(regeln=regeln, html=html, url=url,
+                     archiv_html=(archiv or {}).get("html"))
+        text = (f"Quelle {quelle}: kein Defekt gefunden — {roh} Termin-Blöcke "
+                f"gelesen, {warns} ohne vollständige Felder, Urteil: {d.get('urteil')}. "
+                f"Es wurde nichts geändert.")
+        hid = store.heilung_anlegen(quelle, "manuell",
+                                    {"art": "manuell", "text": text,
+                                     "zahlen": {"roh": roh, "warnungen": warns},
+                                     "diagnose": d},
+                                    jetzt, status="ohne-defekt",
+                                    verursacher="manuell", meldung=text)
+        store.heilung_setzen(hid, beleg=d, zeit=jetzt)
+        _melden(store, heilung_id=hid, quelle=quelle, text=text, mailer=mailer,
+                konf=konf, zeit=jetzt)
+        return {"ok": True, "befund": None, "text": text, "id": hid}
+
+    b["diagnose"] = diagnose(regeln=regeln, html=html, url=url,
+                             archiv_html=(archiv or {}).get("html"))
+    hid = store.heilung_anlegen(quelle, b["art"], b, jetzt,
+                                verursacher="manuell", meldung=b.get("text"))
+    aktion = versuchen(store, quelle=quelle, befund=b, diagnose=b["diagnose"],
+                       html=html, regeln=regeln, jetzt=jetzt, auto=True,
+                       heilung_id=hid, llm_ruf=llm_ruf, mailer=mailer, konf=konf,
+                       verursacher="manuell")
+    return {"ok": bool(aktion and aktion.get("regeln_geaendert")),
+            "id": hid, "befund": b, **(aktion or {})}

@@ -100,7 +100,8 @@ function renderQuellen() {
       <td>${l ? `${laufBadge(l)}<br/><span class="muted">${fmtZeit(l.finished_at || l.started_at)} · ${l.n_events} Events · ${l.n_fehler} Fehler</span>` : '<span class="muted">kein Lauf</span>'}</td>
       <td><div class="btnrow">
         <button data-act="edit" data-q="${esc(q.quelle)}">Bearbeiten</button>
-        ${q.typ === "regeln" ? `<button data-act="regeln" data-q="${esc(q.quelle)}">Regeln</button>` : ""}
+        ${q.typ === "regeln" ? `<button data-act="regeln" data-q="${esc(q.quelle)}">Regeln</button>
+        <button data-act="heilung" data-q="${esc(q.quelle)}" title="Seite holen, Defekt feststellen, Regeln vom Modell reparieren lassen">Reparieren</button>` : ""}
         <button data-act="scrape" data-q="${esc(q.quelle)}">Scrapen</button>
         <button data-act="del" data-q="${esc(q.quelle)}" class="danger">Löschen</button>
       </div></td>`;
@@ -246,6 +247,19 @@ $("#quellenTabelle").addEventListener("click", async (ev) => {
       zeigeFormular(src);
     } else if (act === "regeln") {
       zeigeRegeln(q);
+    } else if (act === "heilung") {
+      btn.disabled = true;
+      const orig = btn.textContent;
+      btn.textContent = "Prüft…";
+      try {
+        await api(`/api/admin/sources/${encodeURIComponent(q)}/reparieren`, { method: "POST" });
+        fehlerZeigen(""); $("#errorbar").classList.add("hidden");
+        meldung($("#heilungListe"), `Reparatur für ${q} läuft — die Seite wird geholt, ` +
+          `der Befund festgestellt und das Modell gefragt. Ergebnis erscheint hier.`);
+        setTimeout(() => { loadHeilungen(); loadRuns(); }, 4000);
+        setTimeout(loadHeilungen, 20000);
+      } catch (e) { fehlerZeigen(`Reparieren ${q}: ${e.message}`); }
+      btn.disabled = false; btn.textContent = orig;
     } else if (act === "scrape") {
       btn.disabled = true;
       const orig = btn.textContent;
@@ -265,7 +279,8 @@ $("#quellenTabelle").addEventListener("click", async (ev) => {
 });
 
 $("#neuBtn").onclick = () => zeigeFormular(null);
-$("#refreshBtn").onclick = () => Promise.all([loadQuellen(), loadRuns(), loadFehler()]).catch((e) => fehlerZeigen(e.message));
+$("#refreshBtn").onclick = () => Promise.all([loadQuellen(), loadRuns(), loadFehler(),
+  loadHeilungen(), heilungVerlaufLaden()]).catch((e) => fehlerZeigen(e.message));
 $("#errorbar").addEventListener("click", () => $("#errorbar").classList.add("hidden"));
 
 /* ---------- Läufe + Fehler ---------- */
@@ -301,6 +316,155 @@ async function loadFehler() {
   });
 }
 
+/* ---------- Selbstheilung (Change 028) ---------- */
+const HEIL_STATUS = {
+  offen: "offen", beobachtet: "beobachtet (kein Defekt)",
+  vorgeschlagen: "Vorschlag geprüft", angenommen: "übernommen",
+  abgelehnt: "abgelehnt", verworfen: "Prüfung nicht bestanden",
+  zurueckgenommen: "zurückgenommen", "ohne-defekt": "kein Defekt gefunden",
+  fehlgeschlagen: "fehlgeschlagen",
+};
+const HEIL_ART = {
+  verdacht: "Rückgang", selektoren_tot: "Selektoren tot",
+  fehlerquote: "Felder nicht mehr lesbar", url_umgezogen: "Seite umgezogen",
+  pflichtfeld: "Pflichtfeld fehlt", gesperrt: "Zugriff gesperrt",
+  manuell: "Handversuch",
+};
+
+function heilungZeile(h) {
+  const b = h.beleg || {};
+  const badge = h.status === "angenommen" ? "ok"
+    : ["abgelehnt", "verworfen", "zurueckgenommen", "fehlgeschlagen"].includes(h.status) ? "err" : "";
+  const zahlen = [
+    b.treffer_heute != null ? `heute ${b.treffer_heute} Treffer` : "",
+    b.treffer_alt != null ? `archiviert ${b.treffer_alt}` : "",
+  ].filter(Boolean).join(" · ");
+  const text = h.meldung || (h.befund && h.befund.text) || "";
+  return `<div style="border-bottom:1px solid var(--border);padding:8px 0">
+    <div><span class="muted">${fmtZeit(h.erstellt_am)}</span>
+      <span class="badge">${esc(h.quelle)}</span>
+      <span class="badge ${badge}">${esc(HEIL_STATUS[h.status] || h.status)}</span>
+      <span class="muted">${esc(HEIL_ART[h.art] || h.art)}${h.verursacher ? ` · ${esc(h.verursacher)}` : ""}
+      ${zahlen ? ` · ${esc(zahlen)}` : ""}</span></div>
+    <div style="font-size:12.5px">${esc(text)}</div>
+    <div class="btnrow" style="margin-top:6px">
+      <button data-heil="detail" data-id="${h.id}">Ansehen</button>
+      ${h.vorschlag_yaml ? `<button data-heil="uebernehmen" data-id="${h.id}" class="primary">Übernehmen</button>
+        <button data-heil="ablehnen" data-id="${h.id}">Ablehnen</button>` : ""}
+      ${h.status === "angenommen" ? `<button data-heil="zuruecknehmen" data-id="${h.id}">Regeln zurücknehmen</button>` : ""}
+    </div></div>`;
+}
+
+async function loadHeilungen() {
+  const el = $("#heilungListe");
+  try {
+    const d = await api("/api/admin/heilungen?limit=30");
+    const e = d.einstellungen || {};
+    const mail = e.mail_aktiv ? `E-Mail an ${esc(e.mail_an || "—")}` : "nur hier";
+    $("#heilungStatus").innerHTML =
+      `Reparatur <strong>${e.auto ? "automatisch" : "nur nach Bestätigung"}</strong> · ` +
+      `Meldung: ${mail} · ${d.heute} Versuch(e) heute · höchstens ${e.max_pro_tag}/Tag · ` +
+      `${d.offen} offen` +
+      (d.llm_bereit ? "" : ' · <span class="badge err">kein LLM-Endpunkt eingerichtet — ' +
+        'Reparieren ist nicht möglich (Einstellungen → LLM-Endpunkt)</span>');
+    if (!d.faelle.length) {
+      el.innerHTML = "Noch keine Fälle — die Prüfung läuft bei jedem Scrape mit.";
+      return;
+    }
+    el.innerHTML = d.faelle.map(heilungZeile).join("");
+  } catch (e) { el.textContent = `Selbstheilung nicht geladen: ${e.message}`; }
+}
+
+async function heilungVerlaufLaden() {
+  const el = $("#heilungVerlauf");
+  try {
+    const v = await api("/api/admin/heilungen/verlauf?limit=20");
+    if (!v.length) { el.textContent = "Noch keine Regeländerung protokolliert."; return; }
+    el.innerHTML = v.map((z) => `<div style="border-bottom:1px solid var(--border);padding:6px 0;font-size:12.5px">
+      <span class="muted">${fmtZeit(z.erstellt_am)}</span> <span class="badge">${esc(z.quelle)}</span>
+      <span class="badge ${z.aktiv ? "ok" : ""}">${esc(z.verursacher)}</span>
+      ${esc(z.grund || "")}${z.aktiv ? ' <span class="muted">(gilt gerade)</span>' : ""}</div>`).join("");
+  } catch (e) { el.textContent = `Verlauf nicht geladen: ${e.message}`; }
+}
+
+async function heilungDetailZeigen(id) {
+  const p = $("#heilungPanel");
+  p.classList.remove("hidden");
+  p.innerHTML = '<p class="muted">Lade Fall …</p>';
+  try {
+    const h = await api(`/api/admin/heilungen/${id}`);
+    const b = h.beleg || {};
+    const d = h.diagnose || {};
+    p.innerHTML = `
+      <h3 style="margin:0 0 8px">Fall ${h.id}: ${esc(h.quelle)}
+        <span class="badge">${esc(HEIL_STATUS[h.status] || h.status)}</span></h3>
+      <p style="font-size:12.5px">
+        <strong>Befund:</strong> ${esc((h.befund && h.befund.text) || "—")}<br/>
+        <strong>Diagnose:</strong> ${esc(d.urteil || "—")}${d.item_treffer != null
+          ? ` — item_css trifft ${d.item_treffer} Blöcke (früher ${d.archiv_item_treffer})` : ""}<br/>
+        <strong>Probelauf:</strong> ${b.treffer_heute != null ? `${b.treffer_heute} Termine heute` : "—"}${b.treffer_alt != null ? `, ${b.treffer_alt} auf der archivierten Seite` : ""}<br/>
+        <strong>Meldung:</strong> ${esc(h.meldung || "—")}${h.benachrichtigt_am
+          ? ` <span class="muted">(E-Mail raus: ${fmtZeit(h.benachrichtigt_am)})</span>` : ""}
+      </p>
+      ${h.vorschlag_yaml ? `<div class="muted" style="font-size:12px">Vorschlag des Modells${h.begruendung ? ` — ${esc(h.begruendung)}` : ""}</div>
+        <pre style="max-height:32vh;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px">${esc(h.diff || "kein Unterschied zu den geltenden Regeln")}</pre>`
+        : '<p class="muted">Kein Regel-Vorschlag abgelegt — es wurde nichts geändert.</p>'}
+      <div class="btnrow">
+        ${h.vorschlag_yaml ? `<button id="h_dazu" type="button" class="primary">Übernehmen (prüft erneut)</button>
+          <button id="h_weg" type="button">Ablehnen</button>` : ""}
+        ${h.status === "angenommen" ? '<button id="h_zurueck" type="button">Regeln zurücknehmen</button>' : ""}
+        <button id="h_zu" type="button" class="ghost">Schließen</button>
+        <span id="h_msg" class="msg"></span>
+      </div>`;
+    $("#h_zu").onclick = () => p.classList.add("hidden");
+    if ($("#h_dazu")) $("#h_dazu").onclick = async () => {
+      const msg = $("#h_msg");
+      try {
+        const o = await api(`/api/admin/heilungen/${h.id}/uebernehmen`, { method: "POST" });
+        meldung(msg, `Regeln übernommen — ${o.beleg && o.beleg.treffer_heute} Treffer im Probelauf.`);
+        await Promise.all([loadHeilungen(), heilungVerlaufLaden()]);
+      } catch (e) { meldung(msg, e.message, false); }
+    };
+    if ($("#h_weg")) $("#h_weg").onclick = async () => {
+      const msg = $("#h_msg");
+      try {
+        await api(`/api/admin/heilungen/${h.id}/ablehnen`, {
+          method: "POST", body: JSON.stringify({ grund: "In der Verwaltung abgelehnt" }) });
+        meldung(msg, "Abgelehnt — die Regeln bleiben unverändert.");
+        await loadHeilungen();
+      } catch (e) { meldung(msg, e.message, false); }
+    };
+    if ($("#h_zurueck")) $("#h_zurueck").onclick = async () => {
+      const msg = $("#h_msg");
+      if (!confirm("Die Regeln dieser Quelle auf die vorherige Fassung zurückstellen?")) return;
+      try {
+        await api(`/api/admin/heilungen/${h.id}/zuruecknehmen`, { method: "POST" });
+        meldung(msg, "Vorherige Regeln sind wieder in Kraft.");
+        await Promise.all([loadHeilungen(), heilungVerlaufLaden()]);
+      } catch (e) { meldung(msg, e.message, false); }
+    };
+  } catch (e) {
+    p.innerHTML = `<p class="fehler">Fall nicht geladen: ${esc(e.message)}</p>`;
+  }
+}
+
+async function heilungAktion(aktion, id) {
+  if (aktion === "detail") return heilungDetailZeigen(id);
+  const texte = { uebernehmen: "Übernehmen (prüft erneut)",
+                  ablehnen: "Ablehnen", zuruecknehmen: "Regeln zurücknehmen" };
+  if (!confirm(`${texte[aktion] || aktion}?`)) return;
+  try {
+    await api(`/api/admin/heilungen/${id}/${aktion}`, { method: "POST" });
+    fehlerZeigen(""); $("#errorbar").classList.add("hidden");
+    await Promise.all([loadHeilungen(), heilungVerlaufLaden()]);
+  } catch (e) { fehlerZeigen(`Fall ${id}: ${e.message}`); }
+}
+
+$("#heilungListe").addEventListener("click", (ev) => {
+  const b = ev.target.closest("button[data-heil]");
+  if (b) heilungAktion(b.dataset.heil, b.dataset.id);
+});
+
 /* ---------- Einstellungen ---------- */
 async function loadSettings() {
   const s = await api("/api/admin/settings");
@@ -308,7 +472,29 @@ async function loadSettings() {
   // (Feld leer), sonst der Code-Standard 05:30.
   $("#setAt").value = s.scrape_at || (s.scrape_interval_h ? "" : "05:30");
   $("#setInterval").value = s.scrape_interval_h || "24";
+  // Change 028: Selbstheilung (Vorgaben kommen aus der API, wenn nicht gesetzt)
+  $("#setHeilungAuto").checked = (s.heilung_auto || "1") === "1";
+  $("#setHeilungMailAktiv").checked = (s.heilung_mail_aktiv || "1") === "1";
+  $("#setHeilungMailAn").value = s.heilung_mail_an || "";
+  $("#setHeilungMax").value = s.heilung_max_pro_tag || "3";
 }
+
+$("#heilungSpeichern").onclick = async () => {
+  const msg = $("#heilungSetMsg");
+  try {
+    await api("/api/admin/settings", {
+      method: "PUT",
+      body: JSON.stringify({
+        heilung_auto: $("#setHeilungAuto").checked ? "1" : "0",
+        heilung_mail_aktiv: $("#setHeilungMailAktiv").checked ? "1" : "0",
+        heilung_mail_an: $("#setHeilungMailAn").value.trim(),
+        heilung_max_pro_tag: $("#setHeilungMax").value || "3",
+      }),
+    });
+    meldung(msg, "Selbstheilung gespeichert.");
+    loadHeilungen();
+  } catch (e) { meldung(msg, e.message, false); }
+};
 $("#settingsBtn").onclick = async () => {
   const msg = $("#settingsMsg");
   try {
@@ -351,7 +537,7 @@ $("#tabs").addEventListener("click", (ev) => {
   const b = ev.target.closest("button[data-tab]");
   if (!b) return;
   tabAktiv(b.dataset.tab);
-  if (b.dataset.tab === "einstellungen") loadTags();
+  if (b.dataset.tab === "einstellungen") { loadTags(); loadSettings(); }
   if (b.dataset.tab === "schulrecherche") {   // eigener Tab: Zustände frisch holen
     if (typeof loadRecherche === "function") loadRecherche();
     if (typeof loadBrave === "function") loadBrave();
@@ -387,6 +573,8 @@ async function baueUnterTabs() {
     if (b) unterTabZeigen(b.dataset.unter);
   });
   loadQuellen(); // Übersicht füllen
+  loadHeilungen();      // Change 028: Fälle der Selbstheilung
+  heilungVerlaufLaden();
 }
 
 /* Termine einer einzelnen Quelle (Unter-Tab) — alle sind editierbar */

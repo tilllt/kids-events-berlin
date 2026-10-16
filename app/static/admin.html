@@ -131,6 +131,20 @@
         <tbody></tbody>
       </table>
 
+      <!-- Change 028: Selbstheilung — Fälle, Vorschläge, Regel-Verlauf -->
+      <details class="klapp" id="heilungKlapp" open>
+        <summary>Selbstheilung — kaputte Scraper-Regeln reparieren und melden</summary>
+        <div class="klappbody">
+          <p class="hint" id="heilungStatus" style="font-size:12.5px"></p>
+          <div id="heilungListe" class="muted">Lade Fälle …</div>
+          <div id="heilungPanel" class="panel hidden"></div>
+          <details class="klapp" id="heilungVerlaufKlapp">
+            <summary>Regel-Verlauf (wer hat wann welche Fassung gesetzt)</summary>
+            <div class="klappbody"><div id="heilungVerlauf" class="muted">Lade Verlauf …</div></div>
+          </details>
+        </div>
+      </details>
+
       <div class="spalte">
         <section>
           <h2>Letzte Läufe</h2>
@@ -465,6 +479,40 @@
         </p>
         <div style="margin-top:10px"><button id="settingsBtn" type="button" class="primary">Einstellungen speichern</button>
         <span id="settingsMsg"></span></div>
+      </div>
+    </details>
+
+    <details class="klapp" id="heilungSetKlapp" open>
+      <summary>Selbstheilung — Automatik und Meldung</summary>
+      <div class="klappbody">
+        <p class="muted" style="margin-top:0">
+          Bei einem <strong>bewiesenen</strong> Defekt (Selektoren tot, Felder nicht
+          mehr lesbar, Listing-Seite umgezogen) repariert die Automatik die
+          Scraping-Regeln und übernimmt sie, wenn alle Prüfungen bestehen. Trägt die
+          Reparatur im nächsten Lauf nicht, werden die alten Regeln automatisch
+          wiederhergestellt. Ist die Automatik aus, wird der geprüfte Vorschlag nur
+          abgelegt und hier bestätigt. Gemeldet wird in jedem Fall.
+        </p>
+        <div class="formgrid">
+          <label class="zeile">
+            <input id="setHeilungAuto" type="checkbox">
+            <span>Defekte automatisch reparieren</span>
+          </label>
+          <label class="zeile">
+            <input id="setHeilungMailAktiv" type="checkbox">
+            <span>Ergebnisse per E-Mail melden</span>
+          </label>
+          <label>Melde-Adresse
+            <input id="setHeilungMailAn" type="email" placeholder="kinderkram@mekotools.de">
+          </label>
+          <label>Versuche pro Tag (0 = nur melden)
+            <input id="setHeilungMax" type="number" min="0" max="20" placeholder="3">
+          </label>
+        </div>
+        <div class="btnrow">
+          <button id="heilungSpeichern" type="button" class="primary">Selbstheilung speichern</button>
+          <span id="heilungSetMsg" class="msg"></span>
+        </div>
       </div>
     </details>
 

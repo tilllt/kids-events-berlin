@@ -16,6 +16,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from . import ort_ki
+from . import selbstheilung
 from .geo import adresse_amtlich, ort_koordinaten
 from .model import TZ_BERLIN, iso_utc
 from .regeln import validate_regeln_yaml
@@ -278,6 +279,16 @@ def settings_get(request: Request):
         s["smtp_from"] = DEFAULT_MAIL_REPLY_TO
     if not (s.get("smtp_user") or "").strip():
         s["smtp_user"] = DEFAULT_MAIL_REPLY_TO
+    # Change 028: Selbstheilung — die geltenden Vorgaben sichtbar machen, sonst
+    # rätselt der Nutzer, ob die Automatik an ist und wohin gemeldet wird.
+    for key, wert in (("heilung_auto", "1"), ("heilung_mail_aktiv", "1"),
+                      ("heilung_max_pro_tag", "3")):
+        if not (s.get(key) or "").strip():
+            s[key] = wert
+            s[key + "_ist_default"] = True
+    if not (s.get("heilung_mail_an") or "").strip():
+        s["heilung_mail_an"] = s.get("smtp_from") or s.get("smtp_reply_to") or ""
+        s["heilung_mail_an_ist_default"] = True
     return s
 
 
@@ -306,7 +317,10 @@ def settings_put(body: dict, request: Request):
                # Change 013: Mail (getrennte Zeilen Reply-To/Betreff/Nachricht)
                "mail_betreff", "mail_text", "mail_aktiv", "mail_max_pro_tag",
                "mail_absender_pro_stunde", "smtp_verschluesselung",
-               "imap_host", "imap_port", "imap_verschluesselung"}
+               "imap_host", "imap_port", "imap_verschluesselung",
+               # Change 028: Selbstheilung (Automatik + Meldung)
+               "heilung_auto", "heilung_mail_aktiv", "heilung_mail_an",
+               "heilung_max_pro_tag"}
     unbekannt = set(body) - erlaubt
     fehler = []
     for k in sorted(unbekannt):
@@ -387,6 +401,23 @@ def settings_put(body: dict, request: Request):
                     raise ValueError
             except ValueError:
                 fehler.append("recherche_max_schulen muss eine ganze Zahl zwischen 1 und 722 sein.")
+    if "heilung_auto" in body and str(body["heilung_auto"]).strip() not in ("0", "1", "true", "false"):
+        fehler.append("heilung_auto muss 0 oder 1 sein (Automatik der Selbstheilung).")
+    if "heilung_mail_aktiv" in body and str(body["heilung_mail_aktiv"]).strip() not in (
+            "0", "1", "true", "false"):
+        fehler.append("heilung_mail_aktiv muss 0 oder 1 sein.")
+    if "heilung_mail_an" in body:
+        an = (body["heilung_mail_an"] or "").strip()
+        if an and ("@" not in an or " " in an):
+            fehler.append("heilung_mail_an muss eine E-Mail-Adresse sein (oder leer).")
+    if "heilung_max_pro_tag" in body:
+        mv = (body["heilung_max_pro_tag"] or "").strip()
+        try:
+            mn = int(mv)
+            if not 0 <= mn <= 20:
+                raise ValueError
+        except ValueError:
+            fehler.append("heilung_max_pro_tag muss zwischen 0 (nur melden) und 20 liegen.")
     if fehler:
         raise HTTPException(422, {"message": "Einstellungen ungültig.", "fehler": fehler})
     for k, v in body.items():
@@ -662,6 +693,183 @@ def source_scrape(quelle: str, request: Request):
             ergebnis["fehler"] = str(e)
     _thread_starten(_lauf, f"scrape-{quelle}")
     return {"status": "gestartet", "quelle": quelle}
+
+
+# --- Selbstheilung (Change 028) --------------------------------------------
+def _heilung_oeffentlich(h: dict) -> dict:
+    """Eine Heilungs-Zeile für die Oberfläche (JSON-Felder aufgeklappt)."""
+    raus = dict(h)
+    for feld in ("befund_json", "diagnose_json", "beleg_json"):
+        roh = raus.pop(feld, None)
+        try:
+            raus[feld[:-5]] = json.loads(roh) if roh else None
+        except (TypeError, ValueError):
+            raus[feld[:-5]] = None
+    return raus
+
+
+@router.get("/heilungen")
+def heilungen_list(request: Request, quelle: str | None = Query(None),
+                   limit: int = Query(50, le=200)):
+    """Alle Fälle der Selbstheilung (neueste zuerst) + geltende Einstellungen."""
+    store = _store(request)
+    alle = store.heilungen_liste(quelle, limit)
+    offen = [h for h in store.heilungen_liste(None, 500)
+             if h["status"] in ("offen", "vorgeschlagen")]
+    return {"einstellungen": selbstheilung.einstellungen(store),
+            "faelle": [_heilung_oeffentlich(h) for h in alle],
+            "offen": len(offen),
+            "heute": store.heilungen_zaehlen(datetime.now(TZ_BERLIN).strftime("%Y-%m-%d")),
+            "llm_bereit": bool(_llm_bereit(store))}
+
+
+def _llm_bereit(store) -> str:
+    """Eingerichteter LLM-Endpunkt — oder "" wenn keiner da ist.
+
+    Achtung: Ein *Platzhalter* ist nicht leer, aber auch keine Adresse. Ohne
+    die Adressprüfung würde die Automatik einen Call versuchen und mit einer
+    irreführenden Meldung scheitern.
+    """
+    from .recherche.llm import konfiguration
+    try:
+        konf = konfiguration(store)
+    except Exception:      # pragma: no cover — Konfiguration darf nie stören
+        return ""
+    return konf.get("llm_base_url", "") if selbstheilung.llm_bereit(konf) else ""
+
+
+@router.get("/heilungen/verlauf")
+def heilungen_verlauf(request: Request, quelle: str | None = Query(None),
+                      limit: int = Query(20, le=100)):
+    """Regel-Historie: wer hat wann welche Fassung gesetzt (inkl. Rücknahme)."""
+    store = _store(request)
+    return store.regel_historie_liste(quelle, limit)
+
+
+@router.get("/heilungen/{heilung_id}")
+def heilung_get(heilung_id: int, request: Request):
+    store = _store(request)
+    h = store.heilung_holen(heilung_id)
+    if not h:
+        raise HTTPException(404, f"Unbekannter Fall: {heilung_id}")
+    raus = _heilung_oeffentlich(h)
+    aktuell = (store.get_regeln(h["quelle"]) or {}).get("regel_yaml") or ""
+    raus["regeln_aktuell"] = aktuell
+    raus["diff"] = selbstheilung.regel_diff(aktuell, h.get("vorschlag_yaml") or "")
+    return raus
+
+
+@router.post("/sources/{quelle}/reparieren", status_code=202)
+def source_reparieren(quelle: str, request: Request):
+    """Knopf „Regeln reparieren lassen" — läuft im Hintergrund, Ergebnis in /heilungen."""
+    store = _store(request)
+    s = store.get_source(quelle)
+    if not s:
+        raise HTTPException(404, f"Unbekannte Quelle: {quelle}")
+    if s["typ"] != "regeln":
+        raise HTTPException(409, {"fehler": [f"Quelle '{quelle}' ist vom Typ "
+                                             f"'{s['typ']}' — repariert werden nur "
+                                             f"Regel-Quellen."]})
+    if not s["aktiv"]:
+        raise HTTPException(409, {"fehler": [f"Quelle '{quelle}' ist pausiert — "
+                                             f"erst aktivieren."]})
+    if not ((store.get_regeln(quelle) or {}).get("regel_yaml") or "").strip():
+        raise HTTPException(422, {"message": "Keine Regeln gespeichert.",
+                                  "fehler": ["Ohne Regel-YAML gibt es nichts zu reparieren."]})
+
+    ergebnis: dict = {}
+
+    def _lauf():
+        try:
+            ergebnis.update(selbstheilung.manuell_versuchen(
+                store, quelle=quelle, jetzt=datetime.now(TZ_BERLIN).isoformat()))
+        except Exception as e:      # sichtbar machen, nicht verschlucken
+            store.log_error(quelle, f"Manueller Reparaturversuch fehlgeschlagen: {e}")
+            ergebnis["fehler"] = str(e)
+    _thread_starten(_lauf, f"heilung-{quelle}")
+    return {"status": "gestartet", "quelle": quelle}
+
+
+@router.post("/heilungen/{heilung_id}/uebernehmen")
+def heilung_uebernehmen(heilung_id: int, request: Request):
+    """Vorschlag übernehmen — mit erneuter Prüfung an der JETZIGEN Seite."""
+    store = _store(request)
+    h = store.heilung_holen(heilung_id)
+    if not h:
+        raise HTTPException(404, f"Unbekannter Fall: {heilung_id}")
+    neu = (h.get("vorschlag_yaml") or "").strip()
+    if not neu:
+        raise HTTPException(422, {"message": "Kein Vorschlag vorhanden.",
+                                  "fehler": ["Für diesen Fall gibt es keine "
+                                             "reparaturfähigen Regeln."]})
+    quelle = h["quelle"]
+    alt = (store.get_regeln(quelle) or {}).get("regel_yaml") or ""
+    url = selbstheilung.url_aus_regeln(alt) or selbstheilung.url_aus_regeln(neu)
+    holen = selbstheilung.holer(store, quelle)
+    html = ""
+    if url:
+        try:
+            html = holen(url)
+        except Exception as e:
+            raise HTTPException(422, {
+                "message": "Die Quelle ist gerade nicht abrufbar.",
+                "fehler": [f"Ohne die heutige Seite wäre die Übernahme geraten: "
+                           f"{type(e).__name__}: {str(e)[:160]}"]}) from e
+    archiv = store.seiten_archiv_holen(quelle, url) if url else None
+    p = selbstheilung.gate(neu_yaml=neu, alt_yaml=alt, quelle=quelle, html_heute=html,
+                           html_alt=(archiv or {}).get("html"),
+                           treffer_alt=(archiv or {}).get("treffer"), holen=holen)
+    if not p["ok"]:
+        raise HTTPException(422, {"message": "Der Vorschlag besteht die Prüfung nicht mehr.",
+                                  "fehler": p["fehler"]})
+    jetzt = datetime.now(TZ_BERLIN).isoformat()
+    selbstheilung.uebernehmen(store, quelle=quelle, alt_yaml=alt, neu_yaml=neu,
+                              grund="Vom Admin übernommen", verursacher="admin",
+                              heilung_id=heilung_id,
+                              erwartete_treffer=p["beleg"].get("treffer_heute"),
+                              zeit=jetzt, beleg=p["beleg"])
+    store.heilung_setzen(heilung_id, zeit=jetzt, meldung=(
+        f"Regeln übernommen (Verwaltung): {p['beleg'].get('treffer_heute')} Termine "
+        f"im Probelauf, {p['beleg'].get('treffer_alt')} auf der archivierten Seite."))
+    return {"ok": True, "beleg": p["beleg"],
+            "diff": selbstheilung.regel_diff(alt, neu)}
+
+
+@router.post("/heilungen/{heilung_id}/ablehnen")
+def heilung_ablehnen(heilung_id: int, request: Request, body: dict | None = None):
+    store = _store(request)
+    if not store.heilung_holen(heilung_id):
+        raise HTTPException(404, f"Unbekannter Fall: {heilung_id}")
+    grund = ((body or {}).get("grund") or "").strip()
+    jetzt = datetime.now(TZ_BERLIN).isoformat()
+    store.heilung_setzen(heilung_id, status="abgelehnt", zeit=jetzt,
+                         meldung="Vorschlag abgelehnt" + (f": {grund}" if grund else "."))
+    return {"ok": True, "status": "abgelehnt"}
+
+
+@router.post("/heilungen/{heilung_id}/zuruecknehmen")
+def heilung_zuruecknehmen(heilung_id: int, request: Request, body: dict | None = None):
+    """Eine übernommene Reparatur wieder auf die Vorgänger-Fassung zurückstellen."""
+    store = _store(request)
+    h = store.heilung_holen(heilung_id)
+    if not h:
+        raise HTTPException(404, f"Unbekannter Fall: {heilung_id}")
+    if h["status"] != "angenommen":
+        raise HTTPException(409, {"fehler": [
+            f"Nur eine übernommene Reparatur lässt sich zurücknehmen "
+            f"(Status dieses Falls: {h['status']})."]})
+    grund = ((body or {}).get("grund") or "").strip() or "Vom Admin zurückgenommen"
+    jetzt = datetime.now(TZ_BERLIN).isoformat()
+    r = store.regel_ruecknahme(h["quelle"], grund=grund, zeit=jetzt,
+                               heilung_id=heilung_id)
+    if r is None:
+        raise HTTPException(409, {"fehler": [
+            "Keine Vorgänger-Fassung in der Historie — die Regeln müssen von "
+            "Hand gesetzt werden."]})
+    store.heilung_setzen(heilung_id, status="zurueckgenommen",
+                         pruefung_ergebnis="admin", zeit=jetzt,
+                         meldung=f"Regeln auf die vorherige Fassung zurückgestellt ({grund}).")
+    return {"ok": True, "alt_yaml": r["alt_yaml"]}
 
 
 # --- Schulen / Kategorien / manuelle Termine / Mail -------------------------
