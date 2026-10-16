@@ -751,8 +751,7 @@ def kandidaten_ohne_filtergruppe(url: str) -> list[str]:
         roh.append(f"{basis}?{'&'.join(nur_platzhalter)}")
     for name in gruppen:                      # je eine Gruppe weglassen
         rest = [t for n, teile in gruppen.items() if n != name for t in teile]
-        if rest:
-            roh.append(f"{basis}?{'&'.join(rest)}")
+        roh.append(f"{basis}?{'&'.join(rest)}" if rest else basis)
     gesehen, raus = {url}, []
     for k in roh:
         if k not in gesehen:
@@ -866,6 +865,15 @@ def versuchen(store, *, quelle: str, befund: dict, diagnose: dict, html: str,
 
     if art not in HEILBAR:
         return None
+
+    # Ohne Abruf-Funktion kann das Gate eine geänderte Listing-URL nicht prüfen
+    # (es probiert die neue Abfrage nicht wirklich aus). Der Knopf-Pfad kam ohne
+    # `holen` — dann fiel jede URL-Reparatur durch. Hier zentral nachrüsten.
+    if holen is None:
+        try:
+            holen = holer(store, quelle)
+        except Exception:
+            holen = None
 
     # Klare Sprache in jeder Meldung: sagt die Seite SELBST „0 Veranstaltungen",
     # liegt es an der Abfrage (Facette/URL), nicht am Selektor.
@@ -1044,7 +1052,8 @@ def lauf_auswerten(store, *, quelle: str, regeln: str, url: str = "",
 
 
 def manuell_versuchen(store, *, quelle: str, jetzt: str, mailer=None,
-                      konf: dict | None = None, llm_ruf=None) -> dict:
+                      konf: dict | None = None, llm_ruf=None,
+                      holen=None) -> dict:
     """Knopf „Regeln reparieren lassen".
 
     Umgeht Tageskontingent und Automatik-Schalter (eine ausdrückliche Handlung),
@@ -1107,7 +1116,7 @@ def manuell_versuchen(store, *, quelle: str, jetzt: str, mailer=None,
                                 verursacher="manuell", meldung=b.get("text"))
     aktion = versuchen(store, quelle=quelle, befund=b, diagnose=b["diagnose"],
                        html=html, regeln=regeln, jetzt=jetzt, auto=True,
-                       heilung_id=hid, llm_ruf=llm_ruf, mailer=mailer, konf=konf,
-                       verursacher="manuell")
+                       heilung_id=hid, llm_ruf=llm_ruf, holen=holen, mailer=mailer,
+                       konf=konf, verursacher="manuell")
     return {"ok": bool(aktion and aktion.get("regeln_geaendert")),
             "id": hid, "befund": b, **(aktion or {})}

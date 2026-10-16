@@ -611,6 +611,37 @@ def test_leere_filtergruppe_ohne_treffer_wird_nicht_uebernommen(tmp_path):
     assert zaehler["n"] >= 1, "ohne deterministischen Treffer wird das Modell gefragt"
 
 
+def test_knopf_repariert_leere_filtergruppe(tmp_path):
+    """Der Knopf-Pfad (manuell_versuchen) muss denselben Bruch heilen — genau
+    hier fehlte `holen`, weshalb die Reparatur live durchfiel."""
+    s = _store(tmp_path)
+    url_mit_filter = f"{URL}?filter_19%5B%5D=KinderJugendliche"
+    kaputt = REGELN.replace(URL, url_mit_filter)
+    s.set_regeln(Q, kaputt)
+    sh.pruefen(s, quelle=Q, regeln=kaputt, url=url_mit_filter, html=HTML_GESUND,
+               roh_zeilen=5, n_zeilen=5, n_fehler=0, jetzt=JETZT)
+    mails, mailer = _mails()
+
+    # Der Knopf holt die Seite selbst (Adapter) und braucht für eine geänderte
+    # URL zusätzlich die Hol-Funktion des Gates. Beides für den Test ersetzen.
+    import app.adapters.selector_adapter as sa
+    alt_fetch, alt_holer = sa.SelectorAdapter.fetch_listing_page, sh.holer
+    sa.SelectorAdapter.fetch_listing_page = lambda self, page=0: (
+        "<html><body><p>0 Veranstaltungen</p></body></html>")
+    sh.holer = lambda store, quelle: (lambda u: HTML_GESUND)
+    try:
+        aus = sh.manuell_versuchen(s, quelle=Q, jetzt=JETZT, mailer=mailer,
+                                   konf=KONF_AUTO)
+    finally:
+        sa.SelectorAdapter.fetch_listing_page = alt_fetch
+        sh.holer = alt_holer
+
+    assert aus.get("aktion") == "uebernommen", aus
+    assert "filter_19" not in s.get_regeln(Q)["regel_yaml"]
+    assert s.heilungen_liste(Q)[0]["status"] == "angenommen"
+    assert mails
+
+
 # --- Oberfläche ------------------------------------------------------------
 
 def test_oberflaeche_hat_knopf_liste_und_einstellungen():
