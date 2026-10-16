@@ -109,6 +109,11 @@ def diagnose(*, regeln: str, html: str, url: str = "",
             except Exception:
                 d["felder"][feld] = 0
     d["terminartige_links"] = _terminartige_links(sel)
+    # Manche Portale schreiben ihre eigene Trefferzahl auf die Seite
+    # („1355 Veranstaltungen", „0 Veranstaltungen"). Steht dort eine 0, ist
+    # nicht der Selektor kaputt, sondern die Abfrage (Facette/URL).
+    treffer_seite = re.search(r"([0-9]{1,6})\s+Veranstaltungen\b", html or "")
+    d["treffer_laut_seite"] = int(treffer_seite.group(1)) if treffer_seite else None
     if archiv_html and item_css:
         try:
             d["archiv_item_treffer"] = len(parsel.Selector(text=archiv_html).css(item_css))
@@ -230,6 +235,13 @@ def prompt_bauen(*, quelle: str, regeln: str, diagnose: dict, befund: dict,
         f"- Seitengröße {d.get('seiten_groesse')} Zeichen",
         f"- Feld-Treffer im ersten Block: {felder}",
         f"- Befund: {befund.get('art')} — {befund.get('text')}",
+        ("- Achtung: Die Seite meldet SELBST „0 Veranstaltungen\" für diese "
+         "Abfrage — dann stimmt die Abfrage-URL nicht mehr (Filter/Facette "
+         "umbenannt oder entfernt), nicht der Selektor. Prüfe `listing.url` "
+         "gegen das Formular im Ausschnitt."
+         if d.get("treffer_laut_seite") == 0 else
+         (f"- Die Seite meldet selbst {d['treffer_laut_seite']} Veranstaltungen"
+          if d.get("treffer_laut_seite") else "- Trefferzahl der Seite: unbekannt")),
         "\nHTML-AUSSCHNITT DER AKTUELLEN SEITE:\n" + html_ausschnitt(html),
         f"\nAntworte jetzt mit {MARKER_AUF}, dem vollständigen YAML, {MARKER_ZU} "
         f"und einem Absatz \"Begruendung:\".",
@@ -729,6 +741,14 @@ def versuchen(store, *, quelle: str, befund: dict, diagnose: dict, html: str,
 
     if art not in HEILBAR:
         return None
+
+    # Klare Sprache in jeder Meldung: sagt die Seite SELBST „0 Veranstaltungen",
+    # liegt es an der Abfrage (Facette/URL), nicht am Selektor.
+    if (diagnose or {}).get("treffer_laut_seite") == 0:
+        befund = dict(befund or {})
+        befund["text"] = (f"{befund.get('text')} — die Seite meldet selbst "
+                          f"„0 Veranstaltungen“ für diese Abfrage")
+        befund["abfrage_leer"] = True
 
     hinweis = seiten_hinweis(diagnose)
     if hinweis:

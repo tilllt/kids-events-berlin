@@ -53,9 +53,23 @@ detail:
 FAMILIENPORTAL_REGELN = """quelle: familienportal
 robots: "erlaubt; nur /suche/ disallowed; www-Host blockt — ohne www (2026-09-06)"
 listing:
-  # Zeitraum über kesearch-Timestamps (filter_22_start/end, Unix-Sekunden);
-  # nur Kategorie „Kinder & Jugendliche“ (filter_19). {seite} ab Seite 2.
-  url: "https://familienportal.berlin.de/veranstaltungen/s?tx_kesearch_pi1%5Bfilter_19%5D%5B%5D=KinderJugendliche&tx_kesearch_pi1%5Bfilter_22_start%5D={start_ts}&tx_kesearch_pi1%5Bfilter_22_end%5D={ende_ts}"
+  # Zeitraum über kesearch-Timestamps (filter_22_start/end, Unix-Sekunden).
+  # OHNE Art-Facette (filter_19): das Portal hat am 14.10.2026 eine neue Fassung
+  # ausgeliefert (Asset-Zeitstempel 1791979895 = 14.10.2026) und dabei die
+  # Facette „Kinder & Jugendliche" (Wert KinderJugendliche) entwertet. Gemessen
+  # am 16.10.2026 im 21-Tage-Fenster: filter_19[]=KinderJugendliche → die Seite
+  # meldet selbst „0 Veranstaltungen"; ohne die Facette → 1355 Veranstaltungen,
+  # davon 10 in den belegten Art-Werten (FreizeitSport 208, KunstKultur,
+  # Mitmischen, BildungSchule, DiesDas, Ferienreisen, FesteMrkte, FotoVideo,
+  # SocialMediaGames, BhneMusik); die uebrigen 12 Art-Werte sind im Fenster leer
+  # (Ausstellungen, Frauen, GesundheitUmwelt, Infoveranstaltungen,
+  # KonferenzenMessen, LesungenVortrge, PolitikBrgerservice, Polizei, Senioren,
+  # SpaziergngeAusflge, WeihnachtszeitJahreswechsel). Die Werte „Kinder" und
+  # „Jugendliche" kennt das Portal nicht — unbekannte Werte ignoriert es
+  # stillschweigend (Antwort = ungefiltert), deshalb brachten sie scheinbar
+  # Treffer. Das Familienportal IST der Familienkalender: die Kinder-Auswahl
+  # filtert nicht mehr, die Relevanz kommt aus Titel/Horizont.
+  url: "https://familienportal.berlin.de/veranstaltungen/s?tx_kesearch_pi1%5Bfilter_22_start%5D={start_ts}&tx_kesearch_pi1%5Bfilter_22_end%5D={ende_ts}"
   horizont_tage: 21
   pagination: {param: "currentPage", offset: 1}
   item_css: "article.modul-teaser"

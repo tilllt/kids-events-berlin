@@ -514,6 +514,45 @@ def test_unbrauchbare_modellantwort_wird_in_der_akte_festgehalten(tmp_path):
     assert aus["aktion"]["regeln_geaendert"] is False
 
 
+def test_diagnose_liest_die_trefferzahl_der_seite():
+    """Das Portal schreibt seine Trefferzahl selbst hin — bei 0 liegt es an der
+    Abfrage (Facette/URL), nicht am Selektor."""
+    assert sh.diagnose(regeln=REGELN, html=HTML_GESUND)["treffer_laut_seite"] is None
+    d = sh.diagnose(regeln=REGELN,
+                    html="<html><body><p>0 Veranstaltungen</p></body></html>")
+    assert d["treffer_laut_seite"] == 0
+    d2 = sh.diagnose(regeln=REGELN,
+                     html="<html><body><p>1355 Veranstaltungen</p></body></html>")
+    assert d2["treffer_laut_seite"] == 1355
+
+
+def test_leere_abfrage_wird_in_der_meldung_genannt(tmp_path):
+    s = _store(tmp_path)
+    _archiv(s)
+    mails, mailer = _mails()
+    leer = ("<html><body><p class='muted'>0 Veranstaltungen</p>"
+            "<h1>Veranstaltungen</h1></body></html>")
+    aus = _lauf(s, html=leer, roh=0, n=0, konf=KONF_AUTO, mailer=mailer)
+    h = s.heilungen_liste(Q)[0]
+    assert "meldet selbst" in (h["meldung"] or ""), h["meldung"]
+    assert mails and "meldet selbst" in mails[0]["text"]
+    assert s.get_regeln(Q)["regel_yaml"] == REGELN
+
+
+def test_familienportal_regel_ohne_tote_facette():
+    """Portal-Fassung vom 14.10.2026: die Facette „Kinder & Jugendliche" liefert
+    0 Treffer, ohne sie 1355. Die Regel darf die Facette nicht mehr senden."""
+    from app import quellen_defaults as qd
+    regeln = qd.FAMILIENPORTAL_REGELN
+    url_zeile = next(z for z in regeln.splitlines() if z.strip().startswith("url:"))
+    assert "filter_19" not in url_zeile, "tote Facette ist wieder in der Abfrage"
+    assert "filter_22_start" in url_zeile and "filter_22_end" in url_zeile
+    assert "horizont_tage: 21" in regeln
+    assert 'item_css: "article.modul-teaser"' in regeln
+    from app.regeln import validate_regeln_yaml
+    validate_regeln_yaml(regeln)          # muss formal gültig bleiben
+
+
 # --- Oberfläche ------------------------------------------------------------
 
 def test_oberflaeche_hat_knopf_liste_und_einstellungen():
