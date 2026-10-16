@@ -8,6 +8,8 @@ Diese Datei prüft genau das — und dass dabei NICHTS ohne grünes Gate überno
 wird, dass eine wirkungslose Reparatur zurückgenommen wird und dass eine
 Meldung nie still ausfällt.
 """
+import json
+
 from fastapi.testclient import TestClient
 
 from app import selbstheilung as sh
@@ -300,7 +302,6 @@ def test_api_meldet_fehlenden_endpunkt(tmp_path):
 
 
 # --- Erkennung: Listing-Fehler zählen mit (Change 028) ---------------------
-
 def test_listing_fehler_loesen_jetzt_einen_befund_aus():
     """45.568 solcher Zeilen bei umweltkalender-berlin, aber n_fehler = 0."""
     assert sh.befund_ermitteln(roh_zeilen=100, n_zeilen=100, n_fehler=0,
@@ -466,6 +467,49 @@ def test_api_reparieren_knopf_startet_und_prueft_vorab(tmp_path, monkeypatch):
     s.update_source(Q, aktiv=False)
     assert c.post(f"/api/admin/sources/{Q}/reparieren").status_code == 409
     assert c.post("/api/admin/sources/gibtsnicht/reparieren").status_code == 404
+
+
+# --- Ehrlichkeit: nicht reparierbare Seiten und unbrauchbare Antworten ------
+
+HTML_LEER = ("<html><body><h1>Veranstaltungen</h1>"
+             "<p>Keine Treffer für Ihre Auswahl.</p></body></html>")
+
+
+def test_seite_ohne_inhalt_wird_als_nicht_reparierbar_gemeldet(tmp_path):
+    """Live belegt (familienportal, 16.10.2026): die Seite antwortet 200, hat
+    aber keinen Eintrag mit Datum — die Liste entsteht im Browser. Ein
+    Selektorwechsel hilft nicht, das muss die Meldung sagen."""
+    s = _store(tmp_path)
+    _archiv(s)
+    mails, mailer = _mails()
+    ruf, zaehler = _ruf(antwort(NEU))
+    aus = _lauf(s, html=HTML_LEER, roh=0, n=0, konf=KONF_AUTO, mailer=mailer,
+                ruft=(ruf, zaehler))
+
+    assert aus["befund"]["art"] == "selektoren_tot"
+    assert aus["aktion"]["aktion"] == "unreparierbar", aus["aktion"]
+    assert zaehler["n"] == 0, "kein Modell-Aufruf für eine Seite ohne Inhalt"
+    assert "kein Selektor" in aus["aktion"]["meldung"] or \
+           "Selektorwechsel kann das nicht beheben" in aus["aktion"]["meldung"]
+    assert s.get_regeln(Q)["regel_yaml"] == REGELN
+    h = s.heilungen_liste(Q)[0]
+    assert h["status"] == "unreparierbar" and h["benachrichtigt_am"], "gemeldet wird trotzdem"
+    assert mails
+
+
+def test_unbrauchbare_modellantwort_wird_in_der_akte_festgehalten(tmp_path):
+    """Sonst ist hinterher nicht nachvollziehbar, WARUM nichts kam."""
+    s = _store(tmp_path)
+    _archiv(s)
+    ruf, _ = _ruf("Ich kann diese Seite leider nicht reparieren.")
+    aus = _lauf(s, roh=0, n=0, konf=KONF_AUTO, mailer=_mails()[1], ruft=(ruf, 0))
+    h = s.heilungen_liste(Q)[0]
+    assert h["status"] == "offen"
+    assert h["begruendung"] == "Modell-Antwort ohne gültiges YAML"
+    beleg = json.loads(h["beleg_json"] or "{}")
+    assert "Ich kann diese Seite" in beleg.get("modell_antwort", "")
+    assert s.get_regeln(Q)["regel_yaml"] == REGELN
+    assert aus["aktion"]["regeln_geaendert"] is False
 
 
 # --- Oberfläche ------------------------------------------------------------

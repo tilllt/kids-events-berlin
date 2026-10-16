@@ -378,8 +378,8 @@ def vorschlag_erzeugen(*, quelle: str, regeln: str, befund: dict, diagnose: dict
                           befund=befund, html=html, erlaubte_felder=erlaubte_felder)
     text = llm_ruf(prompt)
     neu = yaml_aus_antwort(text or "")
-    if not neu:
-        return None
+    # Auch eine unbrauchbare Antwort wird zurückgegeben: der Rohtext landet in
+    # der Fallakte, sonst ist hinterher nicht nachvollziehbar, WARUM nichts kam.
     return {"yaml": neu, "begruendung": begruendung_aus_antwort(text or ""),
             "antwort": (text or "")[:4000], "prompt": prompt}
 
@@ -423,11 +423,14 @@ def heilen(store, *, quelle: str, befund: dict, diagnose: dict, html: str,
                            erlaubte_felder=sorted(_LISTING_FELDER), llm_ruf=llm_ruf)
     archiv = store.seiten_archiv_holen(
         quelle, (((regeln_lesen(regeln).get("listing") or {}).get("url")) or ""))
-    if v is None:
+    if not v or not v.get("yaml"):
         print(f"[heilung] {quelle}: Modell lieferte keine brauchbaren Regeln", flush=True)
         if heilung_id:
-            store.heilung_setzen(heilung_id, begruendung="Modell-Antwort ohne gültiges YAML",
-                                 zeit=jetzt)
+            store.heilung_setzen(
+                heilung_id, begruendung="Modell-Antwort ohne gültiges YAML",
+                beleg={"modell_antwort": (v or {}).get("antwort", "")[:2000],
+                       "prompt_zeichen": len((v or {}).get("prompt") or "")},
+                zeit=jetzt)
         return None
     pruef = gate(neu_yaml=v["yaml"], alt_yaml=regeln, quelle=quelle,
                  html_heute=html, html_alt=(archiv or {}).get("html"),
@@ -676,6 +679,23 @@ def beobachtung(store, *, quelle: str, roh_zeilen: int, jetzt: str,
                      f"(erwartet mindestens {int(erwartet * BEOBACHTUNG_ANTEIL)})")}
 
 
+def seiten_hinweis(diagnose: dict) -> str:
+    """Warum ein Selektorwechsel hier nicht helfen kann (oder "" wenn doch).
+
+    Live belegt am 16.10.2026 (familienportal): die Seite antwortet mit 200,
+    enthält aber keinen einzigen Termin-Eintrag mit Datum — die Liste entsteht
+    erst im Browser (Urteil `seite_ohne_terminangebot`). Ein neuer Selektor
+    findet dort nichts. Das muss die Meldung sagen, statt einen Modell-Aufruf
+    und das Tageskontingent zu verbrennen und danach über das Modell zu klagen.
+    """
+    if (diagnose or {}).get("urteil") == "seite_ohne_terminangebot":
+        return ("Die Seite liefert keinen einzigen Termin-Eintrag mit Datum "
+                "(die Liste entsteht vermutlich erst im Browser) — ein "
+                "Selektorwechsel kann das nicht beheben, die Quelle braucht "
+                "einen neuen Weg.")
+    return ""
+
+
 def versuchen(store, *, quelle: str, befund: dict, diagnose: dict, html: str,
               regeln: str, jetzt: str, auto: bool | None = None,
               heilung_id: int | None = None, holen=None, llm_ruf=None,
@@ -709,6 +729,22 @@ def versuchen(store, *, quelle: str, befund: dict, diagnose: dict, html: str,
 
     if art not in HEILBAR:
         return None
+
+    hinweis = seiten_hinweis(diagnose)
+    if hinweis:
+        text = (f"Quelle {quelle}: {befund.get('text')} — {hinweis} "
+                f"Es wurde nichts geändert.")
+        if heilung_id:
+            store.heilung_setzen(heilung_id, status="unreparierbar", zeit=jetzt,
+                                 meldung=text)
+        else:
+            heilung_id = store.heilung_anlegen(quelle, art, befund, jetzt,
+                                               status="unreparierbar",
+                                               verursacher=verursacher, meldung=text)
+        _melden(store, heilung_id=heilung_id, quelle=quelle, text=text,
+                mailer=mailer, konf=konf, zeit=jetzt)
+        return {"art": art, "aktion": "unreparierbar", "meldung": text,
+                "regeln_geaendert": False}
 
     if llm_ruf is None:
         from .recherche.llm import konfiguration

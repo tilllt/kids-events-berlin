@@ -322,7 +322,7 @@ const HEIL_STATUS = {
   vorgeschlagen: "Vorschlag geprüft", angenommen: "übernommen",
   abgelehnt: "abgelehnt", verworfen: "Prüfung nicht bestanden",
   zurueckgenommen: "zurückgenommen", "ohne-defekt": "kein Defekt gefunden",
-  fehlgeschlagen: "fehlgeschlagen",
+  fehlgeschlagen: "fehlgeschlagen", unreparierbar: "nicht per Selektor zu reparieren",
 };
 const HEIL_ART = {
   verdacht: "Rückgang", selektoren_tot: "Selektoren tot",
@@ -395,6 +395,12 @@ async function heilungDetailZeigen(id) {
     const h = await api(`/api/admin/heilungen/${id}`);
     const b = h.beleg || {};
     const d = h.diagnose || {};
+    // Eine unbrauchbare Modell-Antwort wird mitgezeigt: sonst ist nicht
+    // nachvollziehbar, warum kein Vorschlag entstand.
+    const roh = b.modell_antwort
+      ? `<div class="muted" style="font-size:12px">Antwort des Modells (ohne brauchbares YAML)</div>
+         <pre style="max-height:24vh;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px">${esc(b.modell_antwort)}</pre>`
+      : "";
     p.innerHTML = `
       <h3 style="margin:0 0 8px">Fall ${h.id}: ${esc(h.quelle)}
         <span class="badge">${esc(HEIL_STATUS[h.status] || h.status)}</span></h3>
@@ -409,6 +415,7 @@ async function heilungDetailZeigen(id) {
       ${h.vorschlag_yaml ? `<div class="muted" style="font-size:12px">Vorschlag des Modells${h.begruendung ? ` — ${esc(h.begruendung)}` : ""}</div>
         <pre style="max-height:32vh;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px">${esc(h.diff || "kein Unterschied zu den geltenden Regeln")}</pre>`
         : '<p class="muted">Kein Regel-Vorschlag abgelegt — es wurde nichts geändert.</p>'}
+      ${roh}
       <div class="btnrow">
         ${h.vorschlag_yaml ? `<button id="h_dazu" type="button" class="primary">Übernehmen (prüft erneut)</button>
           <button id="h_weg" type="button">Ablehnen</button>` : ""}
