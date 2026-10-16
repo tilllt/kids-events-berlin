@@ -625,15 +625,34 @@ def _melden(store, *, heilung_id: int | None, quelle: str, text: str,
 
 
 def holer(store, quelle: str):
-    """Holt eine URL mit dem Projekt-UA — für umgezogene Listing-Seiten."""
+    """Holt eine URL mit dem Projekt-UA — für umgezogene Listing-Seiten.
+
+    Platzhalter der Regel-URL ({start_ts}/{ende_ts}) werden wie im Adapter mit
+    dem Zeitfenster der Quelle gefüllt: sonst prüfte das Gate eine URL mit
+    wörtlichem `{start_ts}` und der Probelauf wäre nicht aussagekräftig.
+    """
     from .adapters.selector_adapter import UA as _UA
+    from datetime import date, datetime, time, timedelta
     import httpx
 
+    tage = 21
+    try:
+        regeln = (store.get_regeln(quelle) or {}).get("regel_yaml") or ""
+        tage = int(((regeln_lesen(regeln).get("listing") or {})
+                    .get("horizont_tage")) or 21)
+    except Exception:
+        tage = 21
+
     def holen(url: str) -> str:
+        heute = date.today()
+        von = int(datetime.combine(heute, time(0, 0)).timestamp())
+        bis = int(datetime.combine(heute + timedelta(days=tage),
+                                   time(23, 59, 59)).timestamp())
+        ziel = (url or "").replace("{start_ts}", str(von)).replace("{ende_ts}", str(bis))
         with httpx.Client(headers={"User-Agent": _UA,
                                    "Accept-Language": "de-DE,de;q=0.9"},
                           follow_redirects=True, timeout=30) as c:
-            r = c.get(url)
+            r = c.get(ziel)
             r.raise_for_status()
             return r.text
     return holen
@@ -708,6 +727,112 @@ def seiten_hinweis(diagnose: dict) -> str:
     return ""
 
 
+def kandidaten_ohne_filtergruppe(url: str) -> list[str]:
+    """Dieselbe Abfrage ohne je eine Filtergruppe (deterministisch).
+
+    Filter sind additiv: wird eine Facette umbenannt oder entfernt, liefert die
+    Abfrage 0 Treffer, obwohl die Seite lebt. Live belegt (familienportal,
+    16.10.2026): `filter_19[]=KinderJugendliche` → „0 Veranstaltungen", ohne die
+    Gruppe → „1355 Veranstaltungen", Selektoren unverändert. Behalten werden nur
+    Parameter mit Platzhaltern ({start_ts} …) — das ist der Zeitraum, nicht die
+    Facette. Das ist ohne Modell entscheidbar, das Gate prüft jeden Kandidaten.
+    """
+    basis, frage, query = (url or "").partition("?")
+    if not frage:
+        return []
+    gruppen: dict[str, list[str]] = {}
+    for teil in query.split("&"):
+        if teil:
+            gruppen.setdefault(teil.split("=", 1)[0], []).append(teil)
+    roh = []
+    nur_platzhalter = [t for teile in gruppen.values() for t in teile
+                       if "{" in t and "}" in t]
+    if nur_platzhalter and len(nur_platzhalter) < sum(len(v) for v in gruppen.values()):
+        roh.append(f"{basis}?{'&'.join(nur_platzhalter)}")
+    for name in gruppen:                      # je eine Gruppe weglassen
+        rest = [t for n, teile in gruppen.items() if n != name for t in teile]
+        if rest:
+            roh.append(f"{basis}?{'&'.join(rest)}")
+    gesehen, raus = {url}, []
+    for k in roh:
+        if k not in gesehen:
+            gesehen.add(k)
+            raus.append(k)
+    return raus
+
+
+def url_in_regeln_setzen(regeln: str, neu_url: str) -> str:
+    """Nur die `url:`-Zeile der Listing-Regeln ersetzen, alles andere bleibt."""
+    zeilen = (regeln or "").splitlines()
+    for i, zeile in enumerate(zeilen):
+        if zeile.strip().startswith("url:"):
+            einzug = zeile[:len(zeile) - len(zeile.lstrip())]
+            zeilen[i] = f'{einzug}url: "{neu_url}"'
+            break
+    return "\n".join(zeilen) + ("\n" if (regeln or "").endswith("\n") else "")
+
+
+def filter_reparieren(store, *, quelle: str, regeln: str, html: str, jetzt: str,
+                      konf: dict, holen=None, mailer=None, auto: bool = True,
+                      heilung_id: int | None = None,
+                      verursacher: str = "auto") -> dict | None:
+    """Leere Filtergruppe aus der Abfrage nehmen — beweisgestützt, ohne Modell.
+
+    Läuft nur, wenn die Seite selbst 0 Treffer meldet. Jeder Kandidat geht durch
+    dasselbe Gate wie ein Modell-Vorschlag: kein grüner Probelauf, keine
+    Übernahme. Die übernommene Abfrage wird im nächsten Lauf beobachtet (die
+    normale Rücknahme greift also auch hier).
+    """
+    alt_url = url_aus_regeln(regeln)
+    kandidaten = kandidaten_ohne_filtergruppe(alt_url)
+    if not kandidaten:
+        return None
+    archiv = store.seiten_archiv_holen(quelle, alt_url) if alt_url else None
+    for kandidat in kandidaten[:4]:
+        neu_yaml = url_in_regeln_setzen(regeln, kandidat)
+        pruef = gate(neu_yaml=neu_yaml, alt_yaml=regeln, quelle=quelle,
+                     html_heute=html, html_alt=(archiv or {}).get("html"),
+                     treffer_alt=(archiv or {}).get("treffer"), holen=holen)
+        if not pruef["ok"]:
+            continue
+        beleg = {**pruef["beleg"], "fehler": pruef["fehler"],
+                 "filter_weggelassen": kandidat}
+        zahl = (pruef["beleg"].get("treffer_heute") or 0)
+        grund = f"leere Abfrage: Filtergruppe aus der URL entfernt ({kandidat})"
+        if not auto:
+            if heilung_id:
+                store.heilung_setzen(heilung_id, status="vorgeschlagen",
+                                     vorschlag_yaml=neu_yaml, begruendung=grund,
+                                     beleg=beleg, zeit=jetzt)
+            text = (f"Quelle {quelle}: die Abfrage lieferte 0 Treffer — eine "
+                    f"Filtergruppe passt nicht mehr. Reparaturvorschlag geprüft "
+                    f"({zahl} Termine im Probelauf). Die Automatik ist "
+                    f"abgeschaltet — bitte in der Verwaltung bestätigen.")
+            _melden(store, heilung_id=heilung_id, quelle=quelle, text=text,
+                    mailer=mailer, konf=konf, zeit=jetzt)
+            return {"art": "abfrage_leer", "aktion": "vorgeschlagen",
+                    "meldung": text, "regeln_geaendert": False, "beleg": beleg,
+                    "id": heilung_id}
+        if heilung_id:
+            store.heilung_setzen(heilung_id, vorschlag_yaml=neu_yaml,
+                                 begruendung=grund, beleg=beleg, zeit=jetzt)
+        uebernehmen(store, quelle=quelle, alt_yaml=regeln, neu_yaml=neu_yaml,
+                    grund=grund, verursacher=verursacher, heilung_id=heilung_id,
+                    erwartete_treffer=zahl, zeit=jetzt, beleg=beleg)
+        text = (f"Quelle {quelle}: die Abfrage lieferte 0 Treffer — eine "
+                f"Filtergruppe passt nicht mehr (Facette umbenannt oder "
+                f"entfernt). Die Automatik hat die Abfrage ohne sie übernommen "
+                f"({zahl} Termine im Probelauf); die Selektoren blieben "
+                f"unangetastet. Der nächste Lauf wird geprüft.")
+        print(f"[heilung] {quelle}: Abfrage ohne leere Filtergruppe repariert "
+              f"({zahl} Treffer)", flush=True)
+        _melden(store, heilung_id=heilung_id, quelle=quelle, text=text,
+                mailer=mailer, konf=konf, zeit=jetzt)
+        return {"art": "abfrage_leer", "aktion": "uebernommen", "meldung": text,
+                "regeln_geaendert": True, "beleg": beleg, "id": heilung_id}
+    return None
+
+
 def versuchen(store, *, quelle: str, befund: dict, diagnose: dict, html: str,
               regeln: str, jetzt: str, auto: bool | None = None,
               heilung_id: int | None = None, holen=None, llm_ruf=None,
@@ -749,6 +874,17 @@ def versuchen(store, *, quelle: str, befund: dict, diagnose: dict, html: str,
         befund["text"] = (f"{befund.get('text')} — die Seite meldet selbst "
                           f"„0 Veranstaltungen“ für diese Abfrage")
         befund["abfrage_leer"] = True
+
+    # Leere Abfrage zuerst deterministisch angehen: Facette weg, mit dem Gate
+    # beweisen. Erst wenn das nichts hergibt, wird das Modell gefragt.
+    if (befund or {}).get("abfrage_leer"):
+        fest = filter_reparieren(store, quelle=quelle, regeln=regeln or "",
+                                 html=html, jetzt=jetzt, konf=konf, holen=holen,
+                                 mailer=mailer, auto=bool(auto),
+                                 heilung_id=heilung_id,
+                                 verursacher=verursacher)
+        if fest:
+            return fest
 
     hinweis = seiten_hinweis(diagnose)
     if hinweis:

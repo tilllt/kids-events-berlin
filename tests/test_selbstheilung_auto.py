@@ -553,6 +553,64 @@ def test_familienportal_regel_ohne_tote_facette():
     validate_regeln_yaml(regeln)          # muss formal gültig bleiben
 
 
+def test_deterministische_reparatur_entfernt_leere_filtergruppe(tmp_path):
+    """Der familienportal-Fall (16.10.2026) als Test: die Facette ist tot, die
+    Seite lebt. Das muss OHNE Modell repariert werden."""
+    s = _store(tmp_path)
+    url_mit_filter = f"{URL}?filter_19%5B%5D=KinderJugendliche&ort=berlin"
+    s.set_regeln(Q, REGELN.replace(URL, url_mit_filter))
+    sh.pruefen(s, quelle=Q, regeln=REGELN.replace(URL, url_mit_filter),
+               url=url_mit_filter, html=HTML_GESUND, roh_zeilen=5, n_zeilen=5,
+               n_fehler=0, jetzt=JETZT)          # Archiv mit 5 Treffern
+    kandidaten = sh.kandidaten_ohne_filtergruppe(url_mit_filter)
+    assert url_mit_filter not in kandidaten
+    assert any("filter_19" not in k and "ort=berlin" in k for k in kandidaten), kandidaten
+
+    leer = ("<html><body><p>0 Veranstaltungen</p>"
+            "<h1>Veranstaltungen</h1></body></html>")
+    mails, mailer = _mails()
+    ruf, zaehler = _ruf(antwort(NEU))          # Modell liefert nur die alten Regeln
+    aus = sh.lauf_auswerten(s, quelle=Q, regeln=REGELN.replace(URL, url_mit_filter),
+                            url=url_mit_filter, html=leer, roh_zeilen=0, n_zeilen=0,
+                            n_warn=0, jetzt=JETZT, holen=lambda u: HTML_GESUND,
+                            llm_ruf=ruf, mailer=mailer, konf=KONF_AUTO)
+
+    assert aus["aktion"]["aktion"] == "uebernommen", aus["aktion"]
+    assert aus["aktion"]["art"] == "abfrage_leer"
+    assert zaehler["n"] == 0, "kein Modell nötig — Filter sind additiv"
+    gespeichert = s.get_regeln(Q)["regel_yaml"]
+    assert "filter_19" not in gespeichert and "ort=berlin" in gespeichert
+    h = s.heilungen_liste(Q)[0]
+    assert h["status"] == "angenommen" and h["benachrichtigt_am"]
+    assert "Filtergruppe" in (h["meldung"] or "")
+    assert mails
+
+
+def test_leere_filtergruppe_ohne_treffer_wird_nicht_uebernommen(tmp_path):
+    """Bringt kein Kandidat Treffer, bleibt alles — und das Modell darf ran."""
+    s = _store(tmp_path)
+    url_mit_filter = f"{URL}?filter_19%5B%5D=KinderJugendliche"
+    s.set_regeln(Q, REGELN.replace(URL, url_mit_filter))
+    sh.pruefen(s, quelle=Q, regeln=REGELN.replace(URL, url_mit_filter),
+               url=url_mit_filter, html=HTML_GESUND, roh_zeilen=5, n_zeilen=5,
+               n_fehler=0, jetzt=JETZT)
+    # Seite MIT datierten Links (sonst greift der „nicht per Selektor
+    # reparierbar"-Hinweis und das Modell würde gar nicht gefragt), aber die
+    # Meldung des Portals steht auf 0.
+    leer = ("<html><body><p>0 Veranstaltungen</p>"
+            + "".join(f'<a href="/termin/fest-{i}">Fest {i} — 1{i}.10.2026</a>'
+                      for i in range(5))
+            + "</body></html>")
+    ruf, zaehler = _ruf("Ich kann das nicht reparieren.")
+    aus = sh.lauf_auswerten(s, quelle=Q, regeln=REGELN.replace(URL, url_mit_filter),
+                            url=url_mit_filter, html=leer, roh_zeilen=0, n_zeilen=0,
+                            n_warn=0, jetzt=JETZT, holen=lambda u: leer,
+                            llm_ruf=ruf, mailer=_mails()[1], konf=KONF_AUTO)
+    assert s.get_regeln(Q)["regel_yaml"] == REGELN.replace(URL, url_mit_filter)
+    assert aus["aktion"]["regeln_geaendert"] is False
+    assert zaehler["n"] >= 1, "ohne deterministischen Treffer wird das Modell gefragt"
+
+
 # --- Oberfläche ------------------------------------------------------------
 
 def test_oberflaeche_hat_knopf_liste_und_einstellungen():
