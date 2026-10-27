@@ -237,6 +237,12 @@ class SelectorAdapter:
         listing = self._regeln.get("listing") or {}
         self._listing_url = listing.get("url") or base_url or ""
         self._item_css = listing.get("item_css", "")
+        # Optionaler Zusatzfilter: nur Blöcke behalten, die dieses Element
+        # enthalten. Nötig, wenn eine Seite Termine und Dauer-Angebote im
+        # selben Karten-Layout mischt (Umweltkalender: 1.674 Kacheln, davon
+        # 499 ohne Datums-Link). Ohne Filter landen die Angebote als
+        # "start fehlt"-Fehler in der Queue und täuschen eine Fehlerquote vor.
+        self._nur_mit = str(listing.get("nur_mit") or "").strip()
         self._felder: dict = listing.get("felder") or {}
         self._pag = listing.get("pagination") or {}
         self._horizont_tage = int(listing.get("horizont_tage") or 0)
@@ -325,6 +331,13 @@ class SelectorAdapter:
         """→ [{slug, titel, start, ende, ganztags, ort, url}] (datetime tz-aware)."""
         sel = parsel.Selector(text=html)
         items = sel.css(self._item_css)
+        if items and self._nur_mit:
+            gefiltert = [it for it in items if it.css(self._nur_mit)]
+            if not gefiltert:
+                self._warnungen.append(
+                    f"nur_mit '{self._nur_mit}' lässt von {len(items)} Blöcken "
+                    f"keinen übrig (Muster geändert?)")
+            items = gefiltert
         if not items:
             self._warnungen.append(f"item_css '{self._item_css}' liefert 0 Elemente "
                                    "(Struktur geändert?)")

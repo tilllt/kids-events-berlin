@@ -13,6 +13,7 @@ Das LLM schreibt dabei **nie Code und nie neue Domains** — es ändert Regeln
 """
 from __future__ import annotations
 
+import copy
 import re
 
 import parsel
@@ -175,7 +176,17 @@ MARKER_ZU = "===ENDE==="
 HTML_AUSSCHNITT = 12000
 REGRESSION_ANTEIL = 0.80      # muss auf der alten Seite mindestens so viel finden
 MIN_TREFFER = 3               # und heute mindestens so viele Termine
-MAX_TREFFER = 200             # darüber ist der Selektor absurd grob (Wildcard)
+MAX_TREFFER = 200             # ab hier gilt ein Selektor als verdächtig groß
+# Ein Selektor ohne Klasse/ID/Attribut beschreibt kein wiederkehrendes Element,
+# sondern das Seitengerüst („div", "*", „div div"). Nur solche gelten ab
+# MAX_TREFFER als absurd; ein großer Kalender mit 1.500 echten Einträgen darf
+# nicht abgelehnt werden (Umweltkalender: 1.175 datierte Kacheln).
+_STRUKTUR_RX = re.compile(r"[.#\[]|contains\(|not\(|has\(")
+
+
+def selektor_ist_wildcard(selektor: str) -> bool:
+    """True, wenn der Selektor nichts Strukturelles nennt (div, *, div div)."""
+    return not _STRUKTUR_RX.search(selektor or "")
 
 PROMPT_KOPF = """Du reparierst die Lese-Regeln (YAML) eines Termin-Scrapers. \
 Die Quelle hat ihre HTML-Struktur geändert, die Regeln finden keine Termine mehr.
@@ -183,6 +194,10 @@ Die Quelle hat ihre HTML-Struktur geändert, die Regeln finden keine Termine meh
 HARTE REGELN:
 - Antworte NUR mit dem YAML zwischen {auf} und {zu}, danach ein Absatz "Begruendung:".
 - Erlaubte Abschnitte: quelle, robots, listing, detail, standard.
+- Im Abschnitt listing erlaubt: url, item_css, nur_mit, felder, horizont_tage,
+  pagination. `item_css` ist EIN Termin-Block; `nur_mit` ist ein CSS-Selektor,
+  den jeder Termin-Block enthalten muss (z. B. `a[href*="dat="]`, wenn die Seite
+  Termine und Dauer-Angebote im selben Layout mischt).
 - Erlaubte Listing-Felder: {felder}.
 - Ändere Selektoren; die Quelle bleibt "{quelle}" und alle URLs bleiben auf
   der Domain {domain}. Keine Kommentare, keine Erklärungen im YAML."""
@@ -355,9 +370,18 @@ def gate(*, neu_yaml: str, alt_yaml: str, quelle: str, html_heute: str,
     #    Treffer hat: dort gilt die alte Struktur, eine richtige Reparatur
     #    findet dort nichts (Denkfehler der ersten Fassung).
     beleg.setdefault("warnungen", [])
-    if not pruefung("Kein absurd grober Selektor", len(zeilen) <= MAX_TREFFER,
-                    f"{len(zeilen)} Treffer heute (Grenze {MAX_TREFFER})"):
+    item_css_neu = str((doc.get("listing") or {}).get("item_css") or "")
+    if len(zeilen) > MAX_TREFFER and selektor_ist_wildcard(item_css_neu):
+        pruefung("Kein absurd grober Selektor", False,
+                 f"{len(zeilen)} Treffer mit '{item_css_neu}' — kein Klassen-, "
+                 f"ID- oder Attribut-Merkmal (Grenze {MAX_TREFFER})")
         return {"ok": False, "beleg": beleg, "fehler": fehler}
+    pruefung("Kein absurd grober Selektor", True,
+             f"{len(zeilen)} Treffer" if len(zeilen) <= MAX_TREFFER else
+             f"{len(zeilen)} Treffer, Selektor greift ein wiederkehrendes Element")
+    if len(zeilen) > MAX_TREFFER:
+        beleg["warnungen"].append(
+            f"{len(zeilen)} Treffer heute — großer Kalender; Selektor prüfen")
     if treffer_alt and len(zeilen) > max(20, int(treffer_alt * 3)):
         beleg["warnungen"].append(
             f"{len(zeilen)} Treffer heute statt früher {treffer_alt} — "
@@ -832,6 +856,115 @@ def filter_reparieren(store, *, quelle: str, regeln: str, html: str, jetzt: str,
     return None
 
 
+def _item_fehler(regeln_yaml: str, html: str, quelle: str) -> int:
+    """Zählt Blöcke, die beim Auslesen scheitern („Item N: …")."""
+    from .adapters.selector_adapter import SelectorAdapter
+    a = SelectorAdapter(quelle, regel_yaml=regeln_yaml)
+    try:
+        a.parse_listing(html or "")
+        return sum(1 for w in a.drain_warnungen() if w.startswith("Item "))
+    except Exception:
+        return 10 ** 6
+    finally:
+        a.close()
+
+
+def nur_mit_kandidat(regeln_yaml: str) -> str | None:
+    """Leitet aus dem Start-Feld ab, woran ein echter Termin-Block erkennbar ist.
+
+    Viele Kalender mischen Termine und Dauer-Angebote im selben Karten-Layout;
+    nur die Termine tragen ein Datum in der Detail-URL (`?dat=2026-10-27`).
+    Der Start-Selektor sagt genau das: `css: a`, `attr: href`,
+    `regex: dat=(…)`. Der Text vor der ersten Regex-Gruppe ist damit ein
+    belastbares Merkmal — daraus wird `a[href*="dat="]`.
+    """
+    doc = regeln_lesen(regeln_yaml) or {}
+    felder = ((doc.get("listing") or {}).get("felder") or {})
+    start = felder.get("start")
+    if isinstance(start, list):
+        start = start[0] if start else None
+    if not isinstance(start, dict):
+        return None
+    css = start.get("css")
+    attr = start.get("attr") or "href"
+    rx = start.get("regex") or ""
+    if not css or not rx:
+        return None
+    praefix = rx.split("(", 1)[0]
+    if len(praefix) < 3 or re.search(r"[\\\[\]{}|?*+^$]", praefix):
+        return None            # kein literales Merkmal, nur Regex-Gerüst
+    return f'{css}[{attr}*="{praefix}"]'
+
+
+def itemfilter_reparieren(store, *, quelle: str, regeln: str, html: str, jetzt: str,
+                          konf: dict, holen=None, mailer=None, auto: bool = True,
+                          heilung_id: int | None = None,
+                          verursacher: str = "auto") -> dict | None:
+    """Blöcke ohne Termin-Merkmal aussortieren — deterministisch, ohne Modell.
+
+    Auslöser ist eine Fehlerquote, die entsteht, weil der `item_css` neben
+    Terminen auch Dauer-Angebote trifft (Umweltkalender: 1.674 Kacheln, 499
+    davon ohne Datums-Link → „Item N: start: kein Wert extrahiert"). Der
+    Kandidat `nur_mit` wird aus dem Start-Feld abgeleitet und muss durch
+    dasselbe Gate wie ein Modell-Vorschlag; übernommen wird nur, wenn die Zahl
+    der Auslesefehler nachweislich sinkt.
+    """
+    kandidat = nur_mit_kandidat(regeln)
+    if not kandidat:
+        return None
+    doc = regeln_lesen(regeln) or {}
+    listing = doc.get("listing") or {}
+    if str(listing.get("nur_mit") or "").strip():
+        return None                       # schon vorhanden — nichts zu tun
+    alt_fehler = _item_fehler(regeln, html, quelle)
+    if alt_fehler < FEHLER_ABSOLUT:
+        return None                       # kein Massenphänomen, nicht dieses Muster
+    neu_doc = copy.deepcopy(doc)
+    neu_doc.setdefault("listing", {})["nur_mit"] = kandidat
+    neu_yaml = yaml.safe_dump(neu_doc, allow_unicode=True, sort_keys=False)
+    neu_fehler = _item_fehler(neu_yaml, html, quelle)
+    if neu_fehler >= alt_fehler:
+        return None                       # filtert nichts weg → kein Gewinn
+    pruef = gate(neu_yaml=neu_yaml, alt_yaml=regeln, quelle=quelle,
+                 html_heute=html, html_alt=None, treffer_alt=None, holen=holen)
+    if not pruef["ok"]:
+        return None
+    beleg = {**pruef["beleg"], "fehler": pruef["fehler"], "nur_mit": kandidat,
+             "fehler_vorher": alt_fehler, "fehler_nachher": neu_fehler}
+    zahl = pruef["beleg"].get("treffer_heute") or 0
+    grund = (f"Fehlerquote: Blöcke ohne Termin-Merkmal aussortiert "
+             f"({kandidat}; {alt_fehler} → {neu_fehler} Auslesefehler)")
+    if not auto:
+        if heilung_id:
+            store.heilung_setzen(heilung_id, status="vorgeschlagen",
+                                 vorschlag_yaml=neu_yaml, begruendung=grund,
+                                 beleg=beleg, zeit=jetzt)
+        text = (f"Quelle {quelle}: ein Teil der Blöcke trägt kein Datum "
+                f"({alt_fehler} Auslesefehler). Reparaturvorschlag geprüft: nur "
+                f"noch Blöcke mit {kandidat} ({zahl} Termine im Probelauf). Die "
+                f"Automatik ist abgeschaltet — bitte in der Verwaltung bestätigen.")
+        _melden(store, heilung_id=heilung_id, quelle=quelle, text=text,
+                mailer=mailer, konf=konf, zeit=jetzt)
+        return {"art": "fehlerquote", "aktion": "vorgeschlagen", "meldung": text,
+                "regeln_geaendert": False, "beleg": beleg, "id": heilung_id}
+    if heilung_id:
+        store.heilung_setzen(heilung_id, vorschlag_yaml=neu_yaml,
+                             begruendung=grund, beleg=beleg, zeit=jetzt)
+    uebernehmen(store, quelle=quelle, alt_yaml=regeln, neu_yaml=neu_yaml,
+                grund=grund, verursacher=verursacher, heilung_id=heilung_id,
+                erwartete_treffer=zahl, zeit=jetzt, beleg=beleg)
+    text = (f"Quelle {quelle}: ein Teil der Blöcke trug kein Datum "
+            f"({alt_fehler} Auslesefehler). Die Automatik liest nur noch Blöcke "
+            f"mit {kandidat} — {neu_fehler} Fehler übrig, {zahl} Termine im "
+            f"Probelauf. Der nächste Lauf wird geprüft.")
+    print(f"[heilung] {quelle}: Blöcke ohne Termin-Merkmal aussortiert "
+          f"({alt_fehler} → {neu_fehler} Fehler, {zahl} Treffer)", flush=True)
+    _melden(store, heilung_id=heilung_id, quelle=quelle, text=text,
+            mailer=mailer, konf=konf, zeit=jetzt)
+    return {"art": "fehlerquote", "aktion": "uebernommen", "meldung": text,
+            "regeln_geaendert": True, "beleg": beleg, "id": heilung_id}
+
+
 def versuchen(store, *, quelle: str, befund: dict, diagnose: dict, html: str,
               regeln: str, jetzt: str, auto: bool | None = None,
               heilung_id: int | None = None, holen=None, llm_ruf=None,
@@ -891,6 +1024,19 @@ def versuchen(store, *, quelle: str, befund: dict, diagnose: dict, html: str,
                                  mailer=mailer, auto=bool(auto),
                                  heilung_id=heilung_id,
                                  verursacher=verursacher)
+        if fest:
+            return fest
+
+    # Blöcke ohne Termin-Merkmal (Kalender mischt Termine und Dauer-Angebote im
+    # selben Karten-Layout): deterministisch aussortieren, bevor das Modell
+    # gefragt wird — der Filter wird aus dem Start-Feld abgeleitet und muss
+    # durch dasselbe Gate.
+    if art in ("fehlerquote", "pflichtfeld"):
+        fest = itemfilter_reparieren(store, quelle=quelle, regeln=regeln or "",
+                                     html=html, jetzt=jetzt, konf=konf,
+                                     holen=holen, mailer=mailer, auto=bool(auto),
+                                     heilung_id=heilung_id,
+                                     verursacher=verursacher)
         if fest:
             return fest
 

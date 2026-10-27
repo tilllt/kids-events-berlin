@@ -53,7 +53,8 @@ _TOP_KEYS = {"listing", "detail", "filter_kinder", "name", "robots", "quelle", "
 # Quellenweite Vorgaben („dieser Kalender gehört zu diesem Ort"): füllen nur,
 # was die Quelle selbst nicht liefert.
 _STANDARD_FELDER = {"ort", "adresse", "bezirk", "beschreibung_kurz"}
-_LISTING_KEYS = {"url", "pagination", "item_css", "felder", "horizont_tage", "detail_url_skip"}
+_LISTING_KEYS = {"url", "pagination", "item_css", "nur_mit", "felder",
+                 "horizont_tage", "detail_url_skip"}
 _PAGINATION_KEYS = {"param", "next_css", "offset"}
 _FILTER_KEYS = {"regex"}
 
@@ -177,6 +178,18 @@ def validate_regeln_yaml(yaml_text: str, quelle: str | None = None) -> list[str]
         msg = _css_ok(str(listing["item_css"]))
         if msg:
             fehler.append(f"listing.item_css: {msg}")
+    if listing.get("nur_mit") is not None:
+        nur_mit = listing["nur_mit"]
+        if not isinstance(nur_mit, str) or not nur_mit.strip():
+            fehler.append("listing.nur_mit ist leer — es muss ein CSS-Selektor "
+                          "sein (z. B. \"a[href*='dat=']\") oder ganz entfallen.")
+        else:
+            msg = _css_ok(nur_mit)
+            if msg:
+                fehler.append(f"listing.nur_mit: {msg}")
+            if nur_mit.strip() == str(listing.get("item_css") or "").strip():
+                fehler.append("listing.nur_mit ist identisch mit item_css — "
+                              "das filtert nichts.")
     pag = listing.get("pagination") or {}
     if pag:
         if not isinstance(pag, dict):
